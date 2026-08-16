@@ -41,15 +41,19 @@ It must be able to audit **itself** and pass. It must also audit a *set* of file
 
 ## 2. Repository state you are starting from
 
-```
-static-everywhere/
-├── README.md              (do not rewrite; Task 0 allows two small fixes)
-├── STATIC-EVERYWHERE.md   (do not touch)
-├── DESIGN-onebin.md       (do not touch)
-├── CONFORMING.md          (do not touch)
-├── LICENSE                (CC0, for the documents)
-└── audit.sh               (the shell stopgap; Task 0 moves it)
-```
+**Read `STATUS.md` first — it is the live answer to this question.** This section
+describes the shape of the tree, not its contents; `STATUS.md` says which tasks
+are already done and which one you start at.
+
+Tasks 0–3 were completed by an earlier pass. The tree therefore already contains
+`tools/audit.sh`, `onebin/LICENSE`, `onebin/NOTES.md`, `onebin/Makefile`, a
+working `make`/`make test`, `src/util/buf.{c,h}` and `src/util/ver.{c,h}` with
+their test files. **Do not redo them.** Verify with `make test`, read
+`onebin/NOTES.md` for the decisions the earlier pass recorded, and start at the
+first task `STATUS.md` marks as not done.
+
+If `make test` is red on a tree you have not touched, that is your first task
+regardless of what `STATUS.md` says, and it goes in your report.
 
 ---
 

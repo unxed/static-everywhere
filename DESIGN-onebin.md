@@ -569,7 +569,7 @@ API freeze, conformance spec as a testable document, at least five real third-pa
 
 | # | Risk | Current thinking |
 |---|---|---|
-| 1 | **Profile S + `dlopen` is impossible.** Static musl has no dynamic loader. | Accept and document. Two profiles is the honest answer. A bundled mini-ELF-loader (TLS, IFUNC, versioned symbols, `dlclose`) is a multi-year project with a bad safety story — **explicitly out of scope**, and we should say so loudly to stop people expecting it. |
+| 1 | **Profile S + `dlopen` is impossible.** Static musl has no dynamic loader. | Accept and document — but stop pretending this is a small problem. Almost every real program needs `dlopen` for something, so Profile S in practice means CLI tools and nothing else. Writing our *own* mini-ELF-loader remains **out of scope** (TLS, IFUNC, versioned symbols, `dlclose` — multi-year, bad safety story). Carrying somebody else's, which is a different proposal entirely, is §13. |
 | 2 | **musl's locale and `iconv` are minimal**, and it has no NSS (no mDNS/`.local`, NIS, LDAP). | Document in the profile decision table. Offer an ICU-backed collation/conversion shim as an optional component if demand appears. |
 | 3 | **musl's default thread stack is 128 KiB** vs glibc's 8 MiB — deep-recursion code crashes mysteriously. | `ob_thread_default_stack()` helper + an audit warning when `-Wl,-z,stack-size` is unset in Profile S. |
 | 4 | **`libgcc_s` is `dlopen`'d by glibc for `pthread_cancel`/unwinding**, even with `-static-libgcc`. | Document; audit reports it as info rather than error; recommend avoiding thread cancellation. |
@@ -595,6 +595,72 @@ This project has succeeded when:
 3. At least one person who would have reached for Electron doesn't.
 4. A distribution maintainer says, in public, that this made their life easier rather than harder.
 5. `far2l-sdl` runs, from one downloaded artifact, on a distribution released the year this was written and on one released a decade earlier — with no toolkit, no container, and no instructions beyond `chmod +x`.
+
+---
+
+## 13. Proposal: Profile D — carry your own loader
+
+**Status: proposal. Not decided, not scheduled, no code.** Recorded here so the
+argument is written down rather than rediscovered.
+
+### The problem with two profiles
+
+Profile S forbids `dlopen`. Almost every program that is interesting to ship
+needs it — for its own plugins, for the GPU, for audio. So Profile S in practice
+covers CLI tools, and the "one file, any Linux" claim quietly stops being about
+the software people actually care about. Profile H answers this by depending on
+the host's glibc, which works well and has a floor: you cannot go below the
+oldest baseline you are willing to pin.
+
+### The trick
+
+A dynamic executable is only "dynamic" relative to a loader. **Ship the loader.**
+
+1. `onebin pack` appends `ld.so`, libc, and the application's own modules to the
+   executable as a blob.
+2. A small static stub finds its own blob, publishes the loader through
+   `memfd_create` — falling back to `$XDG_CACHE_HOME/<app>/<build-id>/` when the
+   kernel or policy forbids that — and `execve`s it with the real program.
+3. From that point the process is an ordinary dynamic one. `dlopen` works,
+   plugins work, `gdb` works, `LD_PRELOAD` tools work.
+
+One file on disk, zero libc dependency on the host.
+
+### Two flavours, and the difference is not cosmetic
+
+| | **D-musl** | **D-glibc** |
+|---|---|---|
+| Added size | ~600 KB | ~12 MB |
+| `dlopen` your own modules | yes | yes |
+| `dlopen` the **host's** `libGL`, `libX11`, `libasound` | **no** | yes, provided the bundled glibc is newer than the host's |
+| Host libc requirement | none | none |
+| Good for | plugin systems with no host contract | graphics and audio on hosts older than any baseline worth pinning |
+
+The `no` in that table is the whole story. Host libraries are built against
+glibc; a musl loader cannot satisfy their versioned symbols. **Anything touching
+the GPU therefore needs D-glibc, not D-musl** — which is the same conclusion
+Steam's runtime and Nix reached, by the same route: a newer glibc hosting older
+drivers is the direction that works.
+
+### What must be answered before this is more than a proposal
+
+- `MFD_NOEXEC_SEAL` and `vm.memfd_noexec` on recent kernels; `noexec` mounts for
+  the cache fallback; SELinux `execmem`; containers with no `/proc`.
+- Re-exec doubles process startup and changes `/proc/self/exe`, which breaks
+  anything that uses it to find its own resources — including, note,
+  applications that locate their modules that way.
+- Bundling glibc is an LGPL obligation we satisfy by linking it dynamically,
+  which is exactly what we are doing — but it needs saying in the SBOM.
+- Prototype and measure across the full distro matrix before committing.
+
+### Order of preference — this is the part to remember
+
+**Profile H first.** A 2.28 baseline is smaller, simpler, has no re-exec, and
+already covers RHEL 8, Debian 10, Ubuntu 18.04 and everything newer. Profile D is
+for reaching below that floor, or for the rare case that must not touch the host
+libc at all. Profile S is a deliberate niche — `FROM scratch`, initramfs,
+embedded — and the documents should stop implying it is the ideal that the other
+profiles compromise on.
 
 ---
 
