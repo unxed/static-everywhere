@@ -122,7 +122,7 @@ Both profiles produce one file. The user never learns which one you picked.
 
 ## Status
 
-**Draft 0.1 — documents only.** No code has been written yet; `tools/audit.sh` is a stopgap that already does the most valuable check.
+**Draft 0.1 — in development.** Implementation of `onebin audit` is underway; `tools/audit.sh` is a stopgap that already does the most valuable check.
 
 Roadmap (see [DESIGN-onebin.md §10](./DESIGN-onebin.md)):
 
