@@ -40,6 +40,7 @@ Flatpak, Snap and Docker apply Layer-1 thinking to Layers 2 and 3: they ship a u
 | **[STATIC-EVERYWHERE.md](./STATIC-EVERYWHERE.md)** | The manifesto. The argument, the two build profiles, recipes for CMake/Meson/Autotools, a cheat sheet for ~30 popular libraries, Windows/macOS, verification, self-updating, and honest answers to the objections. **Start here.** |
 | **[DESIGN-onebin.md](./DESIGN-onebin.md)** | Design doc for `onebin` — the toolkit that turns the manifesto into a `find_package`: a conformance linter, a host-contract `dlopen` broker, desktop integration, and signed self-updates. |
 | **[CONFORMING.md](./CONFORMING.md)** | Projects that conform, and at what level. Add yours. |
+| **[04-REFERENCE-far2l.md](./04-REFERENCE-far2l.md)** | The reference application. Everything about building [far2l](https://github.com/elfmz/far2l) — a real file manager with three UI backends, a plugin ABI and a copyleft licence — under this doctrine, and every place it made the doctrine more specific. |
 | **[tools/audit.sh](./tools/audit.sh)** | A 30-line shell audit you can drop into CI today, before any of the above exists. |
 
 ---
@@ -87,6 +88,52 @@ Both profiles produce one file. The user never learns which one you picked.
 
 ---
 
+## The reference application: far2l
+
+A manifesto that has only ever been tested on its own linter is a blog post. So this project has a standing obligation: **[far2l](https://github.com/elfmz/far2l) must build with our tooling, in every one of its UI modes.**
+
+far2l is a Linux fork of FAR Manager v2 — a two-panel file manager that runs in a bare terminal, in a terminal with X11 clipboard integration, and as a desktop application through either wxWidgets or SDL. It has a plugin ABI, a helper process, ~15 optional third-party libraries, host data it must read to look native, external programs it shells out to, and a GPLv2 licence. It is, in other words, everything the "just static-link it" advice usually gets waved at and then quietly dropped.
+
+Full detail — architecture, the complete option table, the dependency verdicts, the licence traps, and the list of things far2l has already forced us to change — is in **[04-REFERENCE-far2l.md](./04-REFERENCE-far2l.md)**.
+
+### The four configurations
+
+| Name | Profile | Target level | What it demonstrates |
+|---|---|---|---|
+| `far2l-tiny` | S | 1 | Terminal-only, no plugins. One musl static-PIE file, runs on `FROM scratch`. The thing you scp onto a 2014 server. |
+| `far2l-tty` | H | 1 | Full plugin set as `$ORIGIN`-relative modules, X11 clipboard through a helper process. |
+| `far2l-sdl` | H | 1 | **The headline.** A graphical file manager with no toolkit on the target: SDL `dlopen`s X11/Wayland/GL itself, FreeType and HarfBuzz are static, and fontconfig reads the *host's* fonts so the text looks native. |
+| `far2l-wx` | H | 0 only | Built to fail, on purpose. GTK arrives through wxWidgets and cannot be bundled. We publish its `DT_NEEDED` list instead of asserting that GTK is a problem. |
+
+### Building it
+
+```bash
+# 1. the latest stable far2l — releases are tagged v_X.Y.Z, master is unstable
+TAG=$(git ls-remote --tags --refs https://github.com/elfmz/far2l 'refs/tags/v_*' \
+      | awk -F/ '{print $NF}' | sort -V | tail -1)
+echo "$TAG"                    # v_2.8.0 at the time of writing
+
+git clone --depth 1 --branch "$TAG" https://github.com/elfmz/far2l far2l-src
+
+# 2. build it with our toolchain
+./tools/build-far2l.sh --config sdl --src ./far2l-src --out ./out/far2l-sdl
+
+# 3. prove it
+./tools/audit.sh ./out/far2l-sdl/far2l 2.28
+```
+
+Clone the **tag**, not a commit and not a tarball: far2l's CMake runs `git describe --tag` and appends a date and hash to its version string when it doesn't land exactly on a release, which makes the build non-reproducible.
+
+`build-far2l.sh` is a thin wrapper: it reads pinned dependency versions from `contrib/far2l/deps.lock`, builds the static third-party libraries, configures far2l with `onebin`'s CMake toolchain file, and audits every artifact it produced. `--print-plan` prints every command it would run without running any of them; `--no-fetch` makes network access a hard error.
+
+> **Status.** `tools/audit.sh` works today. `tools/build-far2l.sh`, the toolchain files and `contrib/far2l/` are specified in [04-REFERENCE-far2l.md §10](./04-REFERENCE-far2l.md#10-toolsbuild-far2lsh--required-interface) and [00-AGENT-TASK.md](./00-AGENT-TASK.md), and are not written yet. Until they are, the manual `cmake` invocations in [04-REFERENCE-far2l.md §6](./04-REFERENCE-far2l.md#6-target-configurations) are what a person would type by hand.
+
+### Why we let a build target dictate the design
+
+Because it already has. Before a single far2l object file was compiled, the exercise had found a linker flag in our own Quick Start that breaks any application with a plugin ABI, and a rule in our own audit spec that would report every one of far2l's plugins as a broken executable. Both are fixed. A reference application that never embarrasses the manifesto isn't doing its job.
+
+---
+
 ## Conformance levels
 
 | Level | Name | Requirement |
@@ -109,9 +156,17 @@ Both profiles produce one file. The user never learns which one you picked.
 ├── STATIC-EVERYWHERE.md     the manifesto
 ├── DESIGN-onebin.md         design doc for the toolkit
 ├── CONFORMING.md            projects that conform
+├── 00-AGENT-TASK.md         the implementation brief
+├── 01-SPEC-audit.md         `onebin audit` v0.1 specification
+├── 02-REFERENCE-elf.md      ELF reference — no internet required
+├── 03-TESTPLAN.md           the test plan
+├── 04-REFERENCE-far2l.md    the reference application — no internet required
 ├── tools/
-│   └── audit.sh             shell audit — works today, no build required
-└── onebin/                  (planned) the toolkit itself
+│   ├── audit.sh             shell audit — works today, no build required
+│   └── build-far2l.sh       (planned) the reference build
+├── contrib/
+│   └── far2l/               (planned) deps.lock, patches, upstream proposals
+└── onebin/                  the toolkit itself
     ├── cli/                 onebin audit | sign | release | pack
     ├── lib/                 libonebin — host brokers, paths, desktop, update
     ├── toolchain/           CMake toolchain files, Meson cross files
@@ -126,13 +181,13 @@ Both profiles produce one file. The user never learns which one you picked.
 
 Roadmap (see [DESIGN-onebin.md §10](./DESIGN-onebin.md)):
 
-- [ ] **v0.1 "Prove it"** — `onebin audit` for ELF, Level 0/1 checks, JSON output, GitHub Action, distro test matrix
+- [ ] **v0.1 "Prove it"** — `onebin audit` for ELF, Level 0/1 checks, JSON output, GitHub Action, distro test matrix, and the CMake toolchain files plus `tools/build-far2l.sh` that build the reference application
 - [ ] **v0.2 "Load it"** — `ob_host_*` GL/Vulkan/audio brokers with real diagnostics, `ob_paths_*`
 - [ ] **v0.3 "Ship it"** — `ob_update_*`: signed manifests, atomic install, canary rollback, deltas
 - [ ] **v0.4 "Belong"** — desktop integration, Windows/macOS audit backends
 - [ ] **v1.0** — API freeze, testable conformance spec, five real projects at Level 3
 
-The linter comes first deliberately: it costs a project nothing to try, and it finds real bugs in projects that never adopt anything else here.
+The linter comes first deliberately: it costs a project nothing to try, and it finds real bugs in projects that never adopt anything else here. The far2l build comes second, in the same milestone, because a linter with nothing real to lint is a toy.
 
 ---
 
