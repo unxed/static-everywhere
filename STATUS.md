@@ -31,13 +31,16 @@ Roadmap in [DESIGN-onebin.md §10](./DESIGN-onebin.md). Task list in
 | 10 | malformed corpus and fuzzer | not started |
 | 11 | coverage and lint test | not started |
 | 12 | self-audit and documentation | not started |
-| 13 | `tools/audit.sh` learns about modules | not started |
+| 13 | `tools/audit.sh` learns about modules | done |
 | 14 | CMake toolchain files + `zig-*` wrappers | not started |
 | 15 | `tools/build-far2l.sh` + `contrib/far2l/deps.lock` | not started |
 | 16 | `contrib/far2l/UPSTREAM.md` | not started |
 
 `make test`: 26 passed, 0 failed, 1 skipped. `make test-asan` and `make
 test-ubsan` both clean.
+
+`tools/audit.sh` implements the profile ladder as of Task 13, so the shell
+stopgap and the C tool will agree once the C tool exists.
 
 `src/elf/elf_const.h` exists as of Task 4 — the generator needed the constants
 before the parser did. Task 5 extends it rather than starting it.

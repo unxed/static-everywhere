@@ -29,3 +29,10 @@
 - **Allocation failure in mkelf aborts** rather than returning an error. This is
   test-support code; a fixture that comes out silently wrong makes the suite
   pass for the wrong reason, which is worse than a crash.
+- **audit.sh profile ladder (Task 13)**: implemented from 01-SPEC-audit.md §7.3,
+  with one addition the C tool does not have — binutils >= 2.35 prints "Shared
+  object file" vs "Position-Independent Executable file" in the ELF header, so
+  the shell script uses that as a rung before falling back to the ambiguous
+  case. `readelf` output is not a stable interface, so this is a hint that
+  improves the answer when present and is skipped when absent, never a check
+  that can fail.
