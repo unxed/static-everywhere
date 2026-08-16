@@ -143,6 +143,8 @@ That is the entire host contract. Roughly ten filenames. **Everything else in yo
 
 > Rule: never *link* against anything that talks to a kernel driver. Load it at runtime, behind an interface, with a fallback, and degrade gracefully when it's absent.
 
+**And one more contract, the oldest one: the process.** A file manager that runs the host's `7z` to open an archive, a mail client that runs `xdg-open`, an app that shells out to `sudo` or `ssh` — none of these is a portability defect, and bundling those programs would be a mistake. `execve` is a stable interface with a versioned contract (the command-line arguments), it fails legibly, and the user can substitute their own implementation. When a dependency is really a *tool* rather than a *library*, run it; don't link it, and don't ship a copy of the host's.
+
 ### The corollary that explains everything
 
 > **Flatpak is what you get when you apply Layer-1 thinking to Layers 2 and 3.**
@@ -267,6 +269,8 @@ set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 
 Do not use `-Wl,-Bstatic` piecemeal and hope. Use `pkg-config --static` where you must, and prefer building dependencies yourself with a superbuild (`FetchContent`, `ExternalProject`, vcpkg with `x64-linux` static triplet, or Conan with `shared=False`).
 
+> **`--exclude-libs,ALL` is a default, not a law.** If your application exports an ABI to plugins it `dlopen`s itself, that flag deletes exactly the symbols the plugins need, and you will find out at the first plugin load rather than at link time. Applications with a plugin ABI want an explicit version script plus `-Wl,--export-dynamic`: export what you promised and nothing else. We learned this from far2l (§6.4), which is why it is a callout instead of a footnote.
+
 ### 5.3 Meson
 
 ```ini
@@ -334,6 +338,10 @@ Fallbacks: `xxd -i`, `ld -r -b binary`, `incbin.h`, or `objcopy --add-section`. 
 | **XDG Portals** | ✅✅ protocol | The correct way to do file dialogs, screenshots, screen sharing, permissions. Pure D-Bus. No ABI. |
 | **libudev** | ⚠️ | Prefer reading `/sys` directly, or `dlopen` `libudev.so.1`. |
 | **FFmpeg** | ✅ static | Static build is well supported. Mind codec licensing. |
+| **libarchive** | ✅ static | Configure down to the formats you actually support; the default pulls in a lot. |
+| **libssh / libssh2** | ✅ static | Fine; pick and pin the crypto backend rather than letting it find one. |
+| **neon, libnfs, uchardet, libxml2** | ✅ static | Small, well-behaved, no runtime module loading. |
+| **libsmbclient (Samba)** | ❌ hostile | Loads its own modules at runtime, drags Kerberos and a configuration stack, and is enormous. Speak SMB over a socket, or make the feature optional and degrade. |
 | **Python / Lua / V8 embedding** | ⚠️ | Embedded Python needs `dlopen` for native extensions → Profile H. Lua is fine anywhere. |
 | **glibc NSS (`getaddrinfo`)** | ⚠️ | musl resolves DNS itself — no NSS, but also no mDNS/`.local`, no NIS/LDAP. Know your users. |
 
@@ -443,6 +451,43 @@ Adopt these publicly. Put the level in your README.
 ![Static Everywhere Level 3](https://img.shields.io/badge/Static%20Everywhere-Level%203-1f6feb)
 ```
 
+### 6.4 The reference application
+
+Everything above is a claim about programs in general, argued from programs the
+author chose. So this project keeps a standing obligation to a program it did not
+choose and cannot quietly simplify:
+
+> **[far2l](https://github.com/elfmz/far2l) must build under this doctrine, in
+> every UI mode it has, and the audit output must be published.**
+
+far2l is a Linux fork of FAR Manager v2. It runs in a bare terminal, in a terminal
+with X11 clipboard integration through a helper process, and as a desktop
+application through either wxWidgets or SDL. It has a plugin ABI whose plugins
+resolve symbols from the main executable, ~15 optional third-party libraries,
+host data it must read to look native, external programs it shells out to, and a
+GPLv2 licence with a bundled non-free decompressor. It is the shape of program
+that "just link it statically" advice is usually waved at and then dropped.
+
+Four configurations, and what each is for:
+
+| Build | Profile | Level | Result |
+|---|---|---|---|
+| Terminal only, no plugins | S | 1 | One musl static-PIE file. Runs on `FROM scratch`. |
+| Terminal + plugins + X11 helper | H | 1 | Executable plus `$ORIGIN`-relative modules. |
+| SDL graphical backend | H | 1 | A GUI application with no toolkit on the target: SDL `dlopen`s X11/Wayland/GL, FreeType and HarfBuzz are static, fontconfig reads the **host's** fonts. |
+| wxWidgets graphical backend | H | 0 | **Expected to fail Level 1.** GTK arrives through wxWidgets and cannot be bundled. We publish the `DT_NEEDED` list rather than asserting that GTK is a problem. |
+
+The exercise has already paid for itself twice, before a single far2l object file
+was compiled: it found a flag in this document's own CMake recipe that breaks any
+application with a plugin ABI (§5.2), and a rule in our audit specification that
+would have reported every one of far2l's plugins as a broken executable. Both are
+fixed. Build instructions and the full write-up are in
+[04-REFERENCE-far2l.md](./04-REFERENCE-far2l.md).
+
+**If you are reading this to decide whether the doctrine is serious, that document
+is the honest place to look** — including §7, which is a list of the places where
+a real program made this argument more complicated.
+
 ---
 
 ## 7. Shipping and updating: the Telegram model
@@ -522,6 +567,12 @@ They can still package it (§10) — a well-behaved project offers `-DUSE_SYSTEM
 **"Not everything can be static."**
 
 Correct, and this document says so plainly (§2.3, §3). The claim is not "no dynamic linking ever". The claim is: **the set of things you load from the host should be ten filenames long, chosen by physics, loaded at runtime, and behind a fallback.** Everything else is yours.
+
+**"This is fine for a CLI tool. Try it on something real."**
+
+Fair, and the reason §6.4 exists. The reference application is far2l — a file manager with a terminal backend, two graphical backends, a plugin ABI, a helper process and a GPLv2 licence — and its build is kept in CI so that "we tried it on something real" is a link rather than a claim. That exercise is also where this document gets its corrections: §5.2's warning about `--exclude-libs,ALL` is there because far2l's plugins stopped loading, and the honest answer to "one binary?" for an application with `dlopen`'d plugins is "one binary and its modules, or a packer, and here is the cost of each" (see [04-REFERENCE-far2l.md §7.5](./04-REFERENCE-far2l.md)).
+
+The parts that *don't* work are published too. GTK cannot be bundled; the wxWidgets build of far2l is kept in the matrix as a measured failure rather than deleted from the argument.
 
 **"musl is slower than glibc."**
 
