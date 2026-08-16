@@ -40,8 +40,10 @@ Flatpak, Snap and Docker apply Layer-1 thinking to Layers 2 and 3: they ship a u
 | **[STATIC-EVERYWHERE.md](./STATIC-EVERYWHERE.md)** | The manifesto. The argument, the two build profiles, recipes for CMake/Meson/Autotools, a cheat sheet for ~30 popular libraries, Windows/macOS, verification, self-updating, and honest answers to the objections. **Start here.** |
 | **[DESIGN-onebin.md](./DESIGN-onebin.md)** | Design doc for `onebin` — the toolkit that turns the manifesto into a `find_package`: a conformance linter, a host-contract `dlopen` broker, desktop integration, and signed self-updates. |
 | **[CONFORMING.md](./CONFORMING.md)** | Projects that conform, and at what level. Add yours. |
+| **[05-REFERENCE-f4-qt.md](./05-REFERENCE-f4-qt.md)** | The Qt reference application. Everything about [f4-qt](https://github.com/Zoinen/f4/tree/zoin) — a static Qt Quick front end inside a single Go executable — and the five places it corrected us. |
 | **[04-REFERENCE-far2l.md](./04-REFERENCE-far2l.md)** | The reference application. Everything about building [far2l](https://github.com/elfmz/far2l) — a real file manager with three UI backends, a plugin ABI and a copyleft licence — under this doctrine, and every place it made the doctrine more specific. |
 | **[tools/audit.sh](./tools/audit.sh)** | A 30-line shell audit you can drop into CI today, before any of the above exists. |
+| **[FUTURE-IDEAS.md](./FUTURE-IDEAS.md)** | Speculation, clearly labelled as such. Currently: could one binary per *architecture* replace one binary per *operating system*? Nothing here is scheduled; arguments against are the point. |
 
 ---
 
@@ -135,6 +137,41 @@ Clone the **tag**, not a commit and not a tarball: far2l's CMake runs `git descr
 
 > **Status.** `tools/audit.sh` works today. `tools/build-far2l.sh`, the toolchain files and `contrib/far2l/` are specified in [04-REFERENCE-far2l.md §10](./04-REFERENCE-far2l.md#10-toolsbuild-far2lsh--required-interface) and [00-AGENT-TASK.md](./00-AGENT-TASK.md), and are not written yet. Until they are, the manual `cmake` invocations in [04-REFERENCE-far2l.md §6](./04-REFERENCE-far2l.md#6-target-configurations) are what a person would type by hand.
 
+## The Qt reference application: f4-qt
+
+far2l answers "can a C++ application with plugins and three UI backends ship this
+way?". It does not answer "what does a **static Qt** cost?" — the question every
+project asks the moment GTK is ruled out.
+
+**[f4-qt](https://github.com/Zoinen/f4/tree/zoin)** answers that one. It is a Go
+file manager with a Qt Quick front end, and its Linux and Windows downloads are
+**one executable** with a fully static Qt — QML modules, shaders, platform
+plugins and codecs inside the binary — gzipped into the Go launcher and unpacked
+to a hash-addressed cache on first use.
+
+It also arrived at this doctrine on its own, wrote it down in
+`docs/PORTABLE_BUILD_POLICY.md`, and enforces it in CI with an audit script and a
+glibc 2.27 baseline. Its link line is our Profile H, flag for flag, derived
+independently. So it is evidence, and the interesting part is where it corrects
+us — five things, all in
+[05-REFERENCE-f4-qt.md §7](./05-REFERENCE-f4-qt.md#7-collisions-with-the-doctrine-and-what-we-decided):
+
+- **A binary package cache is baseline-blind.** Conan package IDs do not encode
+  the glibc a package was built against, so a cache hit silently raises your
+  baseline and nothing fails. The baseline applies to every object in the
+  artifact, not to the final link.
+- **A passing `readelf` audit does not prove a static Qt application runs.** It
+  can link cleanly and then die because a QML module or platform plugin was never
+  embedded. Their CI runs the binary offscreen with a software rasteriser and
+  greps for exactly that. Our test plan did not.
+- **`CGO_ENABLED=0` still does FFI.** Their Go launcher has no interpreter and no
+  `DT_NEEDED`, and still `dlopen`s — and opens X11 and Wayland windows with no
+  client library at all, by speaking the wire protocols. Our "Profile S cannot
+  `dlopen`" risk is a fact about the C toolchain, not about static binaries.
+- **On macOS the unit is the signed bundle, not one file.** Chasing "one file"
+  there produces advice that fails notarisation.
+- **Two processes, one artifact.** The claim is about what the user downloads.
+
 ### Why we let a build target dictate the design
 
 Because it already has. Before a single far2l object file was compiled, the exercise had found a linker flag in our own Quick Start that breaks any application with a plugin ABI, and a rule in our own audit spec that would report every one of far2l's plugins as a broken executable. Both are fixed. A reference application that never embarrasses the manifesto isn't doing its job.
@@ -168,11 +205,14 @@ Because it already has. Before a single far2l object file was compiled, the exer
 ├── 02-REFERENCE-elf.md      ELF reference — no internet required
 ├── 03-TESTPLAN.md           the test plan
 ├── 04-REFERENCE-far2l.md    the reference application — no internet required
+├── 05-REFERENCE-f4-qt.md    the Qt reference application — no internet required
+├── FUTURE-IDEAS.md          speculative, unscheduled, argue with it
 ├── tools/
 │   ├── audit.sh             shell audit — works today, no build required
 │   └── build-far2l.sh       (planned) the reference build
 ├── contrib/
-│   └── far2l/               (planned) deps.lock, patches, upstream proposals
+│   ├── far2l/               (planned) deps.lock, patches, upstream proposals
+│   └── f4-qt/               (planned) deps.lock and the ZoinGallery question
 └── onebin/                  the toolkit itself
     ├── cli/                 onebin audit | sign | release | pack
     ├── lib/                 libonebin — host brokers, paths, desktop, update

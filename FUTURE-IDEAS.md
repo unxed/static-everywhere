@@ -85,6 +85,13 @@ we did not design for:
 | Cocoa | Objective-C — whose runtime is a C ABI: `objc_getClass`, `sel_registerName`, `objc_msgSend` | reachable from C, no ObjC compiler needed |
 | Vulkan, OpenGL | C ABI behind a loader, with a machine-readable registry (`vk.xml`, `gl.xml`) | the one genuinely per-OS binding |
 
+**This is not a thought experiment.** The Qt reference application
+([05-REFERENCE-f4-qt.md §7.7](./05-REFERENCE-f4-qt.md)) ships a Go binary with no
+interpreter and no `DT_NEEDED` that opens X11 *and* Wayland windows with no
+client library on either — pure wire protocol over a socket — and drives AppKit
+on macOS through `objc_msgSend` with no Objective-C compiler in the build. Two of
+the rows above are already crossed off by a program you can download today.
+
 Take the doctrine seriously — talk to the host by protocol, not by ABI — and the
 irreducible OS surface of a graphical application collapses to roughly:
 

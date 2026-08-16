@@ -629,7 +629,7 @@ API freeze, conformance spec as a testable document, at least five real third-pa
 
 | # | Risk | Current thinking |
 |---|---|---|
-| 1 | **Profile S + `dlopen` is impossible.** Static musl has no dynamic loader. | Accept and document — but stop pretending this is a small problem. Almost every real program needs `dlopen` for something, so Profile S in practice means CLI tools and nothing else. Writing our *own* mini-ELF-loader remains **out of scope** (TLS, IFUNC, versioned symbols, `dlclose` — multi-year, bad safety story). Carrying somebody else's, which is a different proposal entirely, is §13. |
+| 1 | **Profile S + `dlopen` is impossible.** Static musl has no dynamic loader. | Accept and document — but stop pretending this is a small problem. Almost every real program needs `dlopen` for something, so Profile S in practice means CLI tools and nothing else. **Amended by f4-qt** (`05-REFERENCE-f4-qt.md §7.7`): this is a fact about the C toolchain, not about static binaries. A language runtime that carries its own FFI machinery — Go with `purego`/`goffi` — produces a binary with no `PT_INTERP` and no `DT_NEEDED` that still `dlopen`s, and reaches X11 and Wayland by wire protocol with no client library at all. Writing our *own* mini-ELF-loader remains **out of scope** (TLS, IFUNC, versioned symbols, `dlclose` — multi-year, bad safety story). Carrying somebody else's, which is a different proposal entirely, is §13. |
 | 2 | **musl's locale and `iconv` are minimal**, and it has no NSS (no mDNS/`.local`, NIS, LDAP). | Document in the profile decision table. Offer an ICU-backed collation/conversion shim as an optional component if demand appears. |
 | 3 | **musl's default thread stack is 128 KiB** vs glibc's 8 MiB — deep-recursion code crashes mysteriously. | `ob_thread_default_stack()` helper + an audit warning when `-Wl,-z,stack-size` is unset in Profile S. |
 | 4 | **`libgcc_s` is `dlopen`'d by glibc for `pthread_cancel`/unwinding**, even with `-static-libgcc`. | Document; audit reports it as info rather than error; recommend avoiding thread cancellation. |
@@ -643,6 +643,7 @@ API freeze, conformance spec as a testable document, at least five real third-pa
 | 12 | **Applications with their own plugin ABI** need an exported dynamic symbol table, which our recommended flags delete. | Fixed in §8: `--exclude-libs,ALL` becomes opt-out, version scripts preferred. The audit must never treat a populated `.dynsym` in an executable as a defect. Found by far2l before it was found by a user. |
 | 13 | **"One binary" is a lie for any app with `dlopen`'d modules.** | Say so. v0.1 ships an executable plus `$ORIGIN`-relative modules and calls it that; `onebin pack` (v0.4) makes it one file by extracting to a cache directory on first run. Do not claim the single-file property in marketing before the packer exists. |
 | 14 | **`memfd_create` + `dlopen("/proc/self/fd/N")`** would give a true single file with no extraction — and breaks under hardened kernels, seccomp policies, SELinux `execmem` rules, and anywhere `/proc` is absent. | **Open question, not a plan.** If it is ever built it must be a fallback path behind the cache-directory approach, never the only one, and the failure must be diagnosable. Prototype and measure across the distro matrix before any commitment. |
+| 15 | **One artifact per OS may itself be a habit.** Three builds of the same program are overwhelmingly the same machine code, differing only in a port layer that is a rounding error in the binary. | Out of scope for v0.1 and possibly forever, but recorded rather than rediscovered: [FUTURE-IDEAS.md §1](./FUTURE-IDEAS.md) argues for one image per *architecture* with runtime-selected platform backends, and lists the seven things worth not foreclosing (§1.11). Those seven are free, and are the only part of it this milestone should care about. |
 
 ---
 
@@ -721,6 +722,13 @@ for reaching below that floor, or for the rare case that must not touch the host
 libc at all. Profile S is a deliberate niche — `FROM scratch`, initramfs,
 embedded — and the documents should stop implying it is the ideal that the other
 profiles compromise on.
+
+---
+
+Profile D is about escaping the host's *libc version*. The same trick pointed at
+the host's *operating system* is [FUTURE-IDEAS.md §1](./FUTURE-IDEAS.md) — much
+more speculative, unscheduled, and deliberately kept out of this document until
+it has an experiment behind it.
 
 ---
 

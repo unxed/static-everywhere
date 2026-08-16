@@ -29,6 +29,24 @@ to point at. Details, build instructions and the running list of things far2l ha
 already forced us to change are in
 [04-REFERENCE-far2l.md](./04-REFERENCE-far2l.md).
 
+## The Qt reference application
+
+[f4-qt](https://github.com/Zoinen/f4/tree/zoin) — a Go file manager with a static
+Qt Quick front end, pinned for our purposes at commit `1a03511`. Unlike far2l,
+this project reached the same conclusions independently and enforces them in its
+own CI; we are measuring against it, not converting it.
+
+| Build | Target level | Profile | Baseline | Status |
+|---|---|---|---|---|
+| `f4-qt-linux` — one Go executable with a static Qt host inside | 1 | H | 2.27 | ships upstream; **not yet reproducible by us** |
+| `f4-qt-windows` — one `.exe`, static CRT | 1 | H | — | ships upstream |
+| `f4-qt-macos` — signed, notarised `.app` | 2 | — | 13.0 | different contract by design |
+| `f4-tty` — the Go core alone, `CGO_ENABLED=0` | 1 | S | — | ships upstream |
+
+The blocker on the first row is a private submodule (`third_party/ZoinGallery`),
+not a technical one. Details and the two acceptable fixes are in
+[05-REFERENCE-f4-qt.md §7.8](./05-REFERENCE-f4-qt.md).
+
 **If you maintain a project shaped like far2l** — plugins, multiple UI backends, a
 toolkit dependency you can't drop — the interesting rows are the ones that fail.
 Send those too.

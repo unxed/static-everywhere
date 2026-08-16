@@ -488,6 +488,30 @@ fixed. Build instructions and the full write-up are in
 is the honest place to look** — including §7, which is a list of the places where
 a real program made this argument more complicated.
 
+### 6.5 The Qt reference application
+
+far2l is C++ with plugins and three UI backends. It says nothing about the
+question every project asks once GTK is ruled out: **what does a static Qt
+cost?**
+
+So there is a second target, and this one we did not have to convince:
+[f4-qt](https://github.com/Zoinen/f4/tree/zoin) already ships one executable per
+OS with a fully static Qt Quick front end — QML modules, shaders, platform
+plugins and image codecs inside the binary — and already enforces a written
+portable-build policy in CI, with a glibc baseline and an audit script, arrived
+at independently. Its link line is this document's, flag for flag.
+
+Which makes it evidence rather than a demonstration, and the useful part is where
+it corrects this document. Five things, in
+[05-REFERENCE-f4-qt.md §7](./05-REFERENCE-f4-qt.md): a binary package cache does
+not encode the glibc baseline, so **the baseline applies to every object in the
+artifact rather than to the final link**; a static Qt application can pass every
+`readelf` check and still fail to start, so **Level 1 needs a runtime gate**; a
+`CGO_ENABLED=0` binary with no interpreter can still `dlopen`, so "Profile S
+cannot" is a fact about the C toolchain; on macOS the unit is the signed bundle,
+not one file; and "one binary" is a claim about the artifact the user downloads,
+not about the process table.
+
 ---
 
 ## 7. Shipping and updating: the Telegram model
