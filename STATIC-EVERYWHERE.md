@@ -444,7 +444,7 @@ Adopt these publicly. Put the level in your README.
 |---|---|---|
 | **0** | Baseline Pinned | Declared and verified libc baseline; no accidental `DT_NEEDED` |
 | **1** | Self-Contained | One file; all non-host libraries static; passes the test matrix; PIE + RELRO + BIND_NOW |
-| **2** | Self-Installing | First-run integration into `~/.local` (desktop entry, icons, MIME); clean `--uninstall`; **never requires root** |
+| **2** | Self-Installing | Installs into `~/Apps` (§7.2); first-run integration into `~/.local` (desktop entry, icons, MIME); clean `--uninstall`; **never requires root** |
 | **3** | Self-Updating | Signed, atomic, rollback-capable updates; published SBOM; updater disables itself when installed by a package manager |
 
 ```markdown
@@ -497,7 +497,7 @@ Level 1 makes your software *runnable*. Levels 2 and 3 make it *pleasant*, and t
 **The user model we are aiming for:**
 
 1. Download one file.
-2. Put it wherever you like — `~/.local/bin`, `~/Apps`, a USB stick.
+2. Drop it in `~/Apps` — the user-level Program Files (§7.2) — or anywhere else you like, including a USB stick.
 3. Run it.
 4. It appears in the launcher, with the right icon, using your fonts and your theme.
 5. It updates itself, quietly, without root, without a package manager, without you noticing.
@@ -514,7 +514,65 @@ Nothing here is hard. All of it is neglected.
 - **Deltas.** `zstd --patch-from` gives you 200 KB updates for a 30 MB binary — *if* your builds are reproducible (`SOURCE_DATE_EPOCH`, `-ffile-prefix-map`, sorted inputs). Reproducibility pays for itself here.
 - **Never require root. Never install a daemon. Never phone home with anything you wouldn't put in a log the user can read.**
 
-### 7.2 Be a good citizen of the desktop
+### 7.2 Where it lives: `~/Apps`
+
+Every other desktop operating system has a per-user place for programs the user
+installed themselves, and on every one of them it is **visible**:
+
+| System | Per-user application directory | Who already uses it |
+|---|---|---|
+| Windows | `%LOCALAPPDATA%\Programs\<App>` | VS Code, Signal, Discord, Zoom, GitHub Desktop |
+| macOS | `~/Applications/<App>.app` | anything dragged out of a `.dmg` without admin rights |
+| Linux | *(nothing)* | so every project invents one, and no two agree |
+
+XDG is not the missing answer. The Base Directory specification defines homes for
+*data*, *config*, *cache*, *state* and *runtime files*. A 40 MB self-contained
+application is none of those. `~/.local/bin` is the closest thing and it is a
+`$PATH` directory — the right home for a symlink or a three-line wrapper, not for
+the payload.
+
+So this document adopts a convention and asks you to adopt it too:
+
+> **Static Everywhere applications install to `~/Apps`.**
+
+```
+~/Apps/                                 the user's Program Files
+~/Apps/Foo                              a single-file app is just a file
+~/Apps/Bar/                             an app with modules gets a directory
+~/Apps/Bar/bar                          …with the executable inside it
+~/.local/bin/bar -> ~/Apps/Bar/bar      optional, and this is what goes on $PATH
+```
+
+The rules, all of them deliberately boring:
+
+- **Not hidden.** `~/.local/share` is a fine place for a MIME database and a
+  terrible place for the single most security-relevant object on the machine: an
+  executable that did not come from a package manager. A user who cannot find it
+  cannot inspect it, back it up, or delete it. We are asking people to trust
+  binaries they downloaded; the least we can do is not hide them.
+- **Not localised.** `Program Files` is `Program Files` in every locale Windows
+  ships. `/Applications` is `/Applications` in Japanese. A path that moves with
+  `LC_MESSAGES` breaks scripts, documentation, support threads, and the
+  trampoline in §7.4. Translate your interface, not your filesystem.
+- **`Apps`, not `Applications`.** Four letters, sorts to the top of `ls ~`, and
+  is not a prefix of anything XDG already owns.
+- **One file or one directory per application, and nothing else.** No shared
+  `lib/`, no `~/Apps/bin` that half your applications write into. Two programs
+  that must share a directory are one program.
+- **`$PATH` stays XDG.** If the application is also a command, drop a symlink in
+  `~/.local/bin`, which is already on `$PATH` on every current distribution and
+  is trivial to remove. The payload still lives in `~/Apps`.
+- **One escape hatch, for the people who will hate this**: `$ONEBIN_APPS_DIR`, if
+  set and absolute, wins. There is no further fallback chain and no
+  autodetection. A convention with three candidate locations is not a
+  convention.
+
+Nothing here is enforceable and nothing here needs to be. It costs one `mkdir`
+and it gives the ecosystem something it has never had: the same answer to "where
+does it go?" on every distribution, in a place a user can point a backup tool, a
+file manager, or their own curiosity at.
+
+### 7.3 Be a good citizen of the desktop
 
 On first run, with consent, install into the user's home:
 
@@ -526,9 +584,9 @@ On first run, with consent, install into the user's home:
 
 Then call `update-desktop-database` and `update-mime-database` if present, and ignore failures. Mark your entries `X-StaticEverywhere-Managed=true` so uninstall is exact. Fifty lines of code. This is the entire gap between "a binary I downloaded" and "an app on my computer."
 
-### 7.3 Be a good citizen of the distribution
+### 7.4 Be a good citizen of the distribution
 
-**If your binary detects it was installed by a package manager — it lives under `/usr`, it isn't writable by the user, it's owned by root — the updater must switch to Override Mode.** Instead of failing or asking for root, it downloads the update to `~/.local/share/`, and the system binary acts as a trampoline that launches the local copy. If the update breaks, the user simply deletes the local folder to fall back to the reliable system package. Distribution packaging is a legitimate delivery channel and this manifesto is not a declaration of war on it (§10).
+**If your binary detects it was installed by a package manager — it lives under `/usr`, it isn't writable by the user, it's owned by root — the updater must switch to Override Mode.** Instead of failing or asking for root, it installs the update into `~/Apps/<App>/` (§7.2), and the system binary acts as a trampoline that launches the local copy. If the update breaks, the user deletes `~/Apps/<App>` — a visible directory, in a place they were told about, removable with a file manager — and is instantly back on the distribution's build. Distribution packaging is a legitimate delivery channel and this manifesto is not a declaration of war on it (§10).
 
 ---
 

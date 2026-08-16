@@ -84,6 +84,13 @@ libdl.so.2   libpthread.so.0   librt.so.1
 
 Both profiles produce one file. The user never learns which one you picked.
 
+**And it goes in `~/Apps`.** Windows has `%LOCALAPPDATA%\Programs`, macOS has
+`~/Applications`, Linux has nothing — so every project invents something, usually
+hidden. Static Everywhere applications install to `~/Apps/<App>`: visible, not
+localised, one directory per application, with an optional symlink in
+`~/.local/bin` for `$PATH`. The rules are in
+[STATIC-EVERYWHERE.md §7.2](./STATIC-EVERYWHERE.md#72-where-it-lives-apps).
+
 > `zig cc` is a Clang distribution that bundles headers and stubs for musl *and every glibc version*. You don't have to write a line of Zig — it replaces the "keep a CentOS 7 container as a build environment" ritual with a command-line flag.
 
 ---
@@ -140,7 +147,7 @@ Because it already has. Before a single far2l object file was compiled, the exer
 |---|---|---|
 | **0** | Baseline Pinned | Declared and verified libc baseline; no accidental `DT_NEEDED` |
 | **1** | Self-Contained | One file; all non-host libraries static; passes the distro matrix; PIE + RELRO + BIND_NOW |
-| **2** | Self-Installing | First-run integration into `~/.local`; clean `--uninstall`; **never requires root** |
+| **2** | Self-Installing | Installs into `~/Apps`; first-run integration into `~/.local`; clean `--uninstall`; **never requires root** |
 | **3** | Self-Updating | Signed, atomic, rollback-capable updates; published SBOM; updater disables itself under a package manager |
 
 ```markdown

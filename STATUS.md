@@ -78,3 +78,7 @@ half. Do not let it slip to a later milestone.
   `7z` is correct behaviour.
 - Profile order of preference is **H first, D when H cannot reach far enough
   back, S as a deliberate niche** — not "S is the ideal and H is the compromise".
+- **`~/Apps` is the install location**, and Override Mode installs there rather
+  than into `~/.local/share`. The recovery path for a broken self-update is "the
+  user deletes a directory they can see", which only works if they can see it.
+  Manifesto §7.2, `DESIGN-onebin.md` §4 and §5.7.

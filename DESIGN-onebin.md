@@ -220,12 +220,30 @@ const char *ob_paths_ca_dir(void);
 int         ob_paths_font_dirs(const char **out, size_t n);
 int         ob_paths_icon_dirs(const char **out, size_t n);
 const char *ob_paths_xdg(ob_xdg_kind kind);  /* CONFIG_HOME, DATA_HOME, CACHE_HOME, RUNTIME_DIR, STATE_HOME */
+const char *ob_paths_apps_dir(void);         /* $ONEBIN_APPS_DIR, else ~/Apps  */
+const char *ob_paths_app_dir(const char *install_name, bool create);
 const char *ob_paths_self_exe(void);         /* realpath(/proc/self/exe), or platform equivalent */
 const char *ob_paths_self_dir(void);
 bool        ob_paths_is_system_managed(void);/* under /usr, /opt, /nix/store, root-owned, not user-writable */
 const char *ob_paths_desktop_env(void);      /* "GNOME", "KDE", "sway", ... best effort */
 bool        ob_paths_is_wayland(void);
 ```
+
+`ob_paths_apps_dir()` is the user's application directory — the manifesto's
+`~/Apps` (§7.2). It is one environment variable and one fallback, never a probe
+chain, and it is the same call on every platform because every platform already
+has one:
+
+| Platform | `ob_paths_apps_dir()` returns |
+|---|---|
+| Linux, BSD | `$ONEBIN_APPS_DIR`, else `$HOME/Apps` |
+| Windows | `%ONEBIN_APPS_DIR%`, else `%LOCALAPPDATA%\Programs` |
+| macOS | `$ONEBIN_APPS_DIR`, else `$HOME/Applications` |
+
+`ob_paths_app_dir("Bar", true)` returns `~/Apps/Bar`, creating it `0755` if
+asked. It never creates it world- or group-writable, and it fails rather than
+following a symlink it does not own — the override trampoline in §5.7 relies on
+both.
 
 CA bundle probe order (first hit wins): `$SSL_CERT_FILE` → `/etc/ssl/certs/ca-certificates.crt` (Debian/Ubuntu/Alpine) → `/etc/pki/tls/certs/ca-bundle.crt` (RHEL/Fedora) → `/etc/ssl/ca-bundle.pem` (SUSE) → `/etc/ssl/cert.pem` (Alpine/BSD/macOS) → `/system/etc/security/cacerts` (Android) → embedded fallback bundle if the app opted in.
 
@@ -365,11 +383,52 @@ Two consecutive failures, not one, so that a user force-quitting during startup 
 
 ### 5.7 System-managed binaries and Override Mode
 
-If the binary detects it is managed by a package manager (e.g., installed under `/usr`, `/opt`, or is not writable by the current user), it **must not** refuse to update, nor should it try to overwrite the system file via root. Instead, it enters **Override Mode**:
+If the binary detects it is managed by a package manager (installed under `/usr`,
+`/opt` or `/nix/store`, root-owned, or simply not writable by the current user),
+it **must not** refuse to update, nor try to overwrite the system file via root.
+Instead it enters **Override Mode**:
 
-1. Updates are downloaded and staged in the user's data directory (e.g., `~/.local/share/<app_id>/override/`).
-2. The system-wide binary acts as a **trampoline**: on startup, `libonebin` checks if a newer healthy local override exists and `exec`s it instead.
-3. If the local update breaks, the user can simply delete the override folder, instantly falling back to the rock-solid system baseline.
+1. The update is verified and installed into the user's application directory:
+   `ob_paths_app_dir(cfg->install_name, true)` — `~/Apps/<InstallName>/` by
+   default (manifesto §7.2). **Not `~/.local/share`.** The override payload is a
+   program the user must be able to find, inspect and delete with a file
+   manager, not application data.
+2. Beside the executable, `libonebin` writes `.onebin-override.json`:
+
+```json
+{ "app_id":   "com.example.bar",
+  "version":  "3.2.1",
+  "build_id": "b4c1…",
+  "exec":     "bar",
+  "healthy":  true,
+  "installed": "2026-08-17T10:00:00Z" }
+```
+
+3. The system-wide binary becomes a **trampoline**. Before anything else,
+   `libonebin` reads that file and `execv`s the override — but only when every
+   one of these holds. Any failure is silent, is logged at debug level, and
+   means "run the system build".
+
+| Condition | Why |
+|---|---|
+| the process is not setuid/setgid and `AT_SECURE` is clear | a user-writable path must never win inside a privileged process |
+| `~/Apps` and the app directory are owned by the real uid | ditto, one directory down |
+| neither is group- or world-writable | otherwise any group member ships you code |
+| the marker's `app_id` equals the compiled-in `app_id` | a directory-name collision must not exec a different program |
+| the override version is strictly newer | an override is an upgrade mechanism, not a downgrade one — and rollback protection (§5.1) applies to it |
+| `healthy` is true, or this is the canary launch (§5.6) | two failed launches and the trampoline stops preferring it |
+| no `.onebin-no-override` marker beside the system binary or in the app directory | packagers and administrators get a hard off switch |
+| `ONEBIN_NO_UPDATE` and `ONEBIN_NO_OVERRIDE` are both unset | the user gets one too, per launch |
+
+4. `execv`, not `fork`: no extra process, `argv` preserved verbatim, and
+   `ONEBIN_TRAMPOLINE=<absolute path of the system binary>` exported so the
+   override knows how it was started and can never bounce a second time. A
+   trampoline that finds `ONEBIN_TRAMPOLINE` already set runs itself and reports
+   the loop.
+5. If the override is broken, the user deletes `~/Apps/<InstallName>` and is back
+   on the distribution's build, with no tooling and no instructions. **That
+   recovery path is the entire reason the payload goes somewhere visible instead
+   of somewhere tidy.**
 
 The updater **must** disable itself completely only when:
 - the environment sets `ONEBIN_NO_UPDATE=1` (for distro packagers and enterprise deployment);
@@ -384,6 +443,7 @@ When fully disabled, `ob_update_check_async` returns `OB_UPDATE_DISABLED_SYSTEM_
 ```c
 typedef struct {
     const char *app_id;          /* reverse-DNS: com.example.app */
+    const char *install_name;    /* directory under ~/Apps: "Bar". No spaces, not localised. */
     const char *name;
     const char *generic_name;
     const char *comment;
@@ -415,7 +475,7 @@ Rules:
 
 - **Never without consent.** `ob_desktop_install` is called by the app in response to a user action or a first-run prompt, not on library init.
 - Every generated file carries `X-Onebin-Managed=true` and `X-Onebin-AppId=<id>` so uninstall is exact and never deletes something a distro package placed.
-- `Exec=` uses the absolute path of the current binary; if the user moves the binary, the next launch detects the mismatch and offers to fix the entry.
+- `Exec=` uses the absolute path of the current binary — for a normally installed application that is `~/Apps/<install_name>/<exec>`; if the user moves the binary, the next launch detects the mismatch and offers to fix the entry. Never write a `~/Apps` path into a *system* desktop entry: the trampoline (§5.7) exists precisely so the system entry keeps pointing at the system binary.
 - Best-effort `update-desktop-database` / `update-mime-database` / `gtk-update-icon-cache`; failures are logged, never fatal.
 - `ob_desktop_uninstall` with `OB_UNINSTALL_USER_DATA` also removes `~/.config/<id>`, `~/.local/share/<id>`, `~/.cache/<id>` — but only when that flag is passed explicitly, and the app must have asked.
 
