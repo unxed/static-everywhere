@@ -23,6 +23,20 @@ Items 1 and 2 are build flags. Items 3–6 are each 500–2000 lines of fiddly, 
 
 `onebin` exists to make items 3–6 a dependency instead of a project.
 
+### The reference application
+
+Every milestone below is judged against one program we did not write and cannot
+simplify: **[far2l](https://github.com/elfmz/far2l) must build with these tools, in
+every UI mode it has.** It is a file manager with a terminal backend, two
+graphical backends, a `dlopen`'d plugin ABI, a helper process, ~15 optional
+dependencies and a GPLv2 licence — which makes it a fair test of every component
+here rather than a friendly one.
+
+Everything an implementer needs is in
+[04-REFERENCE-far2l.md](./04-REFERENCE-far2l.md), which is written to be usable
+with no network access. Two of its findings already changed this document: see
+§8 (toolchain files) and §11 rows 12–14.
+
 ### Non-goals
 
 - **Not a package manager.** No repositories, no dependency resolution, no global state.
@@ -102,6 +116,7 @@ onebin audit ./build/myapp \
 | 14 | Debug info stripped; separate `.debug` file present next to it | 1 | info |
 | 15 | SBOM (`sbom.cdx.json`) present alongside the artifact | 3 | error at L3 |
 | 16 | Binary size delta vs. previous release exceeds threshold | — | info |
+| 17 | Shared **modules** (plugins, `dlopen`'d backends) audited as Profile M: same soname, glibc, rpath and hardening rules, no executable-only checks | 1 | — |
 
 ### Checks (Windows / PE)
 
@@ -122,6 +137,7 @@ onebin audit ./build/myapp \
 - Exit code `0` pass / `1` fail / `2` usage error or fatal error (with `--strict`, warnings fail).
 - `--format json` emits a stable schema for CI consumption.
 - `--baseline baseline.json` records an accepted state so new violations fail but existing ones don't block adoption — **this is essential for incremental adoption of legacy projects.**
+- Multiple operands, because a real application is an executable *plus* its modules. `onebin audit build/install/far2l build/install/*.so build/install/Plugins/*/plug/*.far-plug-*` is the normal case, not the exotic one; the exit code is the maximum over all files.
 
 ### Implementation notes
 
@@ -440,6 +456,33 @@ set(CMAKE_EXE_LINKER_FLAGS_INIT "-static-pie -Wl,--gc-sections -Wl,--exclude-lib
 
 Same, with `-target x86_64-linux-gnu.${ONEBIN_GLIBC_BASELINE}` (default `2.28`) and `-static-libstdc++ -static-libgcc` instead of `-static-pie`.
 
+**`--exclude-libs,ALL` is opt-out, and the toolchain files must let you opt out.**
+An application that exports an ABI to its own `dlopen`'d plugins needs those
+symbols in `.dynsym`; stripping them produces a binary that starts and then fails
+on the first plugin. So:
+
+```cmake
+option(ONEBIN_EXPORT_DYNAMIC "app exports an ABI to its own plugins" OFF)
+# ON  -> -Wl,--export-dynamic (or -Wl,--version-script=…), no --exclude-libs
+# OFF -> -Wl,--exclude-libs,ALL, as before
+```
+
+Prefer a version script over `--export-dynamic` when the project has one: export
+what was promised, not everything that survived `--gc-sections`. far2l needs this
+(`04-REFERENCE-far2l.md §7.1`) and it is not unusual — every application with a
+plugin API has the same requirement.
+
+Two smaller notes the reference build turned up, both belonging in the hybrid and
+static toolchain files rather than in each project's build:
+
+- `zig cc` identifies as Clang, so build systems that add flags "unless the
+  compiler is Clang" will silently skip them. Set `--gc-sections` from the
+  toolchain file rather than assuming the project adds it.
+- Always pass `-ffile-prefix-map=${CMAKE_SOURCE_DIR}=.` and
+  `-ffile-prefix-map=${CMAKE_BINARY_DIR}=.`; otherwise the audit's own hygiene
+  check fires on binaries we produced ourselves, which is a bad look for a
+  linter.
+
 Plus: `onebin-macos-universal.cmake`, `onebin-windows-static.cmake`, equivalent Meson cross files, and a `zig cc` wrapper script that papers over the `-nostdinc`/argument-quoting differences that break some `configure` scripts.
 
 A `OneBinConfig.cmake` exposes:
@@ -471,21 +514,51 @@ The matrix (manifesto §6.2) runs the binary under `alpine:3.10`, `centos:7`, `u
 
 For GUI apps the smoke test runs under `weston --backend=headless` and `Xvfb`, asserting that a window is created and that `ob_host_diagnose` reports a working renderer (llvmpipe is an acceptable result — we are testing the loading path, not the GPU).
 
+### The reference build job
+
+Separate workflow, runs on a schedule and on every change to the toolchain files
+or to `tools/build-far2l.sh`:
+
+1. Resolve the pinned far2l tag from `contrib/far2l/deps.lock` (never "latest" —
+   a floating upstream turns a red build into a mystery).
+2. Build all four configurations: `tiny`, `tty`, `sdl`, `wx`.
+3. Audit every produced artifact per `04-REFERENCE-far2l.md §9`.
+4. Run the distro matrix on the `tiny` and `tty` binaries, and the headless GUI
+   smoke test on `sdl`.
+5. **Publish the `wx` audit output as an artifact even though it fails.** It is
+   the evidence for the GTK row in the cheat sheet, and evidence that we do not
+   quietly drop the configurations that embarrass us.
+
+The job is allowed to be slow. It is not allowed to be skipped when it goes red.
+
 ---
 
 ## 10. Milestones
 
 **v0.1 — "Prove it"** *(the only milestone that must ship for the manifesto to be credible)*
-`onebin audit` for ELF, all Level 0/1 checks, JSON output, `--baseline`, GitHub Action, the distro test matrix. No library at all. Ships as a static binary that passes its own audit.
+`onebin audit` for ELF, all Level 0/1 checks including Profile M for modules, JSON output, `--baseline`, GitHub Action, the distro test matrix. No library at all. Ships as a static binary that passes its own audit.
+
+Plus the reference build, because a linter with nothing real to lint is a toy:
+the two CMake toolchain files, the `zig cc` wrapper, `contrib/far2l/deps.lock`,
+and `tools/build-far2l.sh` producing `far2l-tiny`, `far2l-tty` and `far2l-sdl`
+at Level 1, with `far2l-wx` measured and published as the documented failure.
 
 **v0.2 — "Load it"**
 `ob_host_*` with GL/EGL/Vulkan/audio brokers, `host-contract.toml`, `ob_host_diagnose`, generated GL/VK loader headers, `ob_paths_*`. CMake package.
+
+Acceptance is the reference application, not a sample: `far2l-sdl` starts on a
+host with no toolkit installed, finds fonts through the host's fontconfig, and
+`ob_host_diagnose` explains itself when there is no GPU.
 
 **v0.3 — "Ship it"**
 `ob_update_*` full stack: manifest spec, minisign-compatible signing, atomic install, canary rollback, `onebin sign` / `onebin release`. Deltas behind a flag. Fuzzing of the manifest parser is a release gate.
 
 **v0.4 — "Belong"**
 `ob_desktop_*`, Windows/macOS audit backends, `onebin pack`.
+
+`onebin pack` finally has a real user: it is what turns "far2l plus its modules"
+into one file (`04-REFERENCE-far2l.md §7.5`). Until then we ship a directory and
+say so.
 
 **v1.0**
 API freeze, conformance spec as a testable document, at least five real third-party projects at Level 3.
@@ -507,6 +580,9 @@ API freeze, conformance spec as a testable document, at least five real third-pa
 | 9 | **Signing key compromise.** | Root key set + delegation, offline root keys, documented rotation runbook. Recommend hardware tokens in the docs. |
 | 10 | **We become a framework.** The real failure mode. | Hard rule: every component usable alone; size budgets enforced in CI; `libonebin` depends on libc only; any PR adding a third-party dependency needs an explicit exception. |
 | 11 | **Adoption**: nobody uses a tool from an unknown org. | v0.1 is a *linter*, which costs a project nothing to try and produces an immediately shareable badge. Land it in 10–20 well-known projects before shipping any library code. |
+| 12 | **Applications with their own plugin ABI** need an exported dynamic symbol table, which our recommended flags delete. | Fixed in §8: `--exclude-libs,ALL` becomes opt-out, version scripts preferred. The audit must never treat a populated `.dynsym` in an executable as a defect. Found by far2l before it was found by a user. |
+| 13 | **"One binary" is a lie for any app with `dlopen`'d modules.** | Say so. v0.1 ships an executable plus `$ORIGIN`-relative modules and calls it that; `onebin pack` (v0.4) makes it one file by extracting to a cache directory on first run. Do not claim the single-file property in marketing before the packer exists. |
+| 14 | **`memfd_create` + `dlopen("/proc/self/fd/N")`** would give a true single file with no extraction — and breaks under hardened kernels, seccomp policies, SELinux `execmem` rules, and anywhere `/proc` is absent. | **Open question, not a plan.** If it is ever built it must be a fallback path behind the cache-directory approach, never the only one, and the failure must be diagnosable. Prototype and measure across the distro matrix before any commitment. |
 
 ---
 
@@ -518,6 +594,7 @@ This project has succeeded when:
 2. A new C++ GUI project can get to "one signed, self-updating binary that runs on every distro" in under a day.
 3. At least one person who would have reached for Electron doesn't.
 4. A distribution maintainer says, in public, that this made their life easier rather than harder.
+5. `far2l-sdl` runs, from one downloaded artifact, on a distribution released the year this was written and on one released a decade earlier — with no toolkit, no container, and no instructions beyond `chmod +x`.
 
 ---
 
