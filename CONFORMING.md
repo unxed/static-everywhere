@@ -8,6 +8,33 @@ Projects that ship according to [Static Everywhere](./STATIC-EVERYWHERE.md), and
 
 ---
 
+## The reference application
+
+Not a conforming project — a *target*. This repository owes the argument at least
+one real program that it did not write, cannot simplify, and does not control.
+That program is [far2l](https://github.com/elfmz/far2l): a fork of FAR Manager v2
+with a terminal backend, two graphical backends, a `dlopen`'d plugin ABI, a helper
+process and a GPLv2 licence.
+
+| Build | Target level | Profile | Baseline | Status |
+|---|---|---|---|---|
+| `far2l-tiny` — terminal only, no plugins | 1 | S | musl | not built yet |
+| `far2l-tty` — terminal + plugins + X11 helper | 1 | H | 2.28 | not built yet |
+| `far2l-sdl` — SDL graphical backend | 1 | H | 2.28 | not built yet |
+| `far2l-wx` — wxWidgets graphical backend | 0 | H | 2.28 | **expected to fail Level 1**; kept to measure how badly |
+
+Upstream far2l has made no commitment to any of this and has not been asked to.
+The work is ours; the row above moves into the table only when there is a CI link
+to point at. Details, build instructions and the running list of things far2l has
+already forced us to change are in
+[04-REFERENCE-far2l.md](./04-REFERENCE-far2l.md).
+
+**If you maintain a project shaped like far2l** — plugins, multiple UI backends, a
+toolkit dependency you can't drop — the interesting rows are the ones that fail.
+Send those too.
+
+---
+
 ## Adding your project
 
 Open a pull request adding a row. Requirements:
