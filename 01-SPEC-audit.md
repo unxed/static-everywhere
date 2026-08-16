@@ -136,8 +136,6 @@ Colour is emitted only if **all** of: `--no-color` absent, `NO_COLOR` unset in t
 
 ### 5.4 Exit codes
 
-This **supersedes** the exit codes in `DESIGN-onebin.md §2`, which were ambiguous about the warnings-only case.
-
 | Code | Meaning |
 |---|---|
 | `0` | All files audited; no findings of severity `error`. Warnings and infos may be present. |
@@ -145,8 +143,6 @@ This **supersedes** the exit codes in `DESIGN-onebin.md §2`, which were ambiguo
 | `2` | Usage error, or a file could not be read or identified as ELF. **No audit result is meaningful.** |
 
 With multiple files, the exit code is the maximum over all files.
-
-Record in `onebin/NOTES.md` that this supersedes the design doc, and note that `DESIGN-onebin.md §2` should be updated in a later pass. Do not edit that document yourself.
 
 ---
 

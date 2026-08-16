@@ -119,7 +119,7 @@ onebin audit ./build/myapp \
 
 ### Interface
 
-- Exit code `0` pass / `1` fail / `2` warnings-only (with `--strict`, warnings fail).
+- Exit code `0` pass / `1` fail / `2` usage error or fatal error (with `--strict`, warnings fail).
 - `--format json` emits a stable schema for CI consumption.
 - `--baseline baseline.json` records an accepted state so new violations fail but existing ones don't block adoption — **this is essential for incremental adoption of legacy projects.**
 
@@ -347,16 +347,19 @@ After an update, the state file records `healthy:false`. On the next launch:
 
 Two consecutive failures, not one, so that a user force-quitting during startup doesn't trigger a spurious rollback.
 
-### 5.7 Refusal conditions
+### 5.7 System-managed binaries and Override Mode
 
-The updater **must** disable itself, visibly, when:
+If the binary detects it is managed by a package manager (e.g., installed under `/usr`, `/opt`, or is not writable by the current user), it **must not** refuse to update, nor should it try to overwrite the system file via root. Instead, it enters **Override Mode**:
 
-- the binary is under `/usr`, `/opt`, `/nix/store`, `/snap`, or another system prefix;
-- the binary is not writable by the current user;
+1. Updates are downloaded and staged in the user's data directory (e.g., `~/.local/share/<app_id>/override/`).
+2. The system-wide binary acts as a **trampoline**: on startup, `libonebin` checks if a newer healthy local override exists and `exec`s it instead.
+3. If the local update breaks, the user can simply delete the override folder, instantly falling back to the rock-solid system baseline.
+
+The updater **must** disable itself completely only when:
 - the environment sets `ONEBIN_NO_UPDATE=1` (for distro packagers and enterprise deployment);
 - a `.onebin-no-update` marker file sits next to the binary.
 
-In all these cases `ob_update_check_async` returns `OB_UPDATE_DISABLED_SYSTEM_MANAGED` and the app should say *"Updates are managed by your system package manager."* This is the single most important piece of diplomacy in the whole project (see manifesto §10).
+When fully disabled, `ob_update_check_async` returns `OB_UPDATE_DISABLED_SYSTEM_MANAGED` and the app should say *"Updates are managed by your system package manager."* This is an important piece of diplomacy in the whole project (see manifesto §10).
 
 ---
 

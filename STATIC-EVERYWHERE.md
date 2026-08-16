@@ -379,7 +379,7 @@ Building it right and *proving* it is right are different jobs. Add this to CI a
 
 ```bash
 #!/bin/sh
-# static-everywhere-audit.sh <binary> [max-glibc]
+# audit.sh <binary> [max-glibc]
 set -eu
 BIN="$1"; MAX="${2:-2.28}"
 
@@ -483,7 +483,7 @@ Then call `update-desktop-database` and `update-mime-database` if present, and i
 
 ### 7.3 Be a good citizen of the distribution
 
-**If your binary detects it was installed by a package manager — it lives under `/usr`, it isn't writable by the user, it's owned by root — the updater must disable itself and say so.** Distribution packaging is a legitimate delivery channel and this manifesto is not a declaration of war on it (§10).
+**If your binary detects it was installed by a package manager — it lives under `/usr`, it isn't writable by the user, it's owned by root — the updater must switch to Override Mode.** Instead of failing or asking for root, it downloads the update to `~/.local/share/`, and the system binary acts as a trampoline that launches the local copy. If the update breaks, the user simply deletes the local folder to fall back to the reliable system package. Distribution packaging is a legitimate delivery channel and this manifesto is not a declaration of war on it (§10).
 
 ---
 
@@ -553,7 +553,7 @@ What we are asking is narrower: **stop being the only path by which application 
 Concretely, a project conforming to this manifesto commits to:
 
 - keeping a **plain, boring source build that uses system libraries** (`-DUSE_SYSTEM_LIBS=ON` or equivalent) so you can package it the way you always have;
-- **disabling the self-updater automatically** when the binary is installed system-wide by a package manager;
+- **switching the self-updater to user-local override mode** when installed system-wide by a package manager, using the system binary as a reliable trampoline;
 - publishing an **SBOM** so you can audit what we vendored;
 - **reproducible builds**, so you can verify our binaries match our sources;
 - not shipping anything into `/usr` ourselves, ever.
@@ -567,7 +567,7 @@ Two channels, one codebase, no fighting. Users who want the distribution's relea
 **If you maintain a CLI tool or daemon** (an afternoon):
 
 1. Build it with `zig cc -target x86_64-linux-musl -static-pie`.
-2. Run `static-everywhere-audit.sh`. Confirm zero `DT_NEEDED`.
+2. Run `./tools/audit.sh`. Confirm zero `DT_NEEDED`.
 3. Attach the binary to your GitHub release. Keep doing the tarball too.
 4. Add the Level 1 badge.
 

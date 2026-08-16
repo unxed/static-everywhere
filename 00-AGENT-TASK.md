@@ -133,7 +133,6 @@ Do these **in order**. Each has a hard acceptance gate. Do not start task N+1 un
 
 The repository currently contradicts itself. Fix exactly these things and nothing else:
 
-- `git mv audit.sh tools/audit.sh` (or the equivalent). `README.md` links to `./tools/audit.sh` in four places and the file is at the root.
 - Add `onebin/LICENSE` containing the MIT licence text, copyright `The Static Everywhere contributors`, year `2026`. `README.md` and `DESIGN-onebin.md` both promise MIT/Apache-2.0 for code while the only LICENSE in the tree is CC0. **Write the MIT text from memory; it is short and you know it.** Do not attempt to fetch it.
 - In `README.md`, change the "Status" section's "No code has been written yet" sentence to reflect what exists once you are done. Change nothing else in that file.
 - Create `onebin/NOTES.md` with a heading and an empty "Decisions" list.
