@@ -4,7 +4,7 @@
 
 Status: design draft, no code written yet.
 Target languages: C11 (library, public ABI), C++17 permitted internally, Go or Rust acceptable for the CLI.
-License: **MIT or Apache-2.0 only** — a library that preaches static linking cannot itself impose relinking obligations. This is a hard constraint, not a preference.
+License: **MIT or Apache-2.0 only** — a library that preaches static linking cannot itself impose relinking obligations. This is a hard constraint, nota preference.
 
 ---
 
