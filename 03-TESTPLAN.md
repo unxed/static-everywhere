@@ -145,9 +145,13 @@ eg *eg_preset_static_ok(void);   /* ET_DYN, no PT_INTERP, no DT_NEEDED,
                                     PT_DYNAMIC present (static-PIE) — clean */
 eg *eg_preset_static_nopie(void);/* ET_EXEC, no PT_DYNAMIC at all */
 eg *eg_preset_shared_lib(void);  /* ET_DYN + DT_SONAME, no PT_INTERP */
+eg *eg_preset_module(void);      /* ET_DYN, NO DT_SONAME, DT_NEEDED libc.so.6,
+                                    no PT_INTERP, RELRO + BIND_NOW — a plugin as
+                                    CMake actually builds one. Must audit clean
+                                    as Profile M. */
 ```
 
-**`eg_preset_hybrid_ok()` and `eg_preset_static_ok()` must produce zero errors and zero warnings** at default settings. Assert exactly that in `t_mkelf.c`. If a preset ever starts producing a finding, either the check gained a false positive or the preset drifted — both need to fail the build loudly.
+**`eg_preset_hybrid_ok()`, `eg_preset_static_ok()` and `eg_preset_module()` must produce zero errors and zero warnings** at default settings. Assert exactly that in `t_mkelf.c`. If a preset ever starts producing a finding, either the check gained a false positive or the preset drifted — both need to fail the build loudly.
 
 ### `t_mkelf.c` — the generator tests itself
 
@@ -157,7 +161,7 @@ eg *eg_preset_shared_lib(void);  /* ET_DYN + DT_SONAME, no PT_INTERP */
 3.4 Emit the same logical file as ELF32 and ELF64, parse both, assert the parsed *semantic* results are identical.
 3.5 Emit the same logical file as LE and BE, parse both, assert identical semantic results.
 3.6 Assert `eg_poke32` refuses an out-of-range offset.
-3.7 Assert all four presets round-trip: emit → parse → the fields come back as configured.
+3.7 Assert all five presets round-trip: emit → parse → the fields come back as configured.
 
 ---
 
@@ -226,7 +230,19 @@ For every finding ID in `01-SPEC-audit.md §8` you need **at least** a positive 
 | 13 | `PT_INTERP` = `/lib64/ld-linux-x86-64.so.2`, machine x86_64 | no `OB0037` |
 | 14 | `PT_INTERP` = `/opt/weird/loader` | `OB0037` warn |
 | 15 | two `PT_INTERP` segments | first is used; `OB0003` info |
-| 16 | `shared_lib` preset | `OB0005` info; **no** profile findings at all |
+| 16 | `shared_lib` preset | `OB0005` info, `OB0038` info; **no** `OB0030`–`OB0037` |
+| 17 | `module` preset (ET_DYN, **no** `DT_SONAME`, has `DT_NEEDED`, no `PT_INTERP`) | profile auto-detects as **module**; `OB0038` info; **no** `OB0036`. This is the regression test for the bug the reference application found — it must fail against the pre-`OB0038` behaviour. |
+| 18 | `module` preset + `DT_NEEDED libfoo.so.1` | `OB0010` error — the soname allowlist applies to modules exactly as it does to executables |
+| 19 | `module` preset with no RELRO | `OB0050` error — hardening checks are not skipped for modules |
+| 20 | `module` preset + rodata string `dlopen` | **no** `OB0033`. A module that calls `dlopen` is not a defect. |
+| 21 | `module` preset + `PT_INTERP` | `OB0030` error — it is not a module |
+| 22 | `--profile module` on `hybrid_ok` | `OB0030` error (has `PT_INTERP`) |
+| 23 | `--profile hybrid` on the `module` preset | `OB0036` error — an explicit flag is obeyed even when it is wrong |
+| 24 | ET_DYN, no `PT_INTERP`, no `DT_NEEDED`, no `DT_SONAME`, no `DF_1_PIE` | `OB0039` info; audited as Profile S; **no** `OB0038` |
+| 25 | same, plus `DT_FLAGS_1 = DF_1_PIE` | Profile S; **no** `OB0039`, **no** `OB0038` |
+| 26 | `module` preset with an undefined symbol in `.dynsym` | no finding of any kind about it |
+| 27 | `--format json` on the `module` preset | `"profile": "module"`, `"profile_source": "auto"`; golden file |
+| 28 | ELF32 and BE variants of case 17 | identical findings |
 
 ### 4.4 `rpath` — `t_checks_rpath.c`
 
@@ -350,6 +366,29 @@ Cases 13–15 exist solely to catch the `Elf32_Phdr.p_flags` offset bug from `02
 22. `--` followed by a filename starting with `-`: treated as a path.
 23. A file named `-`: treated as a path, not stdin.
 24. `--max-file 100` on a 200-byte file: `OB0092`, exit 2.
+
+---
+
+### 4.9 The reference application's shape — `t_checks_module.c`
+
+We cannot build far2l in this environment: there is no network, no far2l source,
+and no wxWidgets. What we *can* do is reproduce its **shape** with the fixture
+generator and assert that the auditor handles it, so that the first real far2l
+build finds compile errors rather than design errors.
+
+Construct an in-memory tree that mirrors `04-REFERENCE-far2l.md §9`:
+
+| Fixture | Stands in for | Assert |
+|---|---|---|
+| hybrid executable, `DT_RUNPATH=$ORIGIN/../lib/far2l`, populated `.dynsym` | `far2l` | passes at `--level 1`; `OB0041` warn for the runpath; the exported symbols draw **no** finding |
+| module, no soname, needs only `libc.so.6` | a `.far-plug-wide` plugin | passes as Profile M |
+| module needing `libGL.so.1` as a *string*, not `DT_NEEDED` | `far2l_sdl.so` | `OB0070` info, no error |
+| module with `DT_NEEDED libgtk-3.so.0` | `far2l_gui.so` | `OB0010` error — the expected, documented failure |
+| hybrid executable needing `libX11.so.6` | `far2l_ttyx.broker` | `OB0010` error without `--allow`, clean with `--allow libX11.so.6` |
+| all six audited in one invocation | the real command line | exit code is the maximum over files; each file gets its own report block; JSON is one document per file in input order |
+
+The last row is the one that will break first: v0.1 accepts `FILE...` and most
+implementations quietly assume one file.
 
 ---
 

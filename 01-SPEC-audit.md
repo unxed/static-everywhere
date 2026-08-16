@@ -18,6 +18,7 @@ Given a path to an ELF file, decide whether it conforms to a declared Static Eve
 |---|---|
 | **Profile S** | Fully static. No `PT_INTERP`, no `DT_NEEDED`. `PT_DYNAMIC` **may** be present (static-PIE uses it for self-relocation). |
 | **Profile H** | Hybrid. Has `PT_INTERP` and `DT_NEEDED`, all of which must be on the allowlist. |
+| **Profile M** | Module. A shared object loaded by the application itself: a plugin, a `dlopen`'d backend, an `LD_PRELOAD` shim. `ET_DYN`, no `PT_INTERP`. Same soname, glibc, rpath, hygiene and hardening rules as Profile H; none of the executable-only checks. |
 | **Baseline** | The maximum glibc version the binary is permitted to require, e.g. `2.28`. |
 | **Level** | Conformance level 0–3 from the manifesto. v0.1 implements levels 0 and 1 fully, and the one file-existence check that level 3 needs. |
 | **Finding** | One reported observation: id, severity, check name, subject, message, fingerprint. |
@@ -115,7 +116,7 @@ onebin audit --help
 
 | Option | Argument | Default | Meaning |
 |---|---|---|---|
-| `--profile` | `auto\|static\|hybrid` | `auto` | Which profile to check against. `auto` detects per §7.3. |
+| `--profile` | `auto\|static\|hybrid\|module` | `auto` | Which profile to check against. `auto` detects per §7.3. |
 | `--glibc-max` | version | `2.28` | Highest permitted `GLIBC_x.y` requirement. Ignored in Profile S. |
 | `--level` | `0\|1\|2\|3` | `1` | Conformance level. Higher levels enable more checks. |
 | `--allow` | soname | — | Add one soname to the `DT_NEEDED` allowlist. Repeatable. |
@@ -266,7 +267,29 @@ libdl.so.2             libpthread.so.0        librt.so.1
 
 ### 7.3 `profile` — profile conformance
 
-Auto-detection: Profile S if there is no `PT_INTERP` **and** no `DT_NEEDED`; otherwise Profile H. `--profile` overrides.
+Auto-detection, in this order. The first rule that matches wins. `--profile` overrides all of it.
+
+1. `PT_INTERP` present → **Profile H**.
+2. `DT_FLAGS_1 & DF_1_PIE (0x08000000)` set → the linker marked this an executable → **Profile S** (a PIE executable with no interpreter is a static-PIE).
+3. `e_type == ET_DYN` and (`DT_SONAME` present **or** at least one `DT_NEEDED` present) → **Profile M**.
+4. Otherwise → **Profile S**.
+
+This is the same ladder as `02-REFERENCE-elf.md §3` ("Distinguishing PIE from
+shared library when `e_type == ET_DYN`"), expressed in profiles. **Implement it
+once** and have both callers use it; two copies of this decision will drift.
+
+Rule 3 is why this section changed. Shared objects built by CMake as *module*
+libraries — which is what a plugin is — usually carry **no `DT_SONAME`**. Under
+the previous rule (S if no `PT_INTERP` and no `DT_NEEDED`, else H) every such
+plugin auto-detected as Profile H and earned a spurious `OB0036`. The reference
+application has about twenty of them; see `04-REFERENCE-far2l.md §7.6`.
+
+Rule 4 has a residual ambiguity that cannot be resolved from the file alone: a
+self-contained module with no `DT_NEEDED`, no `DT_SONAME` and no `DF_1_PIE` is
+byte-for-byte indistinguishable from a static-PIE executable. Detect that case —
+`e_type == ET_DYN`, no `PT_INTERP`, no `DT_NEEDED`, no `DT_SONAME`, no
+`DF_1_PIE` — and emit `OB0039` **info** telling the user to pass `--profile`
+explicitly. Then continue as Profile S. Never guess silently.
 
 Profile S checks:
 - `PT_INTERP` present: `OB0030` **error**.
@@ -282,6 +305,21 @@ Profile S checks:
 Profile H checks:
 - No `PT_INTERP`: `OB0036` **error** (you asked for hybrid and got something else).
 - `PT_INTERP` string not in the known-interpreter list for the machine: `OB0037` **warn**.
+
+Profile M checks:
+- Emit `OB0038` **info**, subject = the `DT_SONAME` if there is one, otherwise the
+  file's basename: "audited as a shared module; executable-only checks skipped".
+- Skip `OB0030`–`OB0037` entirely. A module has no interpreter and that is not a
+  finding; a module may reference `dlopen` and that is not a finding either.
+- Run `needed`, `glibc`, `rpath`, `harden`, `hygiene` and `host` unchanged. A
+  plugin that drags in `libstdc++.so.6` is exactly as wrong as an executable that
+  does.
+- `PT_INTERP` present in a file the user called a module: `OB0030` **error**,
+  same as Profile S. It is not a module.
+
+A module legitimately has undefined symbols that only its host executable
+provides. **This is never a finding.** v0.1 does not attempt to resolve them and
+must not report them; there is nothing on disk that could answer the question.
 
 ### 7.4 `rpath` — search paths
 
@@ -366,6 +404,8 @@ Every ID is permanent. Never reuse one for a different meaning.
 | `OB0035` | `profile.stripped` | info | — |
 | `OB0036` | `profile.nointerp` | error | — |
 | `OB0037` | `profile.interp_unknown` | warn | interp path |
+| `OB0038` | `profile.module` | info | soname or basename |
+| `OB0039` | `profile.ambiguous` | info | — |
 | `OB0040` | `rpath.absolute` | error | path component |
 | `OB0041` | `rpath.origin` | warn | path component |
 | `OB0042` | `rpath.legacy` | warn | — |
@@ -464,6 +504,7 @@ Formatting rules:
 - Two-space indent, `": "` after keys, no trailing whitespace, exactly one `\n` at end of file.
 - Arrays of scalars print inline if the total line stays under 100 columns, otherwise one element per line. **Pick one and apply it mechanically** — if that rule is hard to implement deterministically, always use one element per line for arrays of length ≥ 4 and inline otherwise, and write your choice in `NOTES.md`.
 - `null` for absent scalars, `[]` for absent arrays. Never omit a key.
+- `profile` is one of `"static"`, `"hybrid"`, `"module"`. `profile_source` is `"auto"` or `"flag"`.
 - `findings` is sorted by `(id, subject, message)`, byte-wise, `LC_ALL=C`.
 - `version_requirements` is sorted by `file`; `versions` within it sorted by version string byte-wise.
 
@@ -525,7 +566,9 @@ Consult this before deciding anything yourself.
 | Situation | Decision |
 |---|---|
 | File is ET_REL (`.o`) or ET_CORE | `OB0001` fatal, exit 2. v0.1 audits executables and shared objects only. |
-| File is a shared library (`ET_DYN` + `DT_SONAME` + no `PT_INTERP`) | Audit it, emit `OB0005` info, skip `profile` checks entirely, keep everything else. |
+| File is a shared library or module (`ET_DYN`, no `PT_INTERP`, and `DT_SONAME` or `DT_NEEDED` present) | **Profile M** per §7.3. Emit `OB0005` info if it has a `DT_SONAME`, and `OB0038` info always. Skip the executable-only profile checks; run every other check. Do **not** require `DT_SONAME` — CMake module libraries do not get one, and plugins are the main reason this path exists. |
+| `ET_DYN`, no `PT_INTERP`, no `DT_NEEDED`, no `DT_SONAME`, no `DF_1_PIE` | Indistinguishable from a static-PIE executable. Treat as Profile S, emit `OB0039` info recommending an explicit `--profile`. |
+| A module has undefined symbols | Not a finding, ever. They are supplied by the executable that loads it, which is not on the command line and may not be on this machine. |
 | `PT_DYNAMIC` present but `DT_STRTAB` missing or unmapped | All string-dependent checks emit nothing; emit `OB0003` non-fatally with subject `DT_STRTAB`, and continue. |
 | `e_phnum == 0xFFFF` (PN_XNUM, real count in section header 0) | Support it if section headers exist; otherwise `OB0003` fatal. Test both. |
 | Both `DT_RPATH` and `DT_RUNPATH` present | Check both, emit `OB0042`. |
