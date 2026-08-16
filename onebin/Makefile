@@ -13,8 +13,9 @@ CFLAGS = -std=c11 -O2 -g -Wall -Wextra -Werror -Wpedantic \
 
 INCLUDES = -Iinclude -Isrc
 
-SRC = src/main.c
-TEST_SRC = tests/test_main.c tests/t_skeleton.c
+LIB_SRC = src/util/buf.c
+SRC = src/main.c $(LIB_SRC)
+TEST_SRC = tests/test_main.c tests/t_skeleton.c tests/t_buf.c $(LIB_SRC)
 
 all: build/onebin
 
