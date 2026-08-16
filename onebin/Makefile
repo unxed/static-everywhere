@@ -1,0 +1,79 @@
+.POSIX:
+
+CC = cc
+PREFIX = /usr/local
+DESTDIR =
+FUZZ_ITERS = 20000
+
+CFLAGS = -std=c11 -O2 -g -Wall -Wextra -Werror -Wpedantic \
+         -Wshadow -Wconversion -Wsign-conversion -Wstrict-prototypes \
+         -Wmissing-prototypes -Wpointer-arith -Wwrite-strings \
+         -Wcast-qual -Wvla -Wformat=2 -Wundef \
+         -D_FILE_OFFSET_BITS=64
+
+INCLUDES = -Iinclude -Isrc
+
+SRC = src/main.c
+TEST_SRC = tests/test_main.c tests/t_skeleton.c
+
+all: build/onebin
+
+build/onebin: $(SRC)
+	@mkdir -p build
+	$(CC) $(CFLAGS) $(INCLUDES) $(SRC) -o build/onebin
+
+build/tests: $(TEST_SRC)
+	@mkdir -p build
+	$(CC) $(CFLAGS) $(INCLUDES) -Itests $(TEST_SRC) -o build/tests
+
+test: build/tests
+	./build/tests
+
+test-asan:
+	@mkdir -p build/asan
+	@if $(CC) -fsanitize=address,undefined -E - < /dev/null >/dev/null 2>&1; then \
+		$(CC) $(CFLAGS) -fsanitize=address,undefined -fno-omit-frame-pointer $(INCLUDES) -Itests $(TEST_SRC) -o build/asan/tests && \
+		./build/asan/tests; \
+	else \
+		echo "SKIP: AddressSanitizer/UBSan not supported by $(CC)"; \
+	fi
+
+test-ubsan:
+	@mkdir -p build/ubsan
+	@if $(CC) -fsanitize=undefined -E - < /dev/null >/dev/null 2>&1; then \
+		$(CC) $(CFLAGS) -fsanitize=undefined -fno-sanitize-recover=all $(INCLUDES) -Itests $(TEST_SRC) -o build/ubsan/tests && \
+		./build/ubsan/tests; \
+	else \
+		echo "SKIP: UndefinedBehaviorSanitizer not supported by $(CC)"; \
+	fi
+
+fuzz:
+	@echo "Fuzzer target: $(FUZZ_ITERS) iterations (fuzzer module in progress)"
+
+coverage:
+	@mkdir -p build/cov
+	@if $(CC) --coverage -E - < /dev/null >/dev/null 2>&1; then \
+		$(CC) $(CFLAGS) --coverage $(INCLUDES) -Itests $(TEST_SRC) -o build/cov/tests && \
+		./build/cov/tests; \
+	else \
+		echo "SKIP: gcov coverage not supported by $(CC)"; \
+	fi
+
+golden:
+	@echo "Regenerating golden files (none yet)"
+
+selftest: all
+	@echo "Running selftest on build/onebin..."
+	./build/onebin --version
+
+lint:
+	@echo "Lint target (source lint tests in progress)"
+
+install: build/onebin
+	mkdir -p $(DESTDIR)$(PREFIX)/bin
+	cp build/onebin $(DESTDIR)$(PREFIX)/bin/onebin
+
+clean:
+	rm -rf build
+
+.PHONY: all test test-asan test-ubsan fuzz coverage golden selftest lint install clean
