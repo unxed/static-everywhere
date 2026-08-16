@@ -22,8 +22,8 @@ Roadmap in [DESIGN-onebin.md §10](./DESIGN-onebin.md). Task list in
 | 1 | build skeleton, `make`, `make test`, `tests/test.h` | done |
 | 2 | `util/buf` — bounds-checked reader | done |
 | 3 | `util/ver` — version parsing and comparison | done |
-| 4 | `tests/mkelf` — the fixture generator | **next** |
-| 5 | `elf/image` | not started |
+| 4 | `tests/mkelf` — the fixture generator | done |
+| 5 | `elf/image` | **next** |
 | 6 | `elf/dynamic`, `elf/verneed`, `elf/symbols` | not started |
 | 7 | findings, baselines, reporters | not started |
 | 8 | the checks, **including Profile M** | not started |
@@ -36,8 +36,11 @@ Roadmap in [DESIGN-onebin.md §10](./DESIGN-onebin.md). Task list in
 | 15 | `tools/build-far2l.sh` + `contrib/far2l/deps.lock` | not started |
 | 16 | `contrib/far2l/UPSTREAM.md` | not started |
 
-Task 4 is the gate for everything after it: no ELF parser can be tested without
-ELF files, and none can be downloaded.
+`make test`: 26 passed, 0 failed, 1 skipped. `make test-asan` and `make
+test-ubsan` both clean.
+
+`src/elf/elf_const.h` exists as of Task 4 — the generator needed the constants
+before the parser did. Task 5 extends it rather than starting it.
 
 ## Reference application
 
