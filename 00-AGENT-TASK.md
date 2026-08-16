@@ -1,20 +1,29 @@
-# AGENT TASK — implement `onebin audit` v0.1
+# AGENT TASK — implement `onebin audit` v0.1 and the far2l reference build
 
-**Read this file completely before doing anything. Then read `02-REFERENCE-elf.md` completely. Then read `01-SPEC-audit.md` and `03-TESTPLAN.md`. Only then write code.**
+**Read this file completely before doing anything. Then read `02-REFERENCE-elf.md` completely. Then read `01-SPEC-audit.md` and `03-TESTPLAN.md`. Only then write code.** Before you start Task 13, read `04-REFERENCE-far2l.md` completely as well.
 
-You are implementing v0.1 of the `onebin` toolkit described in `DESIGN-onebin.md` of this repository. v0.1 is **one command-line tool**: a conformance linter for ELF binaries. Nothing else.
+You are implementing v0.1 of the `onebin` toolkit described in `DESIGN-onebin.md` of this repository. v0.1 is two things:
+
+1. **A conformance linter for ELF binaries** — Tasks 0–12. One command-line tool, no library, nothing else.
+2. **The build recipe for the reference application** — Tasks 13–16. Shell and CMake, no C. This is what makes the linter worth having: `04-REFERENCE-far2l.md` explains why far2l, and contains every fact about it that you will need.
+
+Do them in that order. Tasks 13–16 are smaller than they look and they are not optional.
 
 ---
 
 ## 0. Operating rules — these are absolute
 
-1. **You have no internet access.** You will not download anything, install anything, `git clone` anything, or `pip install` anything. Every constant, structure layout, and algorithm you need is written out in `02-REFERENCE-elf.md`. If something you need is not there, it is out of scope — do not guess it.
+1. **You have no internet access.** You will not download anything, install anything, `git clone` anything, or `pip install` anything. Every constant, structure layout, and algorithm you need is written out in `02-REFERENCE-elf.md`; every fact about far2l is written out in `04-REFERENCE-far2l.md`. If something you need is not there, it is out of scope — do not guess it.
+
+   This applies with full force to far2l. **You cannot clone it, build it, or look at its sources**, and you must not pretend otherwise. You are writing the recipe, not running it. Anything in your training data about far2l that contradicts `04-REFERENCE-far2l.md` is older than that document — the document wins. Do not invent option names, file names, dependency versions, or upstream tags.
 2. **No third-party dependencies. Ever.** The tool links against the C standard library and nothing else. No JSON library, no test framework, no argument parser, no `libelf`, no `libbfd`. If you find yourself wanting one, write the 80 lines yourself.
 3. **Do not `#include <elf.h>`.** It may be absent, and its contents vary between libcs. Define every constant yourself, in `src/elf/elf_const.h`, copying the values from `02-REFERENCE-elf.md`. This is not optional.
 4. **Never cast a struct onto file bytes.** Do not do `Elf64_Ehdr *eh = (Elf64_Ehdr *)buf;`. That is unaligned access, it is undefined behaviour, and it breaks on big-endian and on ELF32-vs-ELF64. Read every field individually through the bounds-checked byte readers specified in `01-SPEC-audit.md §4`. There is a lint test that will fail your build if you violate this.
 5. **Never invent an ELF constant, offset, or size.** If `02-REFERENCE-elf.md` does not list it, you do not need it.
-6. **Do not modify** `STATIC-EVERYWHERE.md`, `DESIGN-onebin.md`, or `CONFORMING.md`. Task 0 lists the only edits you are allowed to make to existing files.
+6. **Do not modify** `STATIC-EVERYWHERE.md`, `DESIGN-onebin.md`, `CONFORMING.md`, or `04-REFERENCE-far2l.md`. Task 0 lists the only edits you are allowed to make to existing files. If you find something wrong in any of them, write it in `onebin/NOTES.md` and report it — that is what rule 8 and §7 item 5 are for.
 7. **Do not write the rest of the toolkit.** No `libonebin`, no `ob_host_*`, no `ob_update_*`, no `ob_desktop_*`, no PE support, no Mach-O support, no signing, no `onebin pack`. Those are v0.2+. If you have spare effort, spend it on tests.
+
+   Likewise, do not *fork* far2l, vendor it, reimplement parts of it, or write patches against sources you cannot see. Tasks 13–16 produce a build recipe and nothing else.
 8. **When the spec is ambiguous**, check `01-SPEC-audit.md §12 "Ambiguity resolutions"` first. If your case is not listed, choose the behaviour that **fails closed** (report a problem rather than stay silent), implement it, and add a one-line entry to `onebin/NOTES.md` describing the decision. Never silently pick a behaviour.
 9. **Run `make test` after every task.** A task is not done until the full suite passes. Never move to the next task with a red suite.
 10. **Do not weaken a test to make it pass.** If a test fails, the code is wrong until you have proven otherwise in writing. If a test is genuinely wrong, fix it *and* say so in `onebin/NOTES.md`.
@@ -26,7 +35,7 @@ You are implementing v0.1 of the `onebin` toolkit described in `DESIGN-onebin.md
 
 A single static C11 binary called `onebin`, whose only subcommand in v0.1 is `audit`. It reads an ELF file from disk into memory, parses its program headers and dynamic section without using section headers where avoidable, and reports whether the binary conforms to the Static Everywhere manifesto: which shared libraries it needs, what the highest glibc symbol version it requires is, whether hardening flags are present, whether build-machine paths leaked into it, and which host-contract libraries it appears to `dlopen`. It prints a human-readable report or a stable JSON document, and it exits 0 on pass, 1 on failure, 2 on a usage or I/O error.
 
-It must be able to audit **itself** and pass.
+It must be able to audit **itself** and pass. It must also audit a *set* of files in one invocation — an executable plus the modules it loads — because that is the shape of every real application, including the reference one.
 
 ---
 
@@ -52,9 +61,16 @@ static-everywhere/
 ├── STATIC-EVERYWHERE.md
 ├── DESIGN-onebin.md
 ├── CONFORMING.md
+├── 04-REFERENCE-far2l.md
 ├── LICENSE                        CC0 — applies to the .md documents
 ├── tools/
-│   └── audit.sh                   moved here in Task 0
+│   ├── audit.sh                   moved here in Task 0
+│   └── build-far2l.sh             Task 15
+├── contrib/
+│   └── far2l/
+│       ├── deps.lock              Task 15 — name version sha256 url, one per line
+│       ├── UPSTREAM.md            Task 16 — changes far2l would need, as prose
+│       └── patches/               Task 16 — empty is the correct answer
 └── onebin/
     ├── LICENSE                    MIT — applies to everything under onebin/
     ├── README.md                  build + usage, ~100 lines, written in Task 12
@@ -93,6 +109,13 @@ static-everywhere/
     │           ├── c_harden.c
     │           ├── c_hygiene.c
     │           └── c_host.c
+    ├── toolchain/                 Task 14
+    │   ├── onebin-linux-static.cmake
+    │   ├── onebin-linux-hybrid.cmake
+    │   ├── zig-cc                 wrapper scripts, see Task 14
+    │   ├── zig-c++
+    │   ├── zig-ar
+    │   └── zig-ranlib
     └── tests/
         ├── test.h                 the tiny harness (see 03-TESTPLAN.md §2)
         ├── mkelf.c/.h             ELF fixture generator (03-TESTPLAN.md §3)
@@ -112,13 +135,15 @@ static-everywhere/
         ├── t_checks_harden.c
         ├── t_checks_hygiene.c
         ├── t_checks_host.c
+        ├── t_checks_module.c      Profile M + the reference-application shapes
         ├── t_baseline.c
         ├── t_report.c
         ├── t_cli.c                spawns the built binary, checks exit codes
         ├── t_malformed.c          the malformed-input corpus
         ├── t_lint.c               source-level architecture rules
         ├── fuzz.c                 deterministic mutation fuzzer
-        └── golden/                *.json expected outputs
+        ├── t_far2l_plan.c         Task 15 — golden test for --print-plan
+        └── golden/                *.json expected outputs, and far2l-*.plan
 ```
 
 You may add files. You may not remove any of the above.
@@ -187,6 +212,8 @@ One file per check family, in the order they appear in `01-SPEC-audit.md §7`. I
 
 **Gate:** every finding ID in `01-SPEC-audit.md §8` is produced by at least one test and suppressed by at least one test. `03-TESTPLAN.md §4` gives the required matrix.
 
+Profile M (`OB0038`, `OB0039`) is part of this task, not an afterthought. The profile ladder in `01-SPEC-audit.md §7.3` is the same one as `02-REFERENCE-elf.md §3`: **write it once**, in `elf/image.c`, and have the check call it. Two copies will drift and one of them will be the wrong one.
+
 ### Task 9 — the CLI
 
 Argument parsing, exit codes, `--format`, `--profile`, `--glibc-max`, `--level`, `--strict`, `--allow`, `--baseline`, `--no-color`, `--quiet`, `--verbose`. Exact grammar in `01-SPEC-audit.md §5`.
@@ -213,6 +240,94 @@ Argument parsing, exit codes, `--format`, `--profile`, `--glibc-max`, `--level`,
 
 ---
 
+### Task 13 — teach `tools/audit.sh` about modules
+
+The shell stopgap has the same bug the C tool had: it decides Profile S vs H on
+`DT_NEEDED` alone, so it reports every plugin as a broken hybrid. Fix it with the
+same ladder (`01-SPEC-audit.md §7.3`), add a `-m`/`--module` flag to force it, and
+keep the script under 150 lines. It stays POSIX `sh` and it stays dependent on
+nothing but `readelf` and `strings`.
+
+**Gate:** running it on a `.so` on the build machine — pick any from `/usr/lib` —
+reports it as a module and does not emit the "no PT_INTERP" failure. Running it on
+`/bin/sh` still reports a hybrid. Both results pasted into your report.
+
+### Task 14 — the CMake toolchain files
+
+`onebin/toolchain/onebin-linux-static.cmake` and `onebin-linux-hybrid.cmake`, per
+`DESIGN-onebin.md §8`, plus the four `zig-*` wrapper scripts (CMake needs a
+program per language and per tool; `zig cc` is two words and CMake will not
+accept that).
+
+Requirements you must not skip, all of them from `04-REFERENCE-far2l.md §7.1` and
+`DESIGN-onebin.md §8`:
+
+- `ONEBIN_EXPORT_DYNAMIC` option. `OFF` → `-Wl,--exclude-libs,ALL`. `ON` →
+  `-Wl,--export-dynamic` and **no** `--exclude-libs`. Applications with a plugin
+  ABI need `ON`, and the far2l configurations set it.
+- `ONEBIN_GLIBC_BASELINE`, default `2.28`, used in the `-target` triple.
+- `--gc-sections` set from the toolchain file. Do not assume the project adds it:
+  far2l adds it only when the compiler is not Clang, and `zig cc` is Clang.
+- `-ffile-prefix-map` for both source and binary directories, so our own
+  reference build does not trip our own `OB0060`.
+- RELRO, BIND_NOW, non-executable stack, `-fstack-protector-strong`.
+- The static file sets `CMAKE_FIND_LIBRARY_SUFFIXES ".a"`, `BUILD_SHARED_LIBS
+  OFF`, `-static-pie`.
+
+**Gate:** `cmake -DCMAKE_TOOLCHAIN_FILE=… ` configures and builds a two-file
+"hello world" C and C++ project that you write in `onebin/toolchain/tests/`, for
+whichever of the two profiles the environment can actually run. If `zig` is not
+installed, the gate is that `cmake -P` parses both files without error and the
+wrappers pass `shellcheck`; print a SKIP naming what was missing. **A SKIP is an
+acceptable outcome here. A silent pass is not.**
+
+### Task 15 — `tools/build-far2l.sh`
+
+The interface is specified in `04-REFERENCE-far2l.md §10`. Read it before writing
+a line. The four configurations and their exact `cmake` arguments are in §6 of the
+same document; copy them, do not improvise them.
+
+You cannot run this script to completion — there is no network and no far2l
+source. That is why `--print-plan` exists and why it is the part with a test:
+
+- `--print-plan` prints, to stdout, every command the script would run, in order,
+  one per line, with no side effects whatsoever. It must work with no network, no
+  far2l checkout, no compiler and no `zig`.
+- `tests/golden/far2l-{tiny,tty,sdl,wx}.plan` hold the expected output.
+  `t_far2l_plan.c` runs the script four times and compares bytes.
+- The plan must be deterministic: no timestamps, no `$PWD`, no hostnames, no
+  absolute paths outside those given on the command line.
+- `contrib/far2l/deps.lock` is created in this task with the far2l tag pinned to
+  the value in `04-REFERENCE-far2l.md §2` and one line per third-party
+  dependency. **Leave the sha256 column as `-` for anything you cannot hash**,
+  and say so in `NOTES.md` — a fabricated hash is worse than a missing one.
+- The script never fetches unless `--fetch` is given explicitly. Default is
+  `--no-fetch`, and `--no-fetch` with a missing source tree is a clean error with
+  a message telling the user which command to run.
+
+**Gate:** `make far2l-plan` regenerates nothing and passes; `t_far2l_plan` is
+green; `shellcheck tools/build-far2l.sh` is clean (or SKIP with a reason if
+`shellcheck` is absent); running the script with `--no-fetch` and no source tree
+exits non-zero with a message naming `--fetch`.
+
+### Task 16 — the far2l write-up
+
+Two short files and nothing else:
+
+- `contrib/far2l/UPSTREAM.md` — the changes far2l would need for a *better* result
+  than the one we can get today, as prose, with the reasoning. At minimum: static
+  registration of plugins so Profile S can have them (`04-REFERENCE-far2l.md
+  §7.3`), and anything you discovered while writing Tasks 14–15. These are
+  proposals for a maintainer to consider, not demands, and they are written that
+  way.
+- `contrib/far2l/patches/` stays **empty**, with a `.gitkeep` and a one-line
+  README saying that an empty directory is the correct answer and why.
+
+**Gate:** both files exist; `patches/` contains no patch; `UPSTREAM.md` contains
+no claim about far2l's source that is not traceable to `04-REFERENCE-far2l.md`.
+
+---
+
 ## 5. Build system requirements
 
 Plain POSIX `make`. No CMake, no autotools, no shell-outs to anything that might be absent.
@@ -232,6 +347,7 @@ Mandatory targets:
 | `lint` | runs `t_lint` alone |
 | `clean` | removes `build/` and nothing else |
 | `install` | `cp build/onebin $(DESTDIR)$(PREFIX)/bin/` |
+| `far2l-plan` | runs `tools/build-far2l.sh --print-plan` for all four configurations and diffs against `tests/golden/far2l-*.plan`; non-zero on any difference |
 
 Base flags:
 
@@ -267,6 +383,11 @@ All of the following, verified by running commands, not by inspection:
 - [ ] Every relative link in every `.md` file in the repository resolves
 - [ ] `onebin/NOTES.md` records every ambiguity you resolved
 - [ ] No file under `onebin/` contains a URL you invented, a TODO without an owner, or commented-out code
+- [ ] `make far2l-plan` — green
+- [ ] `tools/audit.sh` correctly classifies a shared library and an executable
+- [ ] Both toolchain files parse; the hello-world gate passes or SKIPs with a stated reason
+- [ ] `contrib/far2l/patches/` is empty, and `contrib/far2l/deps.lock` contains no fabricated hash
+- [ ] Nothing anywhere in the tree states a fact about far2l that is not in `04-REFERENCE-far2l.md`
 
 ---
 
@@ -279,5 +400,12 @@ When you finish, produce a short report containing, in this order:
 3. The contents of `onebin/NOTES.md`.
 4. A list of anything in the spec you could not implement and why.
 5. A list of anything you found wrong in the spec itself.
+6. The four `--print-plan` outputs, and one paragraph on what a person with a
+   network connection must do to turn them into a real build.
+7. Anything in `04-REFERENCE-far2l.md` you could not act on because the document
+   did not say enough. Be specific: "§6.3 does not say which SDL version" is
+   useful; "more detail on far2l would help" is not. This list is the handover to
+   whoever has a network connection, and it is the most valuable thing you will
+   produce in Tasks 13–16.
 
-Item 5 is not a formality. The spec was written without access to your build environment; if `02-REFERENCE-elf.md` contradicts what you observe in a real binary produced by the local compiler, **the real binary wins** — report the discrepancy and follow the observed behaviour, noting it in `NOTES.md`.
+Items 5 and 7 are not a formality. The spec was written without access to your build environment; if `02-REFERENCE-elf.md` contradicts what you observe in a real binary produced by the local compiler, **the real binary wins** — report the discrepancy and follow the observed behaviour, noting it in `NOTES.md`.
