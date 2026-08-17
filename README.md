@@ -43,7 +43,7 @@ Flatpak, Snap and Docker apply Layer-1 thinking to Layers 2 and 3: they ship a u
 | **[05-REFERENCE-f4-qt.md](./05-REFERENCE-f4-qt.md)** | The Qt reference application. Everything about [f4-qt](https://github.com/Zoinen/f4/tree/zoin) — a static Qt Quick front end inside a single Go executable — and the five places it corrected us. |
 | **[04-REFERENCE-far2l.md](./04-REFERENCE-far2l.md)** | The reference application. Everything about building [far2l](https://github.com/elfmz/far2l) — a real file manager with three UI backends, a plugin ABI and a copyleft licence — under this doctrine, and every place it made the doctrine more specific. |
 | **[tools/audit.sh](./tools/audit.sh)** | A 30-line shell audit you can drop into CI today, before any of the above exists. |
-| **[FUTURE-IDEAS.md](./FUTURE-IDEAS.md)** | Speculation, clearly labelled as such. Currently: could one binary per *architecture* replace one binary per *operating system*? Nothing here is scheduled; arguments against are the point. |
+| **[FUTURE-IDEAS.md](./FUTURE-IDEAS.md)** | Speculation, clearly labelled as such. Currently: could one binary per *architecture* replace one binary per *operating system*? Could `contrib/`'s per-project build recipes generalise into a shared, Homebrew-formula-like database? Nothing here is scheduled; arguments against are the point. |
 
 ---
 

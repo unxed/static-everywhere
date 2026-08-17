@@ -421,7 +421,58 @@ this out of this file:
 
 ---
 
-## 2. What else belongs in this file
+## 2. A shared recipe database — the Homebrew-formula idea
+
+**Status: idea only. Not scheduled. No format decided.**
+
+`contrib/far2l/` and `contrib/f4-qt/` are already planned as pinned,
+per-project build recipes (`deps.lock`, patches, toolchain notes) — see
+`04-REFERENCE-far2l.md §10`, `05-REFERENCE-f4-qt.md §9`, and
+`00-AGENT-TASK.md` Tasks 15+. Right now each is bespoke to its own project
+and lives inside *this* repository.
+
+The question worth asking once both exist: is `contrib/` actually the
+seed of something more general — a shared, versioned collection of "how to
+build X as Profile H/S" recipes, in the shape Homebrew formulae or nixpkgs
+derivations are, but scoped narrowly to *this project's one job*
+(reproducing a static/hybrid build, with pinned versions, a lockfile of
+hashes, and an `onebin audit`-clean result as the acceptance test)?
+
+Sketch, nothing more:
+
+- One recipe per upstream project: pinned commit/tag, dependency lockfile
+  (versions + hashes, per manifesto §5.1 and `04-REFERENCE-far2l.md`'s
+  `deps.lock`), any patches needed, the exact `onebin`/CMake/Meson
+  invocation, and the expected audit result (profile, level) as a
+  regression check for the recipe itself.
+- Discoverable and browsable independently of this repository's own
+  history — closer to `homebrew-core`'s one-formula-per-file model than to
+  a monorepo's `contrib/` folder, so a third project (not far2l, not f4-qt)
+  can add its own recipe without touching anything else.
+- The two recipes this project is already committed to building
+  (`04-REFERENCE-far2l.md`, `05-REFERENCE-f4-qt.md`) become the first two
+  entries and the proof the format is real, not the only two entries
+  forever.
+
+Open questions, deliberately unanswered here: does this live in this
+repository under a promoted `recipes/` (or `formulae/`) top-level directory,
+or as a separate repository this project points at, the way Homebrew
+separates `brew` (the tool) from `homebrew-core` (the formulae)? Does
+`onebin` ever gain a `onebin build <recipe>` verb, or does a recipe stay a
+plain shell script `tools/build-*.sh` already produces, just catalogued
+somewhere browsable? Does a recipe format need its own schema/lint, or is
+"a `deps.lock` plus a build script plus a golden audit result" enough
+structure on its own?
+
+**Do not build this now.** `contrib/far2l/` and `contrib/f4-qt/` should
+exist and prove themselves as bespoke, per-project directories first (Tasks
+15+); generalising the format before there are at least three real recipes
+to compare would be designing in a vacuum. Revisit once far2l's and f4-qt's
+own `contrib/` entries exist and a third candidate shows up.
+
+---
+
+## 3. What else belongs in this file
 
 Ideas that are not ready to be proposals, but should not be lost. Open a PR that
 adds one, in the same shape: what it is, why nobody did it, where it breaks, and
