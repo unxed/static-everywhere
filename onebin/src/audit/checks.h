@@ -45,6 +45,12 @@ typedef struct {
 
 void ob_checks_resolve_profile(ob_check_ctx *ctx);
 
+/* Shared with audit/checks/c_host.c: "the DT_NEEDED allowlist" from
+ * 01-SPEC-audit.md §7.1, referenced again verbatim by §7.7's OB0071. One
+ * copy, so the two checks cannot silently disagree about what's allowed. */
+extern const char *const OB_DEFAULT_ALLOWLIST[];
+extern const size_t OB_N_DEFAULT_ALLOWLIST;
+
 void ob_check_needed(const ob_check_ctx *ctx, ob_report *r);
 void ob_check_glibc(const ob_check_ctx *ctx, ob_report *r);
 void ob_check_profile(const ob_check_ctx *ctx, ob_report *r);

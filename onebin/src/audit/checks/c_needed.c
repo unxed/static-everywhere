@@ -6,17 +6,17 @@
 #include <stdio.h>
 #include <string.h>
 
-static const char *const DEFAULT_ALLOWLIST[] = {
+const char *const OB_DEFAULT_ALLOWLIST[] = {
     "ld-linux-x86-64.so.2", "ld-linux-aarch64.so.1", "ld-linux-armhf.so.3",
     "ld-linux.so.2", "ld-linux-riscv64-lp64d.so.1",
     "libc.so.6", "libm.so.6",
     "libdl.so.2", "libpthread.so.0", "librt.so.1",
 };
-#define N_DEFAULT_ALLOWLIST (sizeof(DEFAULT_ALLOWLIST) / sizeof(DEFAULT_ALLOWLIST[0]))
+const size_t OB_N_DEFAULT_ALLOWLIST = sizeof(OB_DEFAULT_ALLOWLIST) / sizeof(OB_DEFAULT_ALLOWLIST[0]);
 
 static int on_allowlist(const ob_check_ctx *ctx, const char *soname) {
-    for (size_t i = 0; i < N_DEFAULT_ALLOWLIST; i++) {
-        if (strcmp(soname, DEFAULT_ALLOWLIST[i]) == 0) { /* case-sensitive: §4.1 #12 */
+    for (size_t i = 0; i < OB_N_DEFAULT_ALLOWLIST; i++) {
+        if (strcmp(soname, OB_DEFAULT_ALLOWLIST[i]) == 0) { /* case-sensitive: §4.1 #12 */
             return 1;
         }
     }

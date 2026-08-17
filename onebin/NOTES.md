@@ -99,3 +99,16 @@
   that hold an already-sanitised value (there are none of those left in
   this codebase — sanitisation happens inside `ob_report_add_finding`
   itself, so a check never needs to size for it directly).
+- **Task 8: `c_hygiene.c` and `c_host.c` are the second place (besides
+  `elf/symbols.c`'s `SHT_DYNSYM` lookup) this project reads the
+  section-header array.** Still "optional bonus" (02-REFERENCE-elf.md §1):
+  absent section headers just mean OB0062/OB0063 don't fire, never a crash
+  (03-TESTPLAN.md §4.6 #12).
+- **`c_host.c`'s hand-written matcher for
+  `^lib[A-Za-z0-9_+.-]+\.so(\.[0-9]+)*$`** strips trailing `.<digits>`
+  groups from the end, greedily, stopping at the first group that isn't
+  all-digits, then requires exactly `.so` with at least one class-valid
+  byte before it. This never needs backtracking: a numeric group's content
+  is pure digits, so it can never itself contain the `.so` boundary the
+  match needs, meaning the greedy strip from the end always lands on the
+  same split a backtracking regex engine would find.
