@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "onebin/audit.h"
+#include "audit/audit.h"
 
 static void print_version(void) {
     printf("onebin %s\n", ONEBIN_VERSION);
@@ -73,8 +74,35 @@ int main(int argc, char **argv) {
             print_audit_usage(stderr);
             return 2;
         }
-        fprintf(stderr, "onebin: audit subcommand implementation in progress\n");
-        return 0;
+
+        /* Minimal first cut: every remaining argument is a file path, text
+         * output, defaults for everything else (--profile/--glibc-max/
+         * --level/--allow/--baseline/--format/--strict/--quiet/--verbose/
+         * --no-color/--max-file are not parsed yet). Enough to actually
+         * run an audit end to end; flag parsing is the next increment. */
+        int worst = 0; /* 0 = all passed, 1 = a FAIL, 2 = a fatal */
+        for (int i = 2; i < argc; i++) {
+            ob_audit_options opts;
+            ob_audit_options_init(&opts);
+            opts.file_path = argv[i];
+
+            ob_report r;
+            ob_audit_status st = ob_audit_file(&opts, &r);
+
+            ob_jbuf out;
+            ob_jbuf_init(&out);
+            ob_report_render_text(&r, &out, 0, 0, 0);
+            fputs(out.data, stdout);
+            ob_jbuf_free(&out);
+
+            if (st == OB_AUDIT_FATAL) {
+                worst = 2;
+            } else if (!r.passed && worst < 1) {
+                worst = 1;
+            }
+            ob_report_free(&r);
+        }
+        return worst;
     }
 
     fprintf(stderr, "error: unknown option or command '%s'\n", argv[1]);
