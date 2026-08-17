@@ -112,3 +112,17 @@
   is pure digits, so it can never itself contain the `.so` boundary the
   match needs, meaning the greedy strip from the end always lands on the
   same split a backtracking regex engine would find.
+- **`audit/audit.c` is the only layer that touches the filesystem** (reads
+  the file, never mmaps it, per `01-SPEC-audit.md §3.2`) and the only one
+  that can produce the fatal `elf.*`/`io.*` findings (`OB0001-0003`,
+  `OB0090-0093`). Everything below it — `elf/*`, `audit/checks/*` — only
+  ever sees an already-loaded in-memory buffer, which is what let every
+  earlier task's tests build fixtures with `mkelf` directly instead of
+  writing temp files.
+- **`ob_glibc_compute_max()` is exported from `c_glibc.c` as a pure,
+  findings-free function** so `audit.c` can populate
+  `ob_report.glibc_required` without a second copy of the verneed
+  classification walk. It duplicates the "is this a qualifying GLIBC_x.y
+  requirement" *test* (a few lines) but not the finding-emission logic —
+  an accepted, narrow, read-only duplication, documented at its
+  definition.

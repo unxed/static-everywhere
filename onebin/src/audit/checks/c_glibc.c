@@ -24,6 +24,52 @@ typedef struct {
     int    saw_abi_dt_relr;
 } verneed_summary;
 
+/* Pure computation, no findings: exported via checks.h so audit/audit.c can
+ * populate ob_report's glibc_required field without a second copy of the
+ * whole finding-emitting walk below. This does re-run the same "is this a
+ * qualifying GLIBC_x.y requirement" test summarize_verneed's loop applies
+ * per-entry — a small, read-only, side-effect-free duplication accepted
+ * deliberately rather than threading findings-collection state through a
+ * function whose only other caller needs none of it. If the qualifying
+ * rule ever changes, both copies need it: family == "GLIBC", numeric,
+ * not GLIBC_PRIVATE, not GLIBC_ABI_DT_RELR. */
+int ob_glibc_compute_max(const ob_check_ctx *ctx, char *out, size_t outsz) {
+    if (!ctx || !ctx->verneed || !out || outsz == 0) {
+        return 0;
+    }
+    ob_ver highest;
+    int have = 0;
+    for (size_t i = 0; i < ctx->verneed->nreqs; i++) {
+        const ob_verneed_req *req = &ctx->verneed->reqs[i];
+        char version[ONEBIN_MAX_STRING + 1];
+        if (ob_dynamic_string(ctx->img, ctx->dyn, req->vna_name_stroff, version, sizeof(version)) != OB_STR_OK) {
+            continue;
+        }
+        ob_ver v;
+        ob_ver_parse(version, &v);
+        if (strcmp(v.family, "GLIBC") != 0 || !v.is_numeric) {
+            continue;
+        }
+        if (strcmp(version, "GLIBC_PRIVATE") == 0 || strcmp(version, "GLIBC_ABI_DT_RELR") == 0) {
+            continue; /* both parse as non-numeric anyway; kept for clarity */
+        }
+        if (!have || ob_ver_cmp(&v, &highest) > 0) {
+            highest = v;
+            have = 1;
+        }
+    }
+    if (!have) {
+        return 0;
+    }
+    size_t n = strlen(highest.raw);
+    if (n >= outsz) {
+        n = outsz - 1;
+    }
+    memcpy(out, highest.raw, n);
+    out[n] = '\0';
+    return 1;
+}
+
 static void summarize_verneed(const ob_check_ctx *ctx, ob_report *r, verneed_summary *sum) {
     memset(sum, 0, sizeof(*sum));
     if (!ctx->verneed) {

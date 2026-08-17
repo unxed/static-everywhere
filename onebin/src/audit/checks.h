@@ -53,6 +53,10 @@ extern const size_t OB_N_DEFAULT_ALLOWLIST;
 
 void ob_check_needed(const ob_check_ctx *ctx, ob_report *r);
 void ob_check_glibc(const ob_check_ctx *ctx, ob_report *r);
+/* Pure, no findings — see audit/checks/c_glibc.c for why this exists
+ * separately from ob_check_glibc. Returns 1 and fills `out` if any
+ * qualifying GLIBC_x.y requirement was found, 0 (out untouched) otherwise. */
+int ob_glibc_compute_max(const ob_check_ctx *ctx, char *out, size_t outsz);
 void ob_check_profile(const ob_check_ctx *ctx, ob_report *r);
 void ob_check_rpath(const ob_check_ctx *ctx, ob_report *r);
 void ob_check_harden(const ob_check_ctx *ctx, ob_report *r);

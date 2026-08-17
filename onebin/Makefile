@@ -19,7 +19,8 @@ LIB_SRC = src/util/buf.c src/util/ver.c src/util/str.c src/util/json.c src/util/
           src/audit/report_text.c src/audit/report_json.c src/audit/checks_common.c \
           src/audit/checks/c_needed.c src/audit/checks/c_profile.c src/audit/checks/c_glibc.c \
           src/audit/checks/c_rpath.c src/audit/checks/c_harden.c \
-          src/audit/checks/c_hygiene.c src/audit/checks/c_host.c
+          src/audit/checks/c_hygiene.c src/audit/checks/c_host.c src/audit/checks/c_meta.c \
+          src/audit/audit.c
 SRC = src/main.c $(LIB_SRC)
 TEST_SRC = tests/test_main.c tests/t_skeleton.c tests/t_buf.c tests/t_ver.c \
            tests/mkelf.c tests/t_mkelf.c tests/t_image.c \
@@ -27,7 +28,8 @@ TEST_SRC = tests/test_main.c tests/t_skeleton.c tests/t_buf.c tests/t_ver.c \
            tests/t_str.c tests/t_json.c tests/t_baseline.c tests/t_report.c \
            tests/report_fixtures.c tests/t_checks_needed.c tests/t_checks_profile.c \
            tests/t_checks_glibc.c tests/t_checks_rpath.c tests/t_checks_harden.c \
-           tests/t_checks_hygiene.c tests/t_checks_host.c $(LIB_SRC)
+           tests/t_checks_hygiene.c tests/t_checks_host.c tests/t_checks_meta.c \
+           tests/t_audit.c $(LIB_SRC)
 
 all: build/onebin
 
