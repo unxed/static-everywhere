@@ -1,0 +1,41 @@
+{
+  "schema": 1,
+  "file": "build/fixtures/static-clean.elf",
+  "format": "elf",
+  "class": 64,
+  "endian": "little",
+  "machine": "x86_64",
+  "type": "ET_DYN",
+  "profile": "static",
+  "profile_source": "auto",
+  "interp": null,
+  "soname": null,
+  "needed": [],
+  "runpath": [],
+  "rpath": [],
+  "glibc_required": null,
+  "glibc_baseline": null,
+  "version_requirements": [],
+  "level": 1,
+  "result": "pass",
+  "counts": { "error": 0, "warn": 0, "info": 2 },
+  "suppressed": 0,
+  "findings": [
+    {
+      "id": "OB0011",
+      "check": "needed.none",
+      "severity": "info",
+      "subject": "",
+      "message": "fully static",
+      "fingerprint": "OB0011:"
+    },
+    {
+      "id": "OB0050",
+      "check": "harden.relro",
+      "severity": "ok",
+      "subject": "",
+      "message": "full RELRO",
+      "fingerprint": "OB0050:"
+    }
+  ]
+}

@@ -1,0 +1,41 @@
+{
+  "schema": 1,
+  "file": "build/fixtures/plugin.so",
+  "format": "elf",
+  "class": 64,
+  "endian": "little",
+  "machine": "x86_64",
+  "type": "ET_DYN",
+  "profile": "module",
+  "profile_source": "auto",
+  "interp": null,
+  "soname": null,
+  "needed": ["libc.so.6"],
+  "runpath": [],
+  "rpath": [],
+  "glibc_required": null,
+  "glibc_baseline": null,
+  "version_requirements": [],
+  "level": 1,
+  "result": "pass",
+  "counts": { "error": 0, "warn": 0, "info": 2 },
+  "suppressed": 0,
+  "findings": [
+    {
+      "id": "OB0038",
+      "check": "profile.module",
+      "severity": "info",
+      "subject": "",
+      "message": "no DT_SONAME: a loadable module, not a shared library",
+      "fingerprint": "OB0038:"
+    },
+    {
+      "id": "OB0050",
+      "check": "harden.relro",
+      "severity": "ok",
+      "subject": "",
+      "message": "full RELRO",
+      "fingerprint": "OB0050:"
+    }
+  ]
+}

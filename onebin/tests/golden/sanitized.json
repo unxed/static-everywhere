@@ -1,0 +1,33 @@
+{
+  "schema": 1,
+  "file": "build/fixtures/hostile.elf",
+  "format": "elf",
+  "class": 64,
+  "endian": "little",
+  "machine": "x86_64",
+  "type": "ET_DYN",
+  "profile": "hybrid",
+  "profile_source": "auto",
+  "interp": "/lib64/ld-linux-x86-64.so.2",
+  "soname": null,
+  "needed": ["lib??.so [sanitised]"],
+  "runpath": [],
+  "rpath": [],
+  "glibc_required": null,
+  "glibc_baseline": null,
+  "version_requirements": [],
+  "level": 1,
+  "result": "fail",
+  "counts": { "error": 1, "warn": 0, "info": 0 },
+  "suppressed": 0,
+  "findings": [
+    {
+      "id": "OB0010",
+      "check": "needed.allowlist",
+      "severity": "error",
+      "subject": "?[31m [sanitised]",
+      "message": "not on the allowlist",
+      "fingerprint": "OB0010:?[31m [sanitised]"
+    }
+  ]
+}

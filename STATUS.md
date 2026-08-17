@@ -25,8 +25,8 @@ Roadmap in [DESIGN-onebin.md §10](./DESIGN-onebin.md). Task list in
 | 4 | `tests/mkelf` — the fixture generator | done |
 | 5 | `elf/image` | done |
 | 6 | `elf/dynamic`, `elf/verneed`, `elf/symbols` | done |
-| 7 | findings, baselines, reporters | **next** |
-| 8 | the checks, **including Profile M** | not started |
+| 7 | findings, baselines, reporters | done |
+| 8 | the checks, **including Profile M** | **next** |
 | 9 | the CLI | not started |
 | 10 | malformed corpus and fuzzer | not started |
 | 11 | coverage and lint test | not started |
@@ -38,7 +38,7 @@ Roadmap in [DESIGN-onebin.md §10](./DESIGN-onebin.md). Task list in
 | 17 | `tools/build-f4-qt.sh` + `contrib/f4-qt/deps.lock` | not started |
 | 18 | Level 1 runtime gate for GUI artifacts (03-TESTPLAN.md) | not started |
 
-`make test`: 88 passed, 0 failed, 1 skipped. `make test-asan` and `make
+`make test`: 126 passed, 0 failed, 2 skipped. `make test-asan` and `make
 test-ubsan` both clean.
 
 `tools/audit.sh` implements the profile ladder as of Task 13, so the shell
@@ -102,6 +102,24 @@ a build we can reproduce and audit ourselves.
 | `f4-qt-linux` (static Qt host inside the Go launcher) | Profile H 2.27, Level 1 | **blocked**: private ZoinGallery submodule (§7.8) |
 | `f4-qt-windows` | Profile H, Level 1 | recipe not written |
 | `f4-qt-macos` | signed bundle, Level 2 | out of scope for v0.1 |
+
+Task 7 added `src/util/str.c` (`01-SPEC-audit.md §9.3` sanitisation),
+`src/util/json.c` (a plain growable buffer plus JSON string escaping —
+deliberately not a generic streaming builder; `audit/report_json.c`
+hand-assembles the fixed §9.2 schema directly), `src/util/vec.c` (growable
+array of fixed-size elements, backing the finding list and the baseline's
+fingerprint list), `src/audit/finding.c` (the finding record, sort/dedup,
+severity-name mapping), `src/audit/baseline.c` (load/apply/write, §9.4),
+and `src/audit/report.{h,c,_text.c,_json.c}` (the struct tying identity +
+ELF facts + findings + baseline together, and the two renderers). Several
+ambiguities §9's prose leaves open are resolved and documented in
+`onebin/NOTES.md` — notably that `OB_SEV_OK` findings are always shown in
+text output (unlike `OB_SEV_INFO`, which needs `--verbose`), matching §9.1's
+own worked example, which this project's golden fixture for Profile H
+reproduces byte-for-byte. Six golden fixtures exist under
+`onebin/tests/golden/` (JSON and text each), covering hybrid/static/module
+profiles, a baseline suppression, a length-≥4 array, and sanitised hostile
+strings end to end.
 
 ## Open design questions
 

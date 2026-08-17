@@ -1,0 +1,8 @@
+== build/fixtures/hostile.elf ==
+  profile: hybrid (auto-detected)   class: ELF64 LE x86_64 ET_DYN
+  interp:  /lib64/ld-linux-x86-64.so.2
+  needed:  lib??.so [sanitised]
+
+  FAIL  OB0010  not on the allowlist: ?[31m [sanitised]
+
+FAIL  Level 1  (1 error, 0 warnings, 0 infos)

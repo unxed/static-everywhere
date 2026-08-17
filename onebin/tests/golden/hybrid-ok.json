@@ -1,0 +1,54 @@
+{
+  "schema": 1,
+  "file": "build/fixtures/hybrid-ok.elf",
+  "format": "elf",
+  "class": 64,
+  "endian": "little",
+  "machine": "x86_64",
+  "type": "ET_DYN",
+  "profile": "hybrid",
+  "profile_source": "auto",
+  "interp": "/lib64/ld-linux-x86-64.so.2",
+  "soname": null,
+  "needed": ["libc.so.6", "libm.so.6"],
+  "runpath": ["$ORIGIN/../lib"],
+  "rpath": [],
+  "glibc_required": "2.28",
+  "glibc_baseline": "2.28",
+  "version_requirements": [
+    {
+      "file": "libc.so.6",
+      "versions": ["GLIBC_2.2.5", "GLIBC_2.28"]
+    }
+  ],
+  "level": 1,
+  "result": "fail",
+  "counts": { "error": 1, "warn": 1, "info": 1 },
+  "suppressed": 0,
+  "findings": [
+    {
+      "id": "OB0011",
+      "check": "needed.none",
+      "severity": "ok",
+      "subject": "",
+      "message": "all DT_NEEDED entries are on the allowlist",
+      "fingerprint": "OB0011:"
+    },
+    {
+      "id": "OB0041",
+      "check": "rpath.origin",
+      "severity": "warn",
+      "subject": "$ORIGIN/../lib",
+      "message": "RUNPATH is $ORIGIN-relative",
+      "fingerprint": "OB0041:$ORIGIN/../lib"
+    },
+    {
+      "id": "OB0051",
+      "check": "harden.bindnow",
+      "severity": "error",
+      "subject": "",
+      "message": "no BIND_NOW (add -Wl,-z,now)",
+      "fingerprint": "OB0051:"
+    }
+  ]
+}

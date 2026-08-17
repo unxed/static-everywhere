@@ -1,0 +1,6 @@
+== build/fixtures/static-clean.elf ==
+  profile: static (auto-detected)   class: ELF64 LE x86_64 ET_DYN
+
+  ok    OB0050  full RELRO
+
+PASS  Level 1  (0 errors, 0 warnings, 2 infos)

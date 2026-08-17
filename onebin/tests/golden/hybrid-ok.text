@@ -1,0 +1,11 @@
+== build/fixtures/hybrid-ok.elf ==
+  profile: hybrid (auto-detected)   class: ELF64 LE x86_64 ET_DYN
+  interp:  /lib64/ld-linux-x86-64.so.2
+  needed:  libc.so.6 libm.so.6
+  glibc:   requires 2.28, baseline 2.28
+
+  ok    OB0011  all DT_NEEDED entries are on the allowlist
+  warn  OB0041  RUNPATH is $ORIGIN-relative: $ORIGIN/../lib
+  FAIL  OB0051  no BIND_NOW (add -Wl,-z,now)
+
+FAIL  Level 1  (1 error, 1 warning, 1 info)

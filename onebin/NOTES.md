@@ -36,3 +36,39 @@
   case. `readelf` output is not a stable interface, so this is a hint that
   improves the answer when present and is skipped when absent, never a check
   that can fail.
+- **Task 7 report/reporter design**, several ambiguities `01-SPEC-audit.md`
+  leaves to the implementer, resolved here:
+  - **`OB_SEV_OK` findings are always shown in text output**, not hidden by
+    `--verbose` the way `OB_SEV_INFO` is. §9.1's own worked example shows an
+    `ok  OB0011  ...` line with no `--verbose` in sight, which only makes
+    sense if "info findings are hidden unless verbose" is read as scoped
+    literally to `OB_SEV_INFO` and not to `OB_SEV_OK`. Both severities still
+    fold into the single "info" bucket for the summary counts and JSON
+    `counts.info` — there is no separate "oks" count anywhere in the
+    schema, and §9.1's example totals only work out (1 visible `ok` line,
+    "3 infos" in the summary) if `ok` counts alongside true `info`.
+  - **`"suppressed"` is always a top-level JSON key**, defaulting to 0,
+    placed right after `"counts"`. §9.2's own example predates §9.4's
+    baseline discussion and doesn't show it; `t_baseline.c`'s "`\"suppressed\":
+    N` appears in JSON" requirement does need it somewhere, and "never omit
+    a key" (§9.2's own formatting rule) argues for always-present over
+    conditionally-present.
+  - **Array inline-vs-multiline threshold**: §9.2 explicitly permits
+    picking the simpler deterministic fallback it describes rather than the
+    100-column rule. This project uses exactly that fallback — inline for
+    length ≤ 3, one element per line for length ≥ 4 — implemented as
+    `OB_JSON_ARRAY_INLINE_MAX` in `audit/report_json.c`.
+  - **Baseline line trimming** (`audit/baseline.c`) strips trailing spaces
+    and tabs in addition to `\r`/`\n`, beyond what §9.4's text literally
+    says, because `03-TESTPLAN.md §4.8`'s "trailing whitespace" test case
+    for baseline files only makes sense as a positive match, not a
+    documented near-miss.
+  - **`util/json.h`'s `ob_jbuf` is a plain growable buffer**, not a
+    JSON-specific stateful builder — `audit/report_json.c` hand-assembles
+    the fixed, known §9.2 schema directly (the array-inlining rule needs to
+    see a whole array before deciding its layout anyway, which a generic
+    streaming builder can't do without buffering the same way). The only
+    genuinely reusable, easy-to-get-wrong pieces are string escaping and
+    buffer growth, so those are what `util/json.c` owns — and
+    `audit/report_text.c` reuses the same buffer type for plain text, since
+    "one copy" applies to growable-buffer code as much as anywhere else.
