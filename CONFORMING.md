@@ -47,6 +47,25 @@ The blocker on the first row is a private submodule (`third_party/ZoinGallery`),
 not a technical one. Details and the two acceptable fixes are in
 [05-REFERENCE-f4-qt.md §7.8](./05-REFERENCE-f4-qt.md).
 
+## Prior art that does not conform, and is worth studying anyway
+
+[far2l-portable](https://github.com/spvkgn/far2l-portable) ships far2l as one
+runnable artifact for five architectures by taking the **opposite** bet to this
+doctrine: instead of removing dependencies, it carries every one of them,
+including the loader, and rewrites RPATH and `PT_INTERP` with `patchelf`.
+
+Under our own audit it scores **Level 0** — dozens of unlisted `DT_NEEDED`
+(`OB0010`), an unrecognised interpreter (`OB0037`). It also works, has users,
+and reaches more architectures than our own reference build currently targets.
+
+Both facts are true at once, and keeping them both visible is the point: **these
+levels measure conformance to this doctrine, not whether something works for
+people.** A bring-everything bundle and a static binary are two different bets
+about where fragility lives. The write-up, including the `PT_INTERP`/`$ORIGIN`
+constraint it uncovered for our own Profile D proposal and its measured
+musl-vs-glibc size delta, is
+[04-REFERENCE-far2l.md §12](./04-REFERENCE-far2l.md).
+
 **If you maintain a project shaped like far2l** — plugins, multiple UI backends, a
 toolkit dependency you can't drop — the interesting rows are the ones that fail.
 Send those too.

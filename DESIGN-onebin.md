@@ -677,6 +677,25 @@ oldest baseline you are willing to pin.
 
 A dynamic executable is only "dynamic" relative to a loader. **Ship the loader.**
 
+> **Constraint, established empirically before we build anything**
+> (`04-REFERENCE-far2l.md §12`): **`PT_INTERP` does not expand `$ORIGIN`.**
+> `DT_RPATH`/`DT_RUNPATH` do, because the dynamic linker expands them;
+> `PT_INTERP` is opened by the *kernel* with a plain `open_exec()` on the
+> literal bytes. A carried loader can therefore only be named by an absolute
+> path (useless for something relocatable) or by a path relative to the
+> **current working directory** (not to the binary).
+>
+> `far2l-portable` ships exactly this design today and takes the CWD-relative
+> route, which is why its deliverable is a self-extracting `.run` that
+> `chdir`s before executing rather than a directory you can drop anywhere.
+>
+> The three-step plan below **never sets `PT_INTERP`** — the stub `execve`s the
+> loader explicitly with the real program as an argument — so it does not
+> inherit this problem. That was not a deliberate response to it at the time
+> the proposal was written, but it is the strongest single argument for
+> paying the stub's extra `execve` and the `memfd`/cache machinery rather
+> than reaching for `patchelf --set-interpreter`.
+
 1. `onebin pack` appends `ld.so`, libc, and the application's own modules to the
    executable as a blob.
 2. A small static stub finds its own blob, publishes the loader through

@@ -152,6 +152,11 @@ fields once, since individual checks only add findings).
   `7z` is correct behaviour.
 - Profile order of preference is **H first, D when H cannot reach far enough
   back, S as a deliberate niche** — not "S is the ideal and H is the compromise".
+- **`PT_INTERP` does not expand `$ORIGIN`** — the kernel opens it literally, so
+  a carried loader can only be named absolutely or relative to the CWD. Found
+  by reading `far2l-portable`; it constrains Profile D and validates
+  `DESIGN-onebin.md §13`'s choice to `execve` the loader explicitly rather
+  than set an interpreter path. `04-REFERENCE-far2l.md §12`.
 - **The baseline applies to every object in the artifact, not to the final
   link.** Binary package caches (Conan, vcpkg, prebuilt tarballs) do not encode
   the glibc a package was built against, so a cache hit silently raises the

@@ -540,3 +540,119 @@ git ls-remote --tags --refs https://github.com/elfmz/far2l 'refs/tags/v_*' \
 If that command returns something newer than `v_2.8.0`, **do not silently adopt
 it**: build it, run the §9 audits, and only then move the pin in
 `contrib/far2l/deps.lock` and in this file.
+
+---
+
+## 12. Prior art: `far2l-portable`, and what it proves about Profile D
+
+There is already a project that ships far2l as one downloadable thing that runs
+on any Linux: **[far2l-portable](https://github.com/spvkgn/far2l-portable)**
+(`spvkgn/far2l-portable`, pinned for this document at `628b094`, 2026-07-15). It
+is not a Static Everywhere build, and reading it is worth more than reading
+another conforming project would be — because it solves the same user-facing
+problem from the **opposite pole of the doctrine**, and in doing so it maps a
+constraint our own Profile D proposal has to live with.
+
+### 12.1 The approach: depend on everything, but bring it all with you
+
+Static Everywhere says *link statically and depend on almost nothing*.
+far2l-portable says *link normally and carry every single thing you depend on,
+including the loader*. Both end at "one artifact, any Linux". `make_standalone.sh`
+is the whole method, and it is short enough to summarise exactly:
+
+1. Find every ELF in the install tree; `strip` each one.
+2. `ldd $file | awk '/=>/ {print $3}' | xargs -I{} cp -vL {} lib/` — copy every
+   resolved dependency, dereferenced, into a flat `lib/`.
+3. `patchelf --set-rpath '$ORIGIN/<...>/lib'` — depth-aware, so a plugin three
+   directories down gets `$ORIGIN/../../../lib`.
+4. `patchelf --set-interpreter '<...>/lib/ld-musl-x86_64.so.1'` — **a relative
+   `PT_INTERP`**. See §12.2; this is the interesting part.
+5. Copy the loader itself (`ld-musl-*` or `ld-linux-*`) into `lib/`, then make a
+   second pass over `lib/*` setting their RPATH to `$ORIGIN`.
+6. On glibc, additionally copy `libnss*` by hand
+   (`dpkg -L libc6 | grep libnss`) — the NSS problem `01-SPEC-audit.md §7.3`'s
+   `OB0034` is about, solved by *shipping* NSS rather than by avoiding it.
+7. `libtree -pvv` over everything into `libtree.txt`, shipped alongside as a
+   dependency manifest.
+
+Then `makeself --keep-umask --nomd5 --nocrc standalone far2l.run "FAR2L File
+Manager" ./far2l` wraps the directory into a self-extracting archive.
+
+### 12.2 The finding that matters: `PT_INTERP` does not expand `$ORIGIN`
+
+`DT_RPATH`/`DT_RUNPATH` support `$ORIGIN` because the **dynamic linker** expands
+them. `PT_INTERP` is opened by the **kernel**, in `load_elf_binary`, with a plain
+`open_exec()` on the literal bytes. There is no expansion of anything.
+
+So a binary that carries its own loader can only name it:
+
+- by an **absolute path** — useless for something meant to be relocatable; or
+- by a path **relative to the current working directory** — not to the binary.
+
+far2l-portable takes the second, which is why the deliverable is a `.run` and not
+a directory you can drop anywhere: makeself extracts to a temporary directory,
+`chdir`s into it, and runs `./far2l` from there. `cd /tmp/far2l-dir && ./far2l`
+works. `/tmp/far2l-dir/far2l` from any other directory **does not** — the kernel
+looks for `lib/ld-musl-x86_64.so.1` relative to wherever you happen to be.
+
+**This is the constraint our own Profile D proposal (`DESIGN-onebin.md §13`) has
+to answer, and it is a point in that proposal's favour that it already does.**
+§13 never sets `PT_INTERP` at all: a static stub locates its own payload and
+`execve`s the loader *explicitly*, passing the real program as an argument. That
+route has no CWD dependency and needs no wrapper script, at the cost of one extra
+`execve` and the `memfd`/cache-directory machinery §13 describes. far2l-portable
+is the empirical demonstration of why that extra machinery is worth its
+complexity rather than gold-plating.
+
+The third option — a shell or C wrapper that `exec`s `"$(dirname "$0")/lib/ld-musl-x86_64.so.1" "$(dirname "$0")/far2l" "$@"` —
+is not what far2l-portable does, and is worth listing whenever this design comes
+up again, because it is the cheapest of the three and costs only "the thing the
+user runs is not the thing that is the program".
+
+### 12.3 Numbers worth having
+
+Both `.run` builds are **TTY-only** (`WXGUI: false`); the wx build is the
+AppImage, which is out of scope here.
+
+| Build | Container | Baseline | Architectures | Size |
+|---|---|---|---|---|
+| `far2l-<arch>-musl.run` | Alpine 3.18 | musl | x86_64, x86, aarch64, armhf, armv7 | ~20 MB |
+| `far2l-<arch>-glibc.run` | Ubuntu 20.04 | glibc 2.31 | x86_64, aarch64 | ~35 MB |
+
+That is a measured **~15 MB delta between musl and glibc for the same
+application**, i.e. the glibc bundle is roughly 75% larger — and it is a
+bring-everything comparison, so it measures the libc *stack* (libc, NSS modules,
+and everything `ldd` dragged in), not the libc alone. It is the closest thing to
+a controlled musl-vs-glibc size experiment this project has found in the wild,
+and it belongs in any future discussion of D-musl versus D-glibc
+(`DESIGN-onebin.md §13`'s table).
+
+Note also which architectures each reaches: musl/Alpine covers five, glibc/Ubuntu
+covers two. That asymmetry is about how easy each ecosystem makes cross-arch
+containers, not about the doctrine, but it is real and it is the kind of thing
+that decides what a small project actually ships.
+
+### 12.4 How it would score under our own audit, and why that is not a criticism
+
+Honestly: **Level 0**. Dozens of `DT_NEEDED` entries far outside the allowlist
+(`OB0010`), an unrecognised interpreter path (`OB0037`), `$ORIGIN` RPATH on
+every file (`OB0041`, warn — the one thing it does exactly the way we would).
+
+And yet it demonstrably works, has users, and covers five architectures. The
+lesson to take is not that our levels are wrong but that **they measure
+conformance to this doctrine, not "does this work for people"** — a distinction
+`CONFORMING.md` should keep making out loud. A bring-everything bundle and a
+static binary are two different bets about where fragility lives: the bundle
+moves every dependency into your artifact and accepts the size and the loader
+problem; Static Everywhere removes the dependencies instead and accepts a
+narrower host contract. far2l-portable is the strongest available argument that
+the first bet is viable, and the reference build in this document should be
+compared against it — size, startup time, architecture coverage — rather than
+graded against it.
+
+### 12.5 Provenance
+
+Read from `spvkgn/far2l-portable` at `628b094`:
+`make_standalone.sh`, `build_far2l.sh`, `README.md`,
+`.github/workflows/build.yml`, `patches/series`. Re-verify with
+`git -C <clone> show 628b094:<path>`.
