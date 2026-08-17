@@ -24,8 +24,8 @@ Roadmap in [DESIGN-onebin.md §10](./DESIGN-onebin.md). Task list in
 | 3 | `util/ver` — version parsing and comparison | done |
 | 4 | `tests/mkelf` — the fixture generator | done |
 | 5 | `elf/image` | done |
-| 6 | `elf/dynamic`, `elf/verneed`, `elf/symbols` | **next** |
-| 7 | findings, baselines, reporters | not started |
+| 6 | `elf/dynamic`, `elf/verneed`, `elf/symbols` | done |
+| 7 | findings, baselines, reporters | **next** |
 | 8 | the checks, **including Profile M** | not started |
 | 9 | the CLI | not started |
 | 10 | malformed corpus and fuzzer | not started |
@@ -38,7 +38,7 @@ Roadmap in [DESIGN-onebin.md §10](./DESIGN-onebin.md). Task list in
 | 17 | `tools/build-f4-qt.sh` + `contrib/f4-qt/deps.lock` | not started |
 | 18 | Level 1 runtime gate for GUI artifacts (03-TESTPLAN.md) | not started |
 
-`make test`: 48 passed, 0 failed, 1 skipped. `make test-asan` and `make
+`make test`: 88 passed, 0 failed, 1 skipped. `make test-asan` and `make
 test-ubsan` both clean.
 
 `tools/audit.sh` implements the profile ladder as of Task 13, so the shell
@@ -55,6 +55,25 @@ audit-level decision for Task 8. All 19 cases in `03-TESTPLAN.md §5.5` are
 covered by `tests/t_image.c`, plus the worked example from
 `02-REFERENCE-elf.md §9` and a regression test for the ELF32 `p_flags`
 offset bug the reference calls out by name.
+
+Task 6 added `src/elf/dynamic.h/.c` (walks `PT_DYNAMIC`, both cycle-free by
+construction since it is a flat array; the string-table reader
+`ob_dynamic_string` implements `02-REFERENCE-elf.md §6`'s `string_at()`
+exactly, including the `ONEBIN_MAX_STRING` cap), `src/elf/verneed.h/.c`
+(the `.gnu.version_r` walk from `02-REFERENCE-elf.md §7`, both cycle guards,
+growable-not-preallocated storage so a crafted `vn_cnt`/`DT_VERNEEDNUM`
+can't force a large allocation before a single byte is validated), and
+`src/elf/symbols.h/.c` (the three-tier symbol-count fallback from
+`01-SPEC-audit.md §6.4` — `DT_HASH`, section headers, `DT_GNU_HASH` — plus
+on-demand single-symbol reads rather than materialising up to a million
+entries). All three keep Task 5's contract: no findings, no audit-level
+decisions, only "what did the bytes say" plus a few structural flags. Every
+numbered case in `03-TESTPLAN.md §5.6` (35 items) has a test, split across
+`tests/t_dynamic.c`, `tests/t_verneed.c` and `tests/t_symbols.c` by which
+module it exercises; items 27-29 turned out to already be safe by
+construction from Task 5's `ob_image_vaddr_to_offset` (it never computes
+`p_vaddr + p_filesz`), so those are regression tests confirming that rather
+than new production code.
 
 ## Reference application
 

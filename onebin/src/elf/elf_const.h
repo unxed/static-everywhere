@@ -162,5 +162,9 @@
 /* ---- versym special values -------------------------------------------- */
 #define VER_NDX_LOCAL   0
 #define VER_NDX_GLOBAL  1
+#define VER_NDX_HIDDEN  0x8000  /* mask off before comparing: ndx & 0x7FFF */
+
+/* ---- Vernaux flags ------------------------------------------------------ */
+#define VER_FLG_WEAK    0x2
 
 #endif /* ONEBIN_ELF_CONST_H */
