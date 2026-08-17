@@ -46,7 +46,7 @@ void ob_check_needed(const ob_check_ctx *ctx, ob_report *r) {
      * anyway, but skipping avoids doing the O(n) duplicate-count scan more
      * than once per distinct name). */
     for (size_t i = 0; i < dyn->nneeded; i++) {
-        char soname[OB_STR_MAXLEN + 1];
+        char soname[ONEBIN_MAX_STRING + 1];
         ob_str_err e = ob_dynamic_string(ctx->img, dyn, dyn->needed[i], soname, sizeof(soname));
         if (e != OB_STR_OK) {
             continue; /* elf/dynamic.c already accounts for this: OB0003 is
@@ -55,7 +55,7 @@ void ob_check_needed(const ob_check_ctx *ctx, ob_report *r) {
 
         int already_seen = 0;
         for (size_t j = 0; j < i && !already_seen; j++) {
-            char other[OB_STR_MAXLEN + 1];
+            char other[ONEBIN_MAX_STRING + 1];
             if (ob_dynamic_string(ctx->img, dyn, dyn->needed[j], other, sizeof(other)) == OB_STR_OK &&
                 strcmp(other, soname) == 0) {
                 already_seen = 1;
@@ -67,7 +67,7 @@ void ob_check_needed(const ob_check_ctx *ctx, ob_report *r) {
 
         size_t total_occurrences = 1;
         for (size_t j = i + 1; j < dyn->nneeded; j++) {
-            char other[OB_STR_MAXLEN + 1];
+            char other[ONEBIN_MAX_STRING + 1];
             if (ob_dynamic_string(ctx->img, dyn, dyn->needed[j], other, sizeof(other)) == OB_STR_OK &&
                 strcmp(other, soname) == 0) {
                 total_occurrences++;

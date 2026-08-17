@@ -85,3 +85,17 @@
   Emitting OB0035 unconditionally would fail that on every clean fixture
   this project's own generator can build. Deferred rather than faked;
   §4.3 #10 needs this to become fully meaningful.
+- **`OB_STR_MAXLEN` (200, the *sanitised display* cap) is not
+  `ONEBIN_MAX_STRING` (4096, the *raw read* cap), and a check that sizes its
+  scratch buffer for `ob_dynamic_string`/`ob_rdstr` by the former instead of
+  the latter fails silently on any real string longer than 200 bytes** —
+  `ob_dynamic_string` returns `OB_STR_NO_NUL` because it can't fit the NUL
+  inside the too-small `dstsz`, and a check that only acts on `OB_STR_OK`
+  just produces no finding, not a crash, which makes the bug easy to miss
+  in ordinary testing. Caught by `tests/t_checks_rpath.c`'s 500-component
+  case (03-TESTPLAN.md §4.4 #11) silently producing zero findings.
+  Every raw-string scratch buffer in `src/audit/checks/*.c` now sizes
+  itself `ONEBIN_MAX_STRING + 1`; `OB_STR_MAXLEN` is reserved for buffers
+  that hold an already-sanitised value (there are none of those left in
+  this codebase — sanitisation happens inside `ob_report_add_finding`
+  itself, so a check never needs to size for it directly).

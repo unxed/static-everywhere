@@ -9,6 +9,7 @@
  */
 #include "audit/checks.h"
 #include "util/str.h"
+#include "util/limits.h"
 #include "util/ver.h"
 #include "elf/elf_const.h"
 
@@ -30,7 +31,7 @@ static void summarize_verneed(const ob_check_ctx *ctx, ob_report *r, verneed_sum
     }
     for (size_t i = 0; i < ctx->verneed->nreqs; i++) {
         const ob_verneed_req *req = &ctx->verneed->reqs[i];
-        char version[OB_STR_MAXLEN + 1];
+        char version[ONEBIN_MAX_STRING + 1];
         if (ob_dynamic_string(ctx->img, ctx->dyn, req->vna_name_stroff, version, sizeof(version)) != OB_STR_OK) {
             continue;
         }
@@ -39,7 +40,7 @@ static void summarize_verneed(const ob_check_ctx *ctx, ob_report *r, verneed_sum
         ob_ver_parse(version, &v);
 
         if (strcmp(v.family, "GLIBC") != 0) {
-            char file[OB_STR_MAXLEN + 1] = { 0 };
+            char file[ONEBIN_MAX_STRING + 1] = { 0 };
             ob_dynamic_string(ctx->img, ctx->dyn, req->vn_file_stroff, file, sizeof(file));
             char msg[OB_STR_MAXLEN + 96];
             snprintf(msg, sizeof(msg),
@@ -127,7 +128,7 @@ static void attribute_symbols(const ob_check_ctx *ctx, ob_report *r) {
         }
 
         const char *version_str = NULL;
-        char version_buf[OB_STR_MAXLEN + 1];
+        char version_buf[ONEBIN_MAX_STRING + 1];
         for (size_t j = 0; j < ctx->verneed->nreqs; j++) {
             if (ctx->verneed->reqs[j].vna_other == ndx) {
                 if (ob_dynamic_string(ctx->img, ctx->dyn, ctx->verneed->reqs[j].vna_name_stroff,
@@ -158,12 +159,12 @@ static void attribute_symbols(const ob_check_ctx *ctx, ob_report *r) {
         if (ob_symbols_at(ctx->img, ctx->dyn, ctx->syms, i, &se) != 0) {
             continue;
         }
-        char symname[OB_STR_MAXLEN + 1];
+        char symname[ONEBIN_MAX_STRING + 1];
         if (ob_dynamic_string(ctx->img, ctx->dyn, se.st_name, symname, sizeof(symname)) != OB_STR_OK) {
             continue;
         }
 
-        char subject[2 * (OB_STR_MAXLEN + 1) + 1];
+        char subject[2 * (ONEBIN_MAX_STRING + 1) + 16];
         snprintf(subject, sizeof(subject), "%s@%s", symname, version_str);
         ob_report_add_finding(r, "OB0021", "glibc.offending_symbol", OB_SEV_INFO, subject, "");
         reported++;

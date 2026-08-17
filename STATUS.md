@@ -38,7 +38,7 @@ Roadmap in [DESIGN-onebin.md §10](./DESIGN-onebin.md). Task list in
 | 17 | `tools/build-f4-qt.sh` + `contrib/f4-qt/deps.lock` | not started |
 | 18 | Level 1 runtime gate for GUI artifacts (03-TESTPLAN.md) | not started |
 
-`make test`: 156 passed, 0 failed, 2 skipped. `make test-asan` and `make
+`make test`: 184 passed, 0 failed, 2 skipped. `make test-asan` and `make
 test-ubsan` both clean.
 
 `tools/audit.sh` implements the profile ladder as of Task 13, so the shell

@@ -1,6 +1,7 @@
 /* audit/checks/c_profile.c — 01-SPEC-audit.md §7.3. 00-AGENT-TASK.md Task 8. */
 #include "audit/checks.h"
 #include "util/str.h"
+#include "util/limits.h"
 #include "elf/strings.h"
 #include "elf/elf_const.h"
 
@@ -174,7 +175,7 @@ static void check_profile_h(const ob_check_ctx *ctx, ob_report *r) {
                                "multiple PT_INTERP segments; using the first");
     }
 
-    char path[OB_STR_MAXLEN + 1];
+    char path[ONEBIN_MAX_STRING + 1];
     if (ob_rdstr(&img->buf, (size_t)interp->p_offset, path, sizeof(path),
                  (size_t)interp->p_filesz) >= 0) {
         if (!is_known_interp(path)) {
@@ -193,7 +194,7 @@ static void check_profile_m(const ob_check_ctx *ctx, ob_report *r) {
         return;
     }
 
-    char subject[OB_STR_MAXLEN + 1];
+    char subject[ONEBIN_MAX_STRING + 1];
     subject[0] = '\0';
     if (ctx->dyn && ctx->dyn->has_soname) {
         ob_dynamic_string(img, ctx->dyn, ctx->dyn->soname_stroff, subject, sizeof(subject));
