@@ -13,10 +13,10 @@ CFLAGS = -std=c11 -O2 -g -Wall -Wextra -Werror -Wpedantic \
 
 INCLUDES = -Iinclude -Isrc
 
-LIB_SRC = src/util/buf.c src/util/ver.c
+LIB_SRC = src/util/buf.c src/util/ver.c src/elf/image.c
 SRC = src/main.c $(LIB_SRC)
 TEST_SRC = tests/test_main.c tests/t_skeleton.c tests/t_buf.c tests/t_ver.c \
-           tests/mkelf.c tests/t_mkelf.c $(LIB_SRC)
+           tests/mkelf.c tests/t_mkelf.c tests/t_image.c $(LIB_SRC)
 
 all: build/onebin
 

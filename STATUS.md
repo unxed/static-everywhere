@@ -23,8 +23,8 @@ Roadmap in [DESIGN-onebin.md §10](./DESIGN-onebin.md). Task list in
 | 2 | `util/buf` — bounds-checked reader | done |
 | 3 | `util/ver` — version parsing and comparison | done |
 | 4 | `tests/mkelf` — the fixture generator | done |
-| 5 | `elf/image` | **next** |
-| 6 | `elf/dynamic`, `elf/verneed`, `elf/symbols` | not started |
+| 5 | `elf/image` | done |
+| 6 | `elf/dynamic`, `elf/verneed`, `elf/symbols` | **next** |
 | 7 | findings, baselines, reporters | not started |
 | 8 | the checks, **including Profile M** | not started |
 | 9 | the CLI | not started |
@@ -38,14 +38,23 @@ Roadmap in [DESIGN-onebin.md §10](./DESIGN-onebin.md). Task list in
 | 17 | `tools/build-f4-qt.sh` + `contrib/f4-qt/deps.lock` | not started |
 | 18 | Level 1 runtime gate for GUI artifacts (03-TESTPLAN.md) | not started |
 
-`make test`: 26 passed, 0 failed, 1 skipped. `make test-asan` and `make
+`make test`: 48 passed, 0 failed, 1 skipped. `make test-asan` and `make
 test-ubsan` both clean.
 
 `tools/audit.sh` implements the profile ladder as of Task 13, so the shell
 stopgap and the C tool will agree once the C tool exists.
 
 `src/elf/elf_const.h` exists as of Task 4 — the generator needed the constants
-before the parser did. Task 5 extends it rather than starting it.
+before the parser did. Task 5 extended it rather than starting it, and added
+`src/util/limits.h` (the `ONEBIN_MAX_*` bounds from `01-SPEC-audit.md §11`,
+written once for every parsing module to share) and `src/elf/image.h/.c`:
+loads `e_ident` and the ELF header, indexes program headers, resolves
+PN_XNUM, and implements `ob_image_vaddr_to_offset`. It produces no findings
+and does not decide whether `ET_REL`/`ET_CORE` are acceptable — that is an
+audit-level decision for Task 8. All 19 cases in `03-TESTPLAN.md §5.5` are
+covered by `tests/t_image.c`, plus the worked example from
+`02-REFERENCE-elf.md §9` and a regression test for the ELF32 `p_flags`
+offset bug the reference calls out by name.
 
 ## Reference application
 
