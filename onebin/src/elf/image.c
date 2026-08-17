@@ -280,3 +280,23 @@ uint64_t ob_image_vaddr_to_offset(const ob_image *img, uint64_t vaddr) {
     }
     return OB_NOT_MAPPED;
 }
+
+ob_profile ob_profile_detect(int has_pt_interp, int df1_pie_set, int et_dyn,
+                              int has_soname, int has_needed, int *ambiguous) {
+    if (ambiguous) {
+        *ambiguous = 0;
+    }
+    if (has_pt_interp) {
+        return OB_PROFILE_H; /* rule 1 */
+    }
+    if (df1_pie_set) {
+        return OB_PROFILE_S; /* rule 2: linker marked it an executable */
+    }
+    if (et_dyn && (has_soname || has_needed)) {
+        return OB_PROFILE_M; /* rule 3 */
+    }
+    if (et_dyn && !has_soname && !has_needed && ambiguous) {
+        *ambiguous = 1; /* OB0039: indistinguishable from static-PIE */
+    }
+    return OB_PROFILE_S; /* rule 4 */
+}

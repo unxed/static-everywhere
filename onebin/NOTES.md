@@ -72,3 +72,16 @@
     buffer growth, so those are what `util/json.c` owns — and
     `audit/report_text.c` reuses the same buffer type for plain text, since
     "one copy" applies to growable-buffer code as much as anywhere else.
+- **Task 8, `c_profile.c`'s OB0035 is deliberately not implemented as an
+  unconditional fallback.** 01-SPEC-audit.md §7.3's dlopen-evidence tier 4
+  ("Otherwise: OB0035 info, binary is stripped") needs a parsed
+  `SHT_SYMTAB` (the *static* symbol table — unrelated to `DT_SYMTAB`, which
+  Profile S binaries don't have at all) to tell "confirmed no dlopen" apart
+  from "stripped, can't tell". v0.1's elf/ layer doesn't parse `SHT_SYMTAB`
+  (section headers are an optional bonus view, 02-REFERENCE-elf.md §1), so
+  this check cannot honestly make that distinction yet, and
+  03-TESTPLAN.md §4.3 #1 is explicit that a clean static fixture must
+  produce zero findings — "the false-positive test that matters most".
+  Emitting OB0035 unconditionally would fail that on every clean fixture
+  this project's own generator can build. Deferred rather than faked;
+  §4.3 #10 needs this to become fully meaningful.

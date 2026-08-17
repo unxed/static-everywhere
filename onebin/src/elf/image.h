@@ -104,4 +104,22 @@ void       ob_image_free(ob_image *img);
 #define OB_NOT_MAPPED ((uint64_t)-1)
 uint64_t ob_image_vaddr_to_offset(const ob_image *img, uint64_t vaddr);
 
+/* ---- profile detection --------------------------------------------------
+ * 01-SPEC-audit.md §7.3, the same ladder as 02-REFERENCE-elf.md §3.
+ * Written once, here, so elf/image.c and audit/checks/c_profile.c cannot
+ * disagree (00-AGENT-TASK.md Task 8's own warning about this).
+ *
+ * Takes primitive facts rather than ob_image/ob_dynamic directly: this
+ * module must not depend on elf/dynamic.h, which already depends on this
+ * one. The caller (audit/checks/c_profile.c) gathers the facts from both. */
+typedef enum { OB_PROFILE_S = 0, OB_PROFILE_H, OB_PROFILE_M } ob_profile;
+
+/* *ambiguous is set to 1 exactly for the OB0039 case (e_type == ET_DYN, no
+ * PT_INTERP, no DT_NEEDED, no DT_SONAME, no DF_1_PIE — indistinguishable
+ * from a static-PIE executable); the return value is OB_PROFILE_S in that
+ * case regardless, per the spec ("continue as Profile S. Never guess
+ * silently" — silently here means "without also setting *ambiguous"). */
+ob_profile ob_profile_detect(int has_pt_interp, int df1_pie_set, int et_dyn,
+                              int has_soname, int has_needed, int *ambiguous);
+
 #endif /* ELF_IMAGE_H */

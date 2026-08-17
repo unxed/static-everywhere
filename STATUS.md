@@ -38,7 +38,7 @@ Roadmap in [DESIGN-onebin.md §10](./DESIGN-onebin.md). Task list in
 | 17 | `tools/build-f4-qt.sh` + `contrib/f4-qt/deps.lock` | not started |
 | 18 | Level 1 runtime gate for GUI artifacts (03-TESTPLAN.md) | not started |
 
-`make test`: 126 passed, 0 failed, 2 skipped. `make test-asan` and `make
+`make test`: 147 passed, 0 failed, 2 skipped. `make test-asan` and `make
 test-ubsan` both clean.
 
 `tools/audit.sh` implements the profile ladder as of Task 13, so the shell
@@ -120,6 +120,17 @@ reproduces byte-for-byte. Six golden fixtures exist under
 `onebin/tests/golden/` (JSON and text each), covering hybrid/static/module
 profiles, a baseline suppression, a length-≥4 array, and sanitised hostile
 strings end to end.
+
+Task 8 (in progress, first chunk): `elf/strings.c` (the whole-buffer
+scanner, §6.5), a profile-detection function added to `elf/image.c`
+(`ob_profile_detect` — kept there rather than in a new module so it doesn't
+need to depend on `elf/dynamic.h`, which already depends on `elf/image.h`;
+takes primitive facts instead of the structs directly), and the first two
+check families: `audit/checks/c_needed.c` and `audit/checks/c_profile.c`,
+plus `audit/checks_common.c` (`ob_checks_resolve_profile`). Remaining:
+`c_glibc`, `c_rpath`, `c_harden`, `c_hygiene`, `c_host`, `meta`, and
+`audit/audit.c` (orchestration — populates `ob_report`'s descriptive
+fields once, since individual checks only add findings).
 
 ## Open design questions
 
