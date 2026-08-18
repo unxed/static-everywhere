@@ -470,6 +470,48 @@ exist and prove themselves as bespoke, per-project directories first (Tasks
 to compare would be designing in a vacuum. Revisit once far2l's and f4-qt's
 own `contrib/` entries exist and a third candidate shows up.
 
+### Why not just use Nix?
+
+A fair question, asked directly: nixpkgs is already a shared, versioned
+recipe database at enormous scale, and `pkgsStatic` already automates
+"rebuild this dependency graph statically, from pinned sources." Doesn't
+that make a from-scratch recipe collection redundant?
+
+Two honest reasons it doesn't, plus one thing worth taking:
+
+1. **Adopting Nix is the cost this whole project is designed to avoid
+   asking for.** The manifesto's Quick Start is "keep your existing
+   CMake/Meson/Autotools build, add a toolchain file and a few flags."
+   Nix asks a maintainer to accept the Nix language, the daemon, the
+   `/nix/store` layout, and a different mental model for their build —
+   real value, but a materially larger ask than "point
+   `CMAKE_TOOLCHAIN_FILE` somewhere." far2l is the reference application
+   specifically because it is an existing, unmodified, unconverted GPLv2
+   CMake project; a recipe collection scoped to "the smallest patch that
+   makes an existing build static-and-audited" is answering a different
+   question than "port this package into nixpkgs."
+2. **`pkgsStatic` rebuilding cleanly does not mean the result passes an
+   audit — the same lesson `f4-qt` and far2l's own build already taught
+   this project twice.** `pkgsStatic` has years of open issues (musl being
+   forced when it shouldn't be, `libc++` exceptions under static linking,
+   `gcc`/`bintools` target-prefix mismatches) that are evidence rebuilding
+   the world statically is hard even with Nix's substantial automation —
+   not a criticism of Nix, a confirmation that "it built" and "it's
+   actually clean" are different claims, which is this project's entire
+   reason to exist. Nothing here competes with that: **`onebin audit`
+   doesn't care how a binary was built.** A `pkgsStatic` output is exactly
+   as auditable as a CMake one; the tool is agnostic on purpose.
+3. **What's actually worth taking from Nix, if this is ever built:**
+   content-addressed storage of build inputs by hash, and treating a
+   pinned commit + a lockfile of hashes as the unit of reproducibility —
+   both already partially present in `contrib/far2l/deps.lock`'s design,
+   worth deliberately keeping if a shared format is ever built.
+
+The two are complementary, not competing: a `pkgsStatic`-built far2l and a
+`zig cc`-built one are both legitimate inputs to the same `onebin audit`.
+Recorded because it's worth being explicit about, not because there's a
+decision to make yet.
+
 ---
 
 ## 3. What else belongs in this file
