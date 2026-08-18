@@ -253,3 +253,57 @@ fontconfig 2.18.3 9ae01e1d53acdef56010c5451cd34aa41d325b2faccd8606448d8fa01b2496
 # top-level README already documents happening twice before far2l's
 # TTYX broker and Profile M — SDL2 is the third instance.
 sdl2 2.32.10 5f5993c530f084535c65a6879e9b26ad441169b3e25d789d83287040a9ca5165 https://github.com/libsdl-org/SDL/releases/download/release-2.32.10/SDL2-2.32.10.tar.gz
+
+# uchardet 0.0.8: character-encoding detection, required by far2l's own
+# far2l/CMakeLists.txt whenever USEUCD=YES (the default). Not previously
+# in this file because no far2l build attempted so far had reached this
+# far into the plugin/feature set. CMake support upstream
+# (BUILD_SHARED_LIBS=OFF makes the plain `libuchardet` target itself
+# static, no separate *_STATIC variant needed). Verified: builds clean
+# via onebin-linux-hybrid.cmake, discovered correctly by far2l's own
+# cmake/modules/FindUchardet.cmake (plain FIND_LIBRARY/FIND_PATH) via
+# CMAKE_LIBRARY_PATH/CMAKE_INCLUDE_PATH pointed at this project's
+# install prefix. Not yet exercised by its own smoketest -- verification
+# so far is "far2l's own CMake configure step found and accepted it",
+# not an independent round-trip encoding-detection test.
+uchardet 0.0.8 e97a60cfc00a1c147a674b097bb1422abd9fa78a2d9ce3f3fdcc2e78a34ac5f0 https://www.freedesktop.org/software/uchardet/releases/uchardet-0.0.8.tar.xz
+
+# --- far2l itself -------------------------------------------------------
+# CRITICAL CORRECTION to 04-REFERENCE-far2l.md §6.3 and this project's own
+# prior assumption: the SDL GUI backend (WinPort/src/Backend/SDL,
+# -DUSESDL=YES) does NOT exist in any tagged far2l release. Checked
+# directly against the pinned v_2.8.0 tag's source: no
+# WinPort/src/Backend/SDL directory, no USESDL CMake option, nothing --
+# far2l-sdl as specified could never have been built from v_2.8.0.
+# Checked far2l's full git history: the SDL backend was added by commit
+# 85ec8e14f ("SDL Backend"), 88 commits AFTER v_2.8.0, and has not been
+# tagged since -- v_2.8.0 remains the latest tag as of this check. This
+# is the exact same situation already documented and handled correctly
+# for NetRocks-FISHPLUS in §6.2.1: a real feature that exists only on
+# far2l's unstable `master`, not yet in a release. The same policy
+# applies here: pin a specific master commit for a "preview" build,
+# do NOT claim it as part of the official Level-1 v_2.8.0-based target
+# until a new tag ships, and re-check `git ls-remote --tags` before
+# promoting it.
+#
+# Pinned at master's tip as of this check, an actively-developed commit
+# (same day as this pin): far2l master
+# 65c29da43971eb1a4f4f43097621cb384a95e04d (2026-08-18 16:50:05 +0300,
+# "possible fix"). git hash/date embed into the build's own version
+# string via far2l's CMake (confirmed: configure logged "git hash:
+# 65c29da43", matching CONFORMING.md/§2's reproducibility concern about
+# tags vs commits -- this pin is explicitly a preview, not a
+# reproducible release build, for exactly that reason).
+#
+# far2l-sdl configure succeeded against this project's own static
+# SDL2/FreeType/HarfBuzz/Fontconfig (all found correctly via pkg-config)
+# plus the uchardet pin above. -DCOLORER=no added to this preview's
+# flags (not in 04-REFERENCE-far2l.md's §6.3 recipe) because the
+# Colorer plugin needs libxml2, not yet pinned in this file -- adding
+# real libxml2 support is a separate, later step, not a blocker for
+# proving the SDL backend itself. Build of the `far2l` target itself
+# was IN PROGRESS, not yet complete or verified, when this pin was
+# committed -- see STATUS.md for exactly what is and is not proven yet.
+# No hash/url line for far2l itself: it is cloned by tag/commit per
+# 04-REFERENCE-far2l.md §2, not fetched as a tarball like every other
+# entry in this file.

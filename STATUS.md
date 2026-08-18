@@ -1,5 +1,59 @@
 # STATUS
 
+## far2l-sdl: CRITICAL CORRECTION -- SDL backend is not in any tagged far2l release; build in progress against a pinned master preview
+
+**Found by checking the real source before linking against it, not by
+assumption.** `04-REFERENCE-far2l.md` §6.3's `far2l-sdl` recipe, and
+this project's own graphics-group work (FreeType → HarfBuzz →
+Fontconfig → SDL2) up to this point, all rested on an unverified premise:
+that `-DUSESDL=YES` builds against the pinned `v_2.8.0` tag. **It does
+not.** Checked directly: `v_2.8.0`'s source tree has no
+`WinPort/src/Backend/SDL` directory and no `USESDL` CMake option at all.
+Checked far2l's full git history: the SDL backend was added by commit
+`85ec8e14f` ("SDL Backend"), **88 commits after** `v_2.8.0`, on
+`master`, and has not been tagged since — `v_2.8.0` is still the latest
+tag as of this check.
+
+This is not a new problem for this project — it is the *exact* situation
+already documented and handled correctly for `NetRocks-FISHPLUS` in
+`04-REFERENCE-far2l.md` §6.2.1: a real, working feature that exists only
+on far2l's unstable `master`. The same policy now applies here, and
+`04-REFERENCE-far2l.md` §6.3 has been corrected in place with a note
+explaining this, rather than silently rewritten: pin a specific `master`
+commit for a **preview** build, do not claim it as the official Level-1
+`v_2.8.0`-based target, and re-check `git ls-remote --tags` before
+promoting it.
+
+**None of the graphics-group work so far is wasted** — FreeType,
+HarfBuzz, Fontconfig, and SDL2 are all real, independently-verified
+static builds (see the entries below) that far2l-sdl needs regardless of
+which far2l commit ends up using them.
+
+Pinned far2l at `master` `65c29da43971eb1a4f4f43097621cb384a95e04d`
+(2026-08-18 16:50:05 +0300, "possible fix" — an actively-developed
+commit, same day as this pin) in `contrib/far2l/deps.lock`. Also pinned
+and built, for real, a dependency this project hadn't needed before:
+`uchardet 0.0.8` (character-encoding detection, required whenever
+`USEUCD=YES`, far2l's own default) — static via
+`onebin-linux-hybrid.cmake`, discovered by far2l's own
+`FindUchardet.cmake` through `CMAKE_LIBRARY_PATH`/`CMAKE_INCLUDE_PATH`.
+Not yet exercised by its own smoketest.
+
+**`far2l-sdl`'s CMake configure step succeeded**, for real, against this
+project's own static SDL2/FreeType/HarfBuzz/Fontconfig (all found
+correctly via `pkg-config`) plus the `uchardet` pin above. `-DCOLORER=no`
+added (not in §6.3's original recipe) because the Colorer plugin needs
+`libxml2`, not yet pinned in this project — a later, separate step, not
+a blocker for the SDL backend itself.
+
+**Not yet done, and not to be claimed done until it is:** the actual
+`far2l` build (`ninja far2l`) was still running, not yet complete or
+verified, when this entry was written. No `onebin audit` has run against
+any far2l-sdl artifact yet. Do not write "far2l-sdl builds" anywhere in
+this project's docs until that binary exists, has been audited, and —
+per this project's own established bar for GUI artifacts — actually
+runs.
+
 ## Graphics group (step 4 of 4) COMPLETE: SDL2 pinned and verified -- dlopens its own windowing/GPU/audio backends
 
 `sdl2 2.32.10` pinned in `contrib/far2l/deps.lock` — the last library in

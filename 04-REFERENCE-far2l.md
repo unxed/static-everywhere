@@ -458,6 +458,22 @@ cmake -DCMAKE_TOOLCHAIN_FILE=<repo>/onebin/toolchain/onebin-linux-hybrid.cmake \
 
 ### 6.3 `far2l-sdl` — Profile H, Level 1 — **the headline demo**
 
+> **CORRECTION, found by checking the real source (see
+> `contrib/far2l/deps.lock`'s `uchardet`/far2l entries and `STATUS.md` for
+> the full writeup).** The recipe below does **not** work against the
+> pinned `v_2.8.0` tag used everywhere else in this document: `-DUSESDL`
+> and the entire `WinPort/src/Backend/SDL` directory do not exist at that
+> tag. They were added 88 commits later, on `master`, and have not
+> shipped in any tagged release as of this check. This is the exact same
+> situation as `NetRocks-FISHPLUS` in §6.2.1 — a real, working feature
+> that exists only on far2l's unstable `master` — and the same policy
+> applies: pin a specific `master` commit for a **preview** build, do not
+> claim it as part of the official Level-1 `v_2.8.0`-based target, and
+> re-check `git ls-remote --tags` before promoting it. The recipe below
+> is retained because it is correct **once** you're building against a
+> pinned `master` commit that includes the SDL backend, not against
+> `v_2.8.0`.
+
 Everything in `far2l-tty`, plus a graphical backend whose only host dependencies
 are the ones SDL `dlopen`s. A GUI application with no toolkit on the target
 system, no `DT_NEEDED` beyond libc, and native-looking text because fontconfig
