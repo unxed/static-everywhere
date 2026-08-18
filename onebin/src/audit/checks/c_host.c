@@ -2,7 +2,7 @@
  *
  * Two pattern checks, both implemented by hand (the spec insists: "Do not
  * write a regex engine"):
- *   - OB0070: the string starts with one of the fifteen known host-contract
+ *   - OB0070: the string starts with one of the known host-contract
  *     library names (a plain, anchored prefix check).
  *   - OB0071: the string matches ^lib[A-Za-z0-9_+.-]+\.so(\.[0-9]+)*$ and
  *     is neither on that list nor an actual DT_NEEDED entry nor on the
@@ -20,12 +20,24 @@
 
 #define OB0071_CAP 20
 
+/* GPU/audio (the original fifteen) plus windowing/desktop-integration
+ * sonames added building far2l-sdl (contrib/far2l/deps.lock's SDL2
+ * entry): SDL2's SDL_X11_SHARED/SDL_WAYLAND_SHARED design dlopens its
+ * windowing backend rather than linking it, so a real GUI reference
+ * build needs these recognized too, not just GPU/audio. See
+ * 01-SPEC-audit.md §7.7 for the full rationale. */
 static const char *const KNOWN_HOST_LIBS[] = {
     "libGL.so", "libGLX.so", "libGLESv2.so", "libEGL.so", "libOpenGL.so",
     "libvulkan.so", "libcuda.so", "libnvidia-ml.so",
     "libOpenCL.so", "libva.so", "libvdpau.so",
     "libasound.so", "libpulse.so", "libpipewire-0.3.so", "libjack.so",
     "libudev.so",
+    "libGLES_CM.so", "libGLESv1_CM.so",
+    "libX11.so", "libX11-xcb.so", "libXext.so", "libXcursor.so",
+    "libXfixes.so", "libXrandr.so", "libXss.so", "libXi.so",
+    "libwayland-client.so", "libwayland-cursor.so", "libwayland-egl.so",
+    "libxkbcommon.so",
+    "libdbus-1.so",
 };
 #define N_KNOWN_HOST_LIBS (sizeof(KNOWN_HOST_LIBS) / sizeof(KNOWN_HOST_LIBS[0]))
 

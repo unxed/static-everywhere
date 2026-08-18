@@ -1,5 +1,59 @@
 # STATUS
 
+## Graphics group (step 4 of 4) COMPLETE: SDL2 pinned and verified -- dlopens its own windowing/GPU/audio backends
+
+`sdl2 2.32.10` pinned in `contrib/far2l/deps.lock` — the last library in
+the graphics group, and per the top-level README, "the point of the
+exercise": far2l-sdl is a graphical file manager with no toolkit on the
+target. Built via CMake (`onebin-linux-hybrid.cmake`, SDL2 has its own
+upstream CMakeLists.txt), `-DSDL_STATIC=ON -DSDL_SHARED=OFF
+-DCMAKE_POSITION_INDEPENDENT_CODE=ON` (PIC needed: `far2l_sdl.so` is a
+`dlopen`'d module, `04-REFERENCE-far2l.md` §3.2). Every windowing/GPU/
+audio backend left at its upstream default — X11, Wayland, ALSA,
+PulseAudio, libudev, D-Bus, IBus — all `dlopen`'d by SDL2 itself, by
+design, exactly matching this project's own Layer 3 doctrine ("protocol
+first, `dlopen` only where physics demands it"). Nothing in the build
+recipe was needed to make that happen; it's how SDL2 already ships.
+
+Verified for real, not just a link check: a smoketest calls
+`SDL_Init(SDL_INIT_VIDEO)`, lists every compiled-in video driver (x11,
+wayland, offscreen, dummy, evdev — confirms the `dlopen` surface
+actually got compiled in), creates a window via the `dummy` driver
+(`SDL_VIDEODRIVER=dummy` — no real display in the build sandbox), fills
+its surface, and updates it. `needed: libc.so.6 libdl.so.2 libm.so.6
+libpthread.so.0` — inside the Profile H six-soname allowlist, nothing
+else linked in. `onebin audit --profile hybrid --level 1 --strict`:
+PASS, 0 errors, 0 warnings.
+
+One real finding, fixed in `onebin` itself, not just documented: its
+own host-contract soname list (`01-SPEC-audit.md` §7.7,
+`onebin/src/audit/checks/c_host.c`) only ever covered GPU/audio, the
+doctrine's originally-stated scope. The first real audit of an
+SDL2-linked binary reported 15 `OB0071` warnings for exactly the
+windowing/desktop-integration sonames SDL `dlopen`s by design (X11,
+Wayland, xkbcommon, D-Bus, plus an ES1 GLES variant not covered by the
+already-listed ES2 name). A real gap, not a false positive — a
+`dlopen`-only windowing backend is exactly the Layer 3 pattern this
+project's own doctrine describes, the linter just hadn't been taught
+the sonames yet. Fixed by extending `KNOWN_HOST_LIBS` and the matching
+spec list, with three new tests in `tests/t_checks_host.c`. `make
+test`: 268 passed, 0 failed, 3 skipped (was 259). `make coverage`: gate
+still passes unchanged (90.89% line / 95.28% branch). This is the third
+instance of "the reference application dictates the linter," after the
+TTYX broker's `--allow` list and Profile M.
+
+**Graphics group (FreeType → HarfBuzz → Fontconfig → SDL2) is now
+complete.** Task 15's three groups (archives, network, graphics) are
+all done. What remains before Task 15 itself is complete:
+`tools/build-far2l.sh` still doesn't exist — every library in
+`deps.lock` so far has been built with ad-hoc manual CMake/Meson
+invocations, one at a time, to keep each step independently verifiable
+(a deliberate choice recorded repeatedly in this file). The actual
+`far2l-sdl` target has not yet been configured or linked against any of
+these libraries together — that, and writing the script that
+automates what this file's entries did by hand, are the next real
+steps.
+
 ## Graphics group (step 3 of 4) continued: fontconfig pinned and verified -- reads the HOST's real fonts
 
 `expat 2.8.3` and `fontconfig 2.18.3` pinned in `contrib/far2l/deps.lock`,

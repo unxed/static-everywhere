@@ -201,3 +201,55 @@ expat 2.8.3 b4cc2483927d5e90bf8c40b44a6b95b368b42a8a96e25883fce188b48a92b670 htt
 # findings show up again with a `requires GLIBC_x.y` newer than the
 # baseline, check c_link_args/cpp_link_args for -target first.
 fontconfig 2.18.3 9ae01e1d53acdef56010c5451cd34aa41d325b2faccd8606448d8fa01b2496b3 https://gitlab.freedesktop.org/fontconfig/fontconfig/-/archive/2.18.3/fontconfig-2.18.3.tar.gz
+
+# SDL2: the graphics group's last library -- "the point of the exercise"
+# per the top-level README. Built via CMake (SDL2 has its own upstream
+# CMakeLists.txt, not Meson), onebin-linux-hybrid.cmake,
+# -DSDL_STATIC=ON -DSDL_SHARED=OFF -DCMAKE_POSITION_INDEPENDENT_CODE=ON
+# (needed because far2l_sdl.so is a dlopen'd module -- 04-REFERENCE-far2l.md
+# §3.2 -- so the static SDL2 archive linked into it must be PIC). Every
+# windowing/GPU/audio backend left at its upstream default: SDL_X11=ON
+# SDL_X11_SHARED=ON, SDL_WAYLAND=ON SDL_WAYLAND_SHARED=ON,
+# SDL_ALSA/SDL_PULSEAUDIO=ON (both dlopen'd), SDL_LIBUDEV=ON,
+# SDL_DBUS=ON, SDL_IBUS=ON -- SDL dlopens every one of these itself, by
+# design, matching this project's own Profile H doctrine exactly (Layer
+# 3: "protocol first, dlopen only where physics demands it"). Nothing
+# in deps.lock or the build recipe was needed to make that happen; it's
+# how SDL2 already ships.
+#
+# Verified for real: a smoketest (not just a link check) calls
+# SDL_Init(SDL_INIT_VIDEO), lists every compiled-in video driver
+# (x11, wayland, offscreen, dummy, evdev — confirms the dlopen surface
+# actually got compiled in, not silently dropped), creates a window via
+# the `dummy` driver (SDL_VIDEODRIVER=dummy — no real display in the
+# build sandbox), fills its surface, and updates it — Layer 3 exercised,
+# not just Layer 1 code compiling. `needed: libc.so.6 libdl.so.2
+# libm.so.6 libpthread.so.0` — inside the Profile H six-soname
+# allowlist, nothing else linked in. `onebin audit --profile hybrid
+# --level 1 --strict`: PASS, 0 errors, 0 warnings.
+#
+# One real finding, fixed in onebin itself, not just documented:
+# `onebin`'s own host-contract soname list (01-SPEC-audit.md §7.7,
+# `onebin/src/audit/checks/c_host.c`) only ever covered GPU/audio
+# sonames (the doctrine's originally-stated scope). The very first real
+# audit of an SDL2-linked binary reported 15 OB0071 warnings ("appears
+# to dlopen a library outside the host contract") for exactly the
+# windowing/desktop-integration sonames SDL dlopens by design: libX11,
+# libX11-xcb, libXext, libXcursor, libXfixes, libXrandr, libXss, libXi,
+# libwayland-client/cursor/egl, libxkbcommon, libdbus-1, and
+# libGLES_CM/libGLESv1_CM (OpenGL ES 1.x Common Profile — distinct
+# strings from the already-listed libGLESv2.so, an ES1 fallback SDL
+# also dlopens). This was a real gap, not a false positive: a
+# `dlopen`-only windowing backend is exactly the Layer 3 pattern this
+# project's own doctrine describes, but the linter didn't recognize it
+# yet because no reference build had needed it before now. Fixed by
+# extending `KNOWN_HOST_LIBS` in `c_host.c` and the matching list in
+# `01-SPEC-audit.md` §7.7, with two new tests
+# (`host_libX11_known`/`host_libwayland_client_known`/
+# `host_libGLES_CM_known`) in `tests/t_checks_host.c`. `make test`:
+# 268 passed, 0 failed, 3 skipped (was 259). `make coverage`: gate
+# still passes (90.89% line / 95.28% branch, unchanged). This is
+# exactly the "reference application dictates the linter" dynamic the
+# top-level README already documents happening twice before far2l's
+# TTYX broker and Profile M — SDL2 is the third instance.
+sdl2 2.32.10 5f5993c530f084535c65a6879e9b26ad441169b3e25d789d83287040a9ca5165 https://github.com/libsdl-org/SDL/releases/download/release-2.32.10/SDL2-2.32.10.tar.gz

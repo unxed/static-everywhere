@@ -97,6 +97,54 @@ TEST(host_libpipewire_known) {
     ob_report_free(&r); unload(&l); eg_free(o);
 }
 
+/* --------------------------------------------------------------------- #3a
+ * far2l-sdl (contrib/far2l/deps.lock's SDL2 entry): SDL_X11_SHARED
+ * dlopens libX11 itself rather than linking it, so this is now part of
+ * the host contract even though it's windowing, not GPU/audio. */
+
+TEST(host_libX11_known) {
+    eg *o = eg_new(64, EG_LE, EM_X86_64, ET_DYN);
+    loaded l = load_with_string(o, "libX11.so.6");
+    ob_report r; run(&l, &r);
+
+    ASSERT_TRUE(has_id(&r, "OB0070"));
+    ASSERT_FALSE(has_id(&r, "OB0071"));
+
+    ob_report_free(&r); unload(&l); eg_free(o);
+}
+
+/* --------------------------------------------------------------------- #3b
+ * Same rationale, Wayland side: SDL_WAYLAND_SHARED dlopens this. */
+
+TEST(host_libwayland_client_known) {
+    eg *o = eg_new(64, EG_LE, EM_X86_64, ET_DYN);
+    loaded l = load_with_string(o, "libwayland-client.so.0");
+    ob_report r; run(&l, &r);
+
+    ASSERT_TRUE(has_id(&r, "OB0070"));
+    ASSERT_FALSE(has_id(&r, "OB0071"));
+
+    ob_report_free(&r); unload(&l); eg_free(o);
+}
+
+/* --------------------------------------------------------------------- #3c
+ * libGLES_CM.so / libGLESv1_CM.so are OpenGL ES 1.x Common Profile names,
+ * distinct strings from the already-listed libGLESv2.so -- SDL dlopens
+ * this one as its ES1 fallback, so the existing "libGLESv2.so" prefix
+ * entry does not already cover it (confirmed: this string does NOT start
+ * with "libGLESv2.so"). */
+
+TEST(host_libGLES_CM_known) {
+    eg *o = eg_new(64, EG_LE, EM_X86_64, ET_DYN);
+    loaded l = load_with_string(o, "libGLES_CM.so.1");
+    ob_report r; run(&l, &r);
+
+    ASSERT_TRUE(has_id(&r, "OB0070"));
+    ASSERT_FALSE(has_id(&r, "OB0071"));
+
+    ob_report_free(&r); unload(&l); eg_free(o);
+}
+
 /* --------------------------------------------------------------------- #4 */
 
 TEST(host_unlisted_not_needed_warns) {

@@ -362,7 +362,25 @@ libvulkan.so libcuda.so      libnvidia-ml.so
 libOpenCL.so libva.so        libvdpau.so
 libasound.so libpulse.so     libpipewire-0.3.so   libjack.so
 libudev.so
+libGLES_CM.so   libGLESv1_CM.so
+libX11.so    libX11-xcb.so   libXext.so     libXcursor.so  libXfixes.so
+libXrandr.so libXss.so       libXi.so
+libwayland-client.so   libwayland-cursor.so   libwayland-egl.so
+libxkbcommon.so
+libdbus-1.so
 ```
+
+The last four rows (X11/Xcursor/Xfixes/Xrandr/Xss/Xi, wayland-client/
+cursor/egl, xkbcommon, dbus-1) were added building far2l-sdl
+(04-REFERENCE-far2l.md §3.2/§6, `contrib/far2l/deps.lock`'s SDL2 entry):
+the original fifteen-entry list covered only GPU/audio, the doctrine's
+own stated scope for the host contract per DESIGN-onebin.md, but SDL2's
+own `SDL_X11_SHARED`/`SDL_WAYLAND_SHARED` design (§6, `dlopen`s its
+windowing backend rather than linking it) means a real GUI reference
+build needs the windowing/desktop-integration sonames recognized too,
+not just GPU/audio. `libGLES_CM.so`/`libGLESv1_CM.so` (OpenGL ES 1.x
+Common Profile, distinct names from the already-listed `libGLESv2.so`)
+were also missing and SDL dlopens them as an ES1 fallback.
 
 - Match: `OB0070` **info**, subject = the string.
 - A string matching `^lib[A-Za-z0-9_+.-]+\.so(\.[0-9]+)*$` that is **not** in the list above, **not** in the `DT_NEEDED` allowlist, and **not** an actual `DT_NEEDED` entry: `OB0071` **warn** — "appears to dlopen a library outside the host contract". Cap at 20.

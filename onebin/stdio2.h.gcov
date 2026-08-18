@@ -1,7 +1,7 @@
         -:    0:Source:/usr/include/x86_64-linux-gnu/bits/stdio2.h
         -:    0:Graph:build/cov/tests-audit.gcno
         -:    0:Data:build/cov/tests-audit.gcda
-        -:    0:Runs:263
+        -:    0:Runs:272
         -:    1:/* Checking macros for stdio functions.
         -:    2:   Copyright (C) 2004-2024 Free Software Foundation, Inc.
         -:    3:   This file is part of the GNU C Library.
