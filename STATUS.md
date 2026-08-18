@@ -749,7 +749,7 @@ Roadmap in [DESIGN-onebin.md §10](./DESIGN-onebin.md). Task list in
 | 13 | `tools/audit.sh` learns about modules | done |
 | 14 | CMake toolchain files + `zig-*` wrappers | done |
 | 15 | `tools/build-far2l.sh` + `contrib/far2l/deps.lock` | **in progress** |
-| 16 | `contrib/far2l/UPSTREAM.md` | not started |
+| 16 | `contrib/far2l/UPSTREAM.md` | done |
 | 17 | `tools/build-f4-qt.sh` + `contrib/f4-qt/deps.lock` | not started |
 | 18 | Level 1 runtime gate for GUI artifacts (03-TESTPLAN.md) | not started |
 
@@ -933,9 +933,9 @@ machinery embeds extra host-toolchain paths musl doesn't have).
 
 | # | Question | State |
 |---|---|---|
-| 1 | **Profile D — carry your own loader.** Profile S forbids `dlopen`, which rules out plugins, GPU and audio, i.e. most real programs. Proposal in [DESIGN-onebin.md §13](./DESIGN-onebin.md). | proposal written, **not decided**, no code |
+| 1 | **Profile D — carry your own loader.** Profile S forbids `dlopen`, which rules out plugins, GPU and audio, i.e. most real programs. Proposal in [DESIGN-onebin.md §13](./DESIGN-onebin.md). | **decided (§13.6): support both `memfd_create`+`dlopen` and a carried loader, tried in that order, graceful degradation to "feature unavailable" if both fail.** Not scheduled, no code |
 | 2 | One file vs. one file plus modules for Profile H. Current answer: ship the modules beside the binary and say so; `onebin pack` closes the gap in v0.4. | decided for v0.1 |
-| 3 | `memfd_create` + `dlopen("/proc/self/fd/N")` as a true single-file route. | open, see DESIGN §11 row 14 |
+| 3 | `memfd_create` + `dlopen("/proc/self/fd/N")` as a true single-file route. | **decided: this is the first-attempted route in §13.6's graceful-degradation order**, not a competing alternative to Profile D — see DESIGN §13.6 |
 | 6 | **Should `contrib/`'s per-project build recipes generalise into a shared, Homebrew-formula-like database** once far2l's and f4-qt's own entries exist? [FUTURE-IDEAS.md §2](./FUTURE-IDEAS.md). | **not a milestone.** Revisit after Tasks 15+ and a third candidate recipe exist |
 | 5 | **Does Level 1 need a runtime gate for GUI applications?** f4-qt's CI proves a static Qt binary can pass every static check and still fail to start. | **yes, provisionally** — 05-REFERENCE-f4-qt.md §7.4. Needs writing into 03-TESTPLAN.md |
 | 4 | **One image per architecture instead of one per OS.** Speculation, not a plan: [FUTURE-IDEAS.md §1](./FUTURE-IDEAS.md). | **not a milestone.** Only §1.11 touches v0.1, and everything in it is free |

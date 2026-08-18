@@ -661,8 +661,8 @@ This project has succeeded when:
 
 ## 13. Proposal: Profile D — carry your own loader
 
-**Status: proposal. Not decided, not scheduled, no code.** Recorded here so the
-argument is written down rather than rediscovered.
+**Status: decided in principle (§13.6), not yet scheduled, no code.**
+Recorded here so the argument is written down rather than rediscovered.
 
 ### The problem with two profiles
 
@@ -814,6 +814,60 @@ for reaching below that floor, or for the rare case that must not touch the host
 libc at all. Profile S is a deliberate niche — `FROM scratch`, initramfs,
 embedded — and the documents should stop implying it is the ideal that the other
 profiles compromise on.
+
+### 13.6 Decision: support both routes, graceful degradation, don't write a loader from scratch
+
+Two ways have been on the table for letting a Profile S binary reach a host
+library it cannot statically link: carry a real loader (§13 above), or trick
+the host's *own* loader into working on a payload that was never a file —
+`memfd_create()` an anonymous in-memory file, write the target `.so` into it,
+then `dlopen("/proc/self/fd/N")`, which is a real path the host's real `ld.so`
+will happily open. **Decision: do both, and pick automatically at runtime —
+never one at the cost of the other.**
+
+Why not choose one: they fail in opposite cases. The `memfd` trick depends on
+the *host* having a working, ABI-compatible dynamic loader in the first place
+— which is exactly the thing a stripped `FROM scratch` container or a musl
+host without glibc might not have. A carried loader has no such dependency,
+but costs real engineering (§13.6.1). Neither one is strictly better; they
+cover each other's gap.
+
+**Order of attempt, at runtime, per library needed:**
+
+1. Try `memfd_create` + `dlopen("/proc/self/fd/N")`. Cheap, uses the host's
+   own loader (so it inherits the host's own security patches, ABI quirks,
+   and NSS behaviour for free), no code of ours runs untested paths.
+2. If that fails (no working host loader, or the specific library the host
+   loader can't satisfy — e.g. the host genuinely doesn't have a compatible
+   libc to run *its own* `ld.so` against), fall back to the carried loader.
+3. If both fail, that is a normal, reportable "this optional feature isn't
+   available on this host" outcome — not a crash. A GPU-accelerated codepath
+   degrading to software rendering, or a plugin silently not loading, is the
+   expected shape of failure here, matching the "protocol first, `dlopen`
+   only where physics demands it" principle already in place for Profile H.
+
+This is graceful degradation in the ordinary sense: try the cheap thing,
+fall back to the expensive-but-more-self-contained thing, fail soft if
+neither works, and never require a caller to know in advance which path a
+given host will take.
+
+**13.6.1 — don't write the carried loader from scratch: adapt SoLo's.**
+`§13.5` already documents [`pg83/solo`](https://github.com/pg83/solo) as a
+real, shipping ELF loader (`lib/elf_loader.cpp`, ~2,100 lines) plus a
+glibc-ABI-over-musl compatibility shim (`lib/glibc_shim.cpp`, ~4,300 lines) —
+exactly the two pieces Profile D's carried-loader route needs, already
+written, already handling the hard parts (versioned symbols, TLS/TLSDESC,
+IFUNCs, RELRO) that made this project's own earlier "a thousand lines"
+estimate optimistic. **Building a second one from nothing would be pure
+duplicated risk with no corresponding benefit — fewer wheels, more
+delegation.** The concrete plan, if and when this gets scheduled: fork or
+vendor SoLo's loader, trim `glibc_shim.cpp` to the symbol surface this
+project's own reference applications (far2l, f4-qt) actually touch rather
+than SoLo's own broader Mesa/Vulkan-focused coverage, and keep it behind
+`onebin audit`'s existing static/dynamic distinction so a Profile D binary
+using it is still auditable the normal way. Not started; recorded so the
+next person doesn't rediscover SoLo as "maybe we could look at this" and
+instead starts from "here is the adaptation plan."
 
 ---
 
