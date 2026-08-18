@@ -126,3 +126,22 @@
   requirement" *test* (a few lines) but not the finding-emission logic —
   an accepted, narrow, read-only duplication, documented at its
   definition.
+- **`--write-baseline` aggregates findings across every file given on the
+  command line into one baseline**, sorted and deduped, then exits 0
+  without printing a normal report — 01-SPEC-audit.md §5.2 describes the
+  option per-invocation, not per-file, and a single baseline file is the
+  only reading that lets `--baseline` (loaded once, applied per file)
+  round-trip against it.
+- **`--max-file` is accepted and validated but not yet wired to
+  `ob_audit_options`** — `ob_audit_file` still enforces the fixed
+  `ONEBIN_MAX_FILE` (512 MiB) regardless of this flag. Flagged rather than
+  silently dropped: the option parses and rejects negative values, so
+  scripts using it don't get a usage error, but the value has no effect
+  yet. Needs a `max_file` field on `ob_audit_options` plumbed through to
+  the `OB0092` size check in `audit/audit.c`.
+- **`tests/t_cli.c` spawns the plain (non-sanitizer) `build/onebin`**
+  regardless of which `make test*` target is running — `make test-asan`/
+  `test-ubsan` still exercise every check function directly through the
+  other test files, `t_cli.c` only spot-checks argument parsing and exit
+  codes via subprocess, which is not meaningfully improved by sanitizing
+  the child process for that purpose.
