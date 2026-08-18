@@ -110,17 +110,24 @@ else()
         "zig's linker does not currently support it (verified against zig 0.13.0).")
 endif()
 string(JOIN " " _onebin_link_flags_str ${_onebin_link_flags})
-# -pie is EXE-only: `-shared`/MODULE outputs are dynamic libraries, and
-# a dynamic library cannot itself be a position-independent *executable*
-# (confirmed: zig's linker rejects `-pie` combined with `-shared` outright
-# — "dynamic libraries cannot be position independent executables").
-# This was a latent bug in CMAKE_SHARED_LINKER_FLAGS_INIT below even
-# before MODULE support was added — nothing had linked an actual SHARED
-# target through this file yet to expose it. Shared objects are
-# PIC-by-default from CMAKE_POSITION_INDEPENDENT_CODE/-fPIC already
-# passed at compile time; they don't need -pie at link time too.
+# SHARED/MODULE-only flags: same as above MINUS the host -L dirs.
+# Found building far2l_sdl.so: those host -L dirs (needed by EXE
+# targets like far2l_ttyx.broker for X11 discovery) come from CMake
+# BEFORE a target's own target_link_directories() -- where far2l's
+# pkg-config -L to THIS PROJECT'S OWN static libs lands. GNU ld
+# resolves a bare -lNAME against the FIRST -L dir with any match, so
+# far2l_sdl.so was linking the HOST's libfontconfig.so/libfreetype.so
+# instead of our pinned static .a, silently. SHARED/MODULE targets in
+# this project's own dependency chain (fontconfig, harfbuzz, ...) are
+# always found via pkg-config -L already; dropping the blanket host
+# -L here removes the shadowing without losing anything EXE targets
+# still need.
+list(REMOVE_ITEM _onebin_link_flags
+    "-L/usr/lib/${CMAKE_HOST_SYSTEM_PROCESSOR}-linux-gnu"
+    "-L/usr/lib" "-L/lib/${CMAKE_HOST_SYSTEM_PROCESSOR}-linux-gnu")
+string(JOIN " " _onebin_link_flags_nohostl ${_onebin_link_flags})
 set(CMAKE_EXE_LINKER_FLAGS_INIT    "${_onebin_link_flags_str} -pie")
-set(CMAKE_SHARED_LINKER_FLAGS_INIT "${_onebin_link_flags_str}")
+set(CMAKE_SHARED_LINKER_FLAGS_INIT "${_onebin_link_flags_nohostl}")
 # Found building far2l_sdl.so (add_library(... MODULE ...) — a dlopen'd
 # plugin, CMake's third linker-flags variable family besides EXE/SHARED):
 # CMake uses CMAKE_MODULE_LINKER_FLAGS for MODULE targets, not
@@ -128,7 +135,7 @@ set(CMAKE_SHARED_LINKER_FLAGS_INIT "${_onebin_link_flags_str}")
 # the hardening/strip flags above — confirmed missing -s produced 951
 # embedded build-path strings and a non-$ORIGIN RPATH baked in from
 # pkg-config-derived -L dirs, both real onebin audit failures.
-set(CMAKE_MODULE_LINKER_FLAGS_INIT "${_onebin_link_flags_str}")
+set(CMAKE_MODULE_LINKER_FLAGS_INIT "${_onebin_link_flags_nohostl}")
 
 # CMake auto-embeds an RPATH for every target_link_directories()/-L dir
 # a project adds (default CMAKE_SKIP_RPATH=OFF), which is exactly how
