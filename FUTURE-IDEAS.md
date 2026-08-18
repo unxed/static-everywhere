@@ -640,6 +640,7 @@ rediscovered in private — with a pointer to where the actual work lives:
   though note it's the wrong *kind* of project for that file (a syscall
   trampoline library isn't a Profile S/H binary), so that would need its own
   conversation, not an assumption.
+  UPD: implemented, published
 
 ---
 
