@@ -26,9 +26,10 @@ Roadmap in [DESIGN-onebin.md §10](./DESIGN-onebin.md). Task list in
 | 5 | `elf/image` | done |
 | 6 | `elf/dynamic`, `elf/verneed`, `elf/symbols` | done |
 | 7 | findings, baselines, reporters | done |
-| 8 | the checks, **including Profile M** | **next** |
-| 9 | the CLI | not started |
-| 10 | malformed corpus and fuzzer | not started |
+| 8 | the checks, **including Profile M** | done |
+| 9 | the CLI | done |
+| 10 | malformed corpus and fuzzer | done |
+| 11 | coverage and lint test | **next** |
 | 11 | coverage and lint test | not started |
 | 12 | self-audit and documentation | not started |
 | 13 | `tools/audit.sh` learns about modules | done |
@@ -121,16 +122,45 @@ reproduces byte-for-byte. Six golden fixtures exist under
 profiles, a baseline suppression, a length-≥4 array, and sanitised hostile
 strings end to end.
 
-Task 8 (in progress, first chunk): `elf/strings.c` (the whole-buffer
+Task 8 (the checks) is complete: `elf/strings.c` (the whole-buffer
 scanner, §6.5), a profile-detection function added to `elf/image.c`
 (`ob_profile_detect` — kept there rather than in a new module so it doesn't
 need to depend on `elf/dynamic.h`, which already depends on `elf/image.h`;
-takes primitive facts instead of the structs directly), and the first two
-check families: `audit/checks/c_needed.c` and `audit/checks/c_profile.c`,
-plus `audit/checks_common.c` (`ob_checks_resolve_profile`). Remaining:
-`c_glibc`, `c_rpath`, `c_harden`, `c_hygiene`, `c_host`, `meta`, and
-`audit/audit.c` (orchestration — populates `ob_report`'s descriptive
-fields once, since individual checks only add findings).
+takes primitive facts instead of the structs directly), all seven check
+families (`c_needed`, `c_glibc`, `c_profile`, `c_rpath`, `c_harden`,
+`c_hygiene`, `c_host`), `c_meta.c` (§7.8, level-3-only, the only check that
+touches the filesystem beyond the audited file), `audit/checks_common.c`
+(`ob_checks_resolve_profile`), and `audit/audit.c` (orchestration: opens
+and reads the file — the only layer that does — maps parse failures to the
+fatal `OB0001-3`/`OB0090-93` findings, and populates every descriptive
+field on `ob_report` before running every check).
+
+Task 9 (the CLI) is complete: `src/main.c` parses the full grammar from
+`01-SPEC-audit.md §5.2` — `--profile`, `--glibc-max`, `--level`, `--allow`
+(repeatable), `--baseline`, `--write-baseline`, `--format`, `--strict`,
+`--quiet`, `--verbose`, `--no-color`, `--max-file` (accepted and
+validated, not yet enforced — see `onebin/NOTES.md`) — plus `--` and
+multi-file worst-exit-code aggregation. `--write-baseline` aggregates
+findings across every file given into one sorted, deduped baseline.
+**`onebin` is a real, runnable tool**: `onebin audit /bin/ls` works end to
+end against real system binaries, not just synthetic fixtures.
+
+Task 10 (the malformed corpus and the fuzzer) is complete. The 35-case
+malformed corpus from `03-TESTPLAN.md §5.6` already existed, spread across
+`tests/t_dynamic.c`, `tests/t_verneed.c` and `tests/t_symbols.c` since
+Task 6 — no separate `t_malformed.c` was written; see `onebin/NOTES.md`
+for why duplicating them would have cost more than it protected.
+`tests/fuzz.c` is new: the exact xorshift PRNG the spec requires, a
+9-entry seed corpus (five presets plus four manual ELF32/64 × LE/BE
+variants — mkelf's presets aren't class/endian-parameterised, see
+`onebin/NOTES.md`), all six mutation strategies, `alarm()`-based timeout
+capture, and a crash dump with a reproduction command on any signal. Runs
+entirely in-process against the parsing+checks pipeline, not the built
+binary, so ASan/UBSan see everything.
+
+`make fuzz FUZZ_ITERS=200000`, plus additional runs up to 100000
+iterations each at four other seeds, all completed with **zero crashes,
+zero timeouts, and zero sanitizer reports**.
 
 ## Open design questions
 

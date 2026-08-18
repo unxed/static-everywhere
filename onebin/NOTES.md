@@ -145,3 +145,24 @@
   other test files, `t_cli.c` only spot-checks argument parsing and exit
   codes via subprocess, which is not meaningfully improved by sanitizing
   the child process for that purpose.
+- **`t_malformed.c` was not written as a separate consolidated file.** All
+  35 numbered cases from `03-TESTPLAN.md §5.6` already live as individual,
+  named tests across `t_dynamic.c`, `t_verneed.c` and `t_symbols.c`
+  (written during Task 6, before Task 10 existed) — each with a comment
+  explaining what it exercises and why, which a single enumerated corpus
+  file would have had to reconstruct anyway. Duplicating them into a
+  second file would drift from the originals rather than protect anything
+  further; the fuzzer (`tests/fuzz.c`) is where new coverage of this kind
+  now belongs, per its own gate ("every crash becomes a permanent
+  regression test").
+- **`tests/fuzz.c`'s corpus is not literally "every preset × {32,64} ×
+  {LE,BE}"** as `03-TESTPLAN.md §6` describes, because `mkelf`'s preset
+  functions (`eg_preset_hybrid_ok` etc.) are not class/endian-parameterised
+  — extending them to be would be a `tests/mkelf.c` change, out of this
+  task's scope. The corpus instead combines the five presets as-is with
+  four manually built ELF32/64 × LE/BE variants covering the same
+  structural shape (`DT_NEEDED`, `DT_VERNEED` with two versions, one
+  versioned dynsym entry, both hash styles, RELRO, `DF_1_NOW|DF_1_PIE`,
+  `PT_GNU_STACK`). Nine seed entries total; every mutation still explores
+  all four class/endian combinations because they're present in the seed
+  corpus, just not crossed with every preset individually.

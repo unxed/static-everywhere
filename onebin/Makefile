@@ -63,7 +63,15 @@ test-ubsan:
 	fi
 
 fuzz:
-	@echo "Fuzzer target: $(FUZZ_ITERS) iterations (fuzzer module in progress)"
+	@mkdir -p build
+	@if $(CC) -fsanitize=address,undefined -E - < /dev/null >/dev/null 2>&1; then \
+		$(CC) $(CFLAGS) -fsanitize=address,undefined -fno-omit-frame-pointer $(INCLUDES) -Itests tests/fuzz.c tests/mkelf.c $(LIB_SRC) -o build/fuzz && \
+		./build/fuzz --iters $(FUZZ_ITERS); \
+	else \
+		$(CC) $(CFLAGS) $(INCLUDES) -Itests tests/fuzz.c tests/mkelf.c $(LIB_SRC) -o build/fuzz && \
+		echo "NOTE: building without ASan/UBSan ($(CC) does not support it)" && \
+		./build/fuzz --iters $(FUZZ_ITERS); \
+	fi
 
 coverage:
 	@mkdir -p build/cov
