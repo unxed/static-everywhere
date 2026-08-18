@@ -629,7 +629,7 @@ API freeze, conformance spec as a testable document, at least five real third-pa
 
 | # | Risk | Current thinking |
 |---|---|---|
-| 1 | **Profile S + `dlopen` is impossible.** Static musl has no dynamic loader. | Accept and document — but stop pretending this is a small problem. Almost every real program needs `dlopen` for something, so Profile S in practice means CLI tools and nothing else. **Amended by f4-qt** (`05-REFERENCE-f4-qt.md §7.7`): this is a fact about the C toolchain, not about static binaries. A language runtime that carries its own FFI machinery — Go with `purego`/`goffi` — produces a binary with no `PT_INTERP` and no `DT_NEEDED` that still `dlopen`s, and reaches X11 and Wayland by wire protocol with no client library at all. Writing our *own* mini-ELF-loader remains **out of scope** (TLS, IFUNC, versioned symbols, `dlclose` — multi-year, bad safety story). Carrying somebody else's, which is a different proposal entirely, is §13. |
+| 1 | **Profile S + `dlopen` is impossible.** Static musl has no dynamic loader. | Accept and document — but stop pretending this is a small problem. Almost every real program needs `dlopen` for something, so Profile S in practice means CLI tools and nothing else. **Amended by f4-qt** (`05-REFERENCE-f4-qt.md §7.7`): this is a fact about the C toolchain, not about static binaries. A language runtime that carries its own FFI machinery — Go with `purego`/`goffi` — produces a binary with no `PT_INTERP` and no `DT_NEEDED` that still `dlopen`s, and reaches X11 and Wayland by wire protocol with no client library at all. **A second, stronger counterexample**: [`pg83/solo`](https://github.com/pg83/solo) is a shipping, ~2,100-line x86-64 ELF loader plus a hand-written glibc-ABI-over-musl shim that lets a fully static musl binary `dlopen()` an unmodified, glibc-linked host `.so` (a real Mesa/Vulkan ICD) with no re-exec and no second libc — see `§13.5` below for what it costs. Writing our *own* mini-ELF-loader remains **out of scope for this project right now**, at this project's current priorities (TLS, IFUNC, versioned symbols, `dlclose` — multi-year, bad safety story). Carrying somebody else's, which is a different proposal entirely, is §13. |
 | 2 | **musl's locale and `iconv` are minimal**, and it has no NSS (no mDNS/`.local`, NIS, LDAP). | Document in the profile decision table. Offer an ICU-backed collation/conversion shim as an optional component if demand appears. |
 | 3 | **musl's default thread stack is 128 KiB** vs glibc's 8 MiB — deep-recursion code crashes mysteriously. | `ob_thread_default_stack()` helper + an audit warning when `-Wl,-z,stack-size` is unset in Profile S. |
 | 4 | **`libgcc_s` is `dlopen`'d by glibc for `pthread_cancel`/unwinding**, even with `-static-libgcc`. | Document; audit reports it as info rather than error; recommend avoiding thread cancellation. |
@@ -721,6 +721,79 @@ glibc; a musl loader cannot satisfy their versioned symbols. **Anything touching
 the GPU therefore needs D-glibc, not D-musl** — which is the same conclusion
 Steam's runtime and Nix reached, by the same route: a newer glibc hosting older
 drivers is the direction that works.
+
+> **That `no` is refuted by shipping code, found after this document was
+> written: [`pg83/solo`](https://github.com/pg83/solo) ("SoLo — a `.so`
+> loader for static Linux binaries").** It is not D-musl with a bundled
+> loader; it is a fourth approach this table did not have a column for, and
+> it is worth its own subsection because it changes the "no" above from a
+> structural limit into a solved (if narrow) engineering problem. See
+> §13.5 below.
+
+### 13.5 What SoLo actually does, and what it costs
+
+SoLo ships a fully static musl x86-64 executable — no `PT_INTERP`, no
+`DT_NEEDED`, `readelf -d` reports "There is no dynamic section" — that can
+still `dlopen()` an **unmodified, distro-installed, glibc-linked** shared
+object (their proof is a real Mesa/Vulkan ICD) and call into it correctly.
+No re-exec, no `memfd`, no second libc, no bundled `ld.so`. One process,
+one libc, the whole time.
+
+The trick is not "carry a loader that runs the host's `.so` under its own
+glibc" (D-glibc's approach, and Detour's, and Cosmopolitan's
+`cosmo_dlopen()`, and the `graphics.gd` musl+dlopen experiment — all of
+which bootstrap the host's real `ld-linux`/glibc alongside the static
+binary's own libc, meaning **two coexisting libc runtimes**, with the
+TLS-switching-at-every-call-boundary cost and callback-safety hazards that
+implies). SoLo instead:
+
+1. **Writes its own ELF loader** (`lib/elf_loader.cpp`, ~2,100 lines):
+   maps segments, walks `DT_NEEDED` recursively, resolves versioned
+   symbols, applies x86-64 relocations, supports ELF TLS *and* TLSDESC,
+   materializes IFUNCs, applies RELRO, runs initializers. This is close to
+   the scope `DESIGN-onebin.md §11` row 1 called "multi-year" and ruled
+   out — real, shipping, and roughly 2,000 lines for the x86-64 case, not
+   multiple years. The honest caveat: this is one architecture, one OS,
+   and has not been through the years of hostile-input hardening a real
+   `ld.so` has. "A thousand lines" (this document's own §1.12 estimate,
+   elsewhere) was optimistic; **~2,000 for a single architecture** is the
+   corrected number, now that one exists to count.
+2. **Never loads glibc.** Instead, `lib/glibc_shim.cpp` (~4,300 lines — the
+   actual bulk of the effort, not the ELF loader) implements ABI-correct
+   adapters for glibc imports like `malloc@GLIBC_2.2.5` *on top of the
+   process's own musl runtime*. One versioned symbol at a time, by hand.
+   Anything not yet implemented gets a **generated stub that names itself
+   and aborts loudly** rather than silently corrupting the process — the
+   same "fail loud, never guess" discipline this project tries to apply to
+   audit findings, independently arrived at for a much harder problem.
+3. **Lets the static binary satisfy some of the host `.so`'s own imports**
+   via a "static provider registry" — e.g. give the host's `libwayland`
+   dependency the Wayland symbols already linked into your executable,
+   instead of requiring the host to have a compatible `libwayland.so` at
+   all.
+
+### Why this matters for D-musl specifically
+
+If SoLo's approach generalizes past "Mesa/Vulkan ICD closures on x86-64"
+(their own stated scope — see their README's "Scope" section, which is
+appropriately modest about this), **D-musl's "no" becomes "yes, for the
+specific host-library closures someone has bothered to shim."** That is a
+narrower, harder-won "yes" than D-glibc's — every unimplemented glibc call
+is a potential hard stop, not a graceful degrade — but it is a real one,
+and it keeps D-musl's entire value proposition (~600 KB, no bundled glibc,
+no re-exec, no `/proc/self/exe` disruption, single libc, single TLS world)
+instead of trading it away for D-glibc's ~12 MB and re-exec cost.
+
+**Not a reason to build this ourselves right now.** The glibc ABI surface
+Mesa/Vulkan actually touch is a small, well-trodden path; the glibc ABI
+surface a *general* application touches is not, and `glibc_shim.cpp`'s
+4,300 lines for "the Vulkan/Mesa closure alone" is the honest measure of
+how much work a broader net would cost. But it is a concrete, running
+existence proof against this document's own pessimism, worth revisiting
+if D-musl's narrower "yes" ever becomes load-bearing for a reference
+application here — `far2l-sdl`'s SDL2, which already `dlopen`s
+`libGL`/`libX11`/`libasound` itself, is exactly the kind of target this
+would apply to.
 
 ### What must be answered before this is more than a proposal
 

@@ -105,16 +105,88 @@ far2l is a Linux fork of FAR Manager v2 — a two-panel file manager that runs i
 
 Full detail — architecture, the complete option table, the dependency verdicts, the licence traps, and the list of things far2l has already forced us to change — is in **[04-REFERENCE-far2l.md](./04-REFERENCE-far2l.md)**.
 
+### Try it right now
+
+This is the shortest path from nothing to a real, running, statically-toolchained
+`far2l` binary, confirmed working end to end. It builds the core file manager
+(terminal UI, no third-party protocol/archive plugins yet) against a pinned
+glibc baseline via [zig](https://ziglang.org/) — Profile H, per
+[04-REFERENCE-far2l.md §6](./04-REFERENCE-far2l.md#6-target-configurations).
+
+```bash
+#!/bin/bash
+set -e
+
+# 1. this repository's onebin/ directory — an ABSOLUTE path, set once, at
+#    the top, before anything changes directory. Getting this wrong (a
+#    relative path, or a path resolved after `cd`) is the single most
+#    common way this goes sideways.
+REPO=/absolute/path/to/static-everywhere/onebin
+
+# 2. zig — the compiler this toolchain drives. Any 0.13.x build.
+ZIGDIR=/absolute/path/to/zig-linux-x86_64-0.13.0
+if [ ! -x "$ZIGDIR/zig" ]; then
+    curl -LO https://ziglang.org/download/0.13.0/zig-linux-x86_64-0.13.0.tar.xz
+    tar xf zig-linux-x86_64-0.13.0.tar.xz
+    ZIGDIR="$(pwd)/zig-linux-x86_64-0.13.0"
+fi
+export PATH="$ZIGDIR:$PATH"
+echo "using: $(which zig)"; zig version
+
+# 3. the source, pinned to a real release tag — not master, not a tarball
+git clone --depth 1 --branch v_2.8.0 https://github.com/elfmz/far2l /tmp/far2l
+
+# 4. configure and build through onebin's own toolchain file
+mkdir -p /tmp/build-tty && cd /tmp/build-tty
+cmake -S /tmp/far2l -B . \
+  -DCMAKE_TOOLCHAIN_FILE="$REPO/toolchain/onebin-linux-hybrid.cmake" \
+  -DCMAKE_BUILD_TYPE=Release -DUSEWX=no -DUSESDL=no -DPYTHON=no -DUNRAR=no -DICU_MODE=prebuilt \
+  -DNETROCKS=no -DMULTIARC=no -DCOLORER=no -DUSEUCD=no \
+  -DCMAKE_INSTALL_PREFIX=./install
+cmake --build . --parallel "$(nproc)"
+
+# 5. it runs
+./install/bin/far2l --help
+
+# 6. and it audits clean
+"$REPO/build/onebin" audit --profile hybrid --level 1 ./install/bin/far2l
+```
+
+Two things worth knowing before you run this:
+
+- **Set `REPO` and `ZIGDIR` as absolute paths at the very top of the
+  script, before any `cd`.** A relative path, or one computed with `pwd`
+  *after* changing into the build directory, is by far the most common way
+  this goes wrong — you'll get `CMAKE_C_COMPILER not set` or `zig: not
+  found on PATH` several minutes into the build instead of immediately.
+- `cmake --install` may fail partway through on far2l's own `share/far2l`
+  theme-copying rule (a real bug in far2l's `CMakeLists.txt`, unrelated to
+  this project) — harmless for this walkthrough, since `install/bin/far2l`
+  is already written by that point.
+
+This deliberately skips NetRocks/MultiArc/Colorer/UCD and their third-party
+libraries (`contrib/far2l/deps.lock`) to keep the walkthrough to one file.
+`tools/build-far2l.sh` below builds the full four-configuration matrix,
+those included, once you have `--deps-prefix` populated.
+
 ### The four configurations
 
 | Name | Profile | Target level | What it demonstrates |
 |---|---|---|---|
-| `far2l-tiny` | S | 1 | Terminal-only, no plugins. One musl static-PIE file, runs on `FROM scratch`. The thing you scp onto a 2014 server. |
+| `far2l-tiny` | S | 1 | Terminal-only, no plugins. One musl static-PIE file, runs on `FROM scratch`. The thing you scp onto a 2014 server. **Not currently achievable — see the note below.** |
 | `far2l-tty` | H | 1 | Full plugin set as `$ORIGIN`-relative modules, X11 clipboard through a helper process. |
 | `far2l-sdl` | H | 1 | **The headline.** A graphical file manager with no toolkit on the target: SDL `dlopen`s X11/Wayland/GL itself, FreeType and HarfBuzz are static, and fontconfig reads the *host's* fonts so the text looks native. |
 | `far2l-wx` | H | 0 only | Built to fail, on purpose. GTK arrives through wxWidgets and cannot be bundled. We publish its `DT_NEEDED` list instead of asserting that GTK is a problem. |
 
-### Building it
+> **`far2l-tiny` (Profile S) is confirmed broken, not just difficult**:
+> `utils/src/InstallPath.cpp` calls `dlsym(RTLD_DEFAULT, ...)` in core code
+> with no NULL check, which segfaults at startup once there is no dynamic
+> symbol table to resolve it from. Do not re-attempt it expecting a quick
+> fix — full details in
+> [04-REFERENCE-far2l.md §2.5](./04-REFERENCE-far2l.md#25-what-far2l-actually-is--read-this-before-designing-anything-for-it).
+> `far2l-tty`/`far2l-sdl` (Profile H) are the real, working targets.
+
+### Building the full matrix
 
 ```bash
 # 1. the latest stable far2l — releases are tagged v_X.Y.Z, master is unstable
@@ -133,9 +205,7 @@ git clone --depth 1 --branch "$TAG" https://github.com/elfmz/far2l far2l-src
 
 Clone the **tag**, not a commit and not a tarball: far2l's CMake runs `git describe --tag` and appends a date and hash to its version string when it doesn't land exactly on a release, which makes the build non-reproducible.
 
-`build-far2l.sh` is a thin wrapper: it reads pinned dependency versions from `contrib/far2l/deps.lock`, builds the static third-party libraries, configures far2l with `onebin`'s CMake toolchain file, and audits every artifact it produced. `--print-plan` prints every command it would run without running any of them; `--no-fetch` makes network access a hard error.
-
-> **Status.** `tools/audit.sh` works today. `tools/build-far2l.sh`, the toolchain files and `contrib/far2l/` are specified in [04-REFERENCE-far2l.md §10](./04-REFERENCE-far2l.md#10-toolsbuild-far2lsh--required-interface) and [00-AGENT-TASK.md](./00-AGENT-TASK.md), and are not written yet. Until they are, the manual `cmake` invocations in [04-REFERENCE-far2l.md §6](./04-REFERENCE-far2l.md#6-target-configurations) are what a person would type by hand.
+`build-far2l.sh` is a thin wrapper: it reads pinned dependency versions from `contrib/far2l/deps.lock`, expects the static third-party libraries already built under `--deps-prefix`, configures far2l with `onebin`'s CMake toolchain file, and audits every artifact it produced. `--print-plan` prints every command it would run without running any of them; `--no-fetch` (the default) makes network access a hard error.
 
 ## The Qt reference application: f4-qt
 
