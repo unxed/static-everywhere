@@ -213,3 +213,32 @@
   reintroduce the false positive `03-TESTPLAN.md §4.3 #1` explicitly
   guards against). One documented exception, not a loophole — every other
   ID in the registry is a hard requirement.
+- **Task 12's self-audit can never come back clean, and that is expected,
+  not a bug.** `onebin`'s own source code contains, as literal detection
+  needles, several of the exact strings its own checks look for:
+  `c_profile.c`'s dlopen/NSS evidence scan matches `"dlopen"`,
+  `"/etc/nsswitch.conf"` and `"libnss_"` verbatim (they have to be — that's
+  how string matching works), and `c_needed.c`/`c_host.c`'s known-library
+  tables contain the literal sonames `"libgcc_s.so.1"` and
+  `"libstdc++.so.6"`. Compiled into `onebin`'s own `.rodata`, these are
+  byte-for-byte indistinguishable from genuine evidence of the things they
+  detect, because the audited binary *is* the tool that contains the
+  needles. `tools/selftest.sh` runs the real audit, prints the real
+  (non-clean) result, and then prints this explanation — deliberately not
+  faking a clean PASS and not special-casing `onebin`'s own build to dodge
+  its own checks, since that would mean carving an exception into the
+  exact machinery this project exists to keep honest. This is a structural
+  property of any string-matching self-scanner; it says nothing about
+  whether the *linking* is clean (it is — `musl-gcc -static-pie` produces
+  a fully static binary with no `DT_NEEDED`, no `PT_INTERP`, RELRO and
+  `BIND_NOW` both set).
+- **`tools/selftest.sh` prefers `musl-gcc -static-pie` over glibc's
+  `-static-pie`**, installing/detecting it via `command -v musl-gcc`, with
+  a `cc -static-pie` fallback and a clearly-worded `SKIP` if neither links.
+  A quick comparison during development: `cc -static-pie` against glibc
+  additionally flags 3 more `OB0061` (host-toolchain path) findings than
+  musl does — glibc's static iconv/gconv machinery embeds its own module
+  paths (`/usr/lib/x86_64-linux-gnu/gconv/...`) directly into the binary,
+  which musl simply doesn't have. A small, concrete illustration of
+  `STATIC-EVERYWHERE.md`'s musl-vs-glibc argument, observed on this
+  project's own tool rather than argued in the abstract.

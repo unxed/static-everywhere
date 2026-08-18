@@ -86,9 +86,8 @@ coverage:
 golden:
 	@echo "Regenerating golden files (none yet)"
 
-selftest: all
-	@echo "Running selftest on build/onebin..."
-	./build/onebin --version
+selftest:
+	@tools/selftest.sh
 
 lint:
 	@echo "Lint target (source lint tests in progress)"

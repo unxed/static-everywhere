@@ -30,11 +30,9 @@ Roadmap in [DESIGN-onebin.md §10](./DESIGN-onebin.md). Task list in
 | 9 | the CLI | done |
 | 10 | malformed corpus and fuzzer | done |
 | 11 | coverage and lint test | done |
-| 12 | self-audit and documentation | **next** |
-| 11 | coverage and lint test | not started |
-| 12 | self-audit and documentation | not started |
+| 12 | self-audit and documentation | done |
 | 13 | `tools/audit.sh` learns about modules | done |
-| 14 | CMake toolchain files + `zig-*` wrappers | not started |
+| 14 | CMake toolchain files + `zig-*` wrappers | **next** |
 | 15 | `tools/build-far2l.sh` + `contrib/far2l/deps.lock` | not started |
 | 16 | `contrib/far2l/UPSTREAM.md` | not started |
 | 17 | `tools/build-f4-qt.sh` + `contrib/f4-qt/deps.lock` | not started |
@@ -163,19 +161,43 @@ binary, so ASan/UBSan see everything.
 iterations each at four other seeds, all completed with **zero crashes,
 zero timeouts, and zero sanitizer reports**.
 
-Task 11's coverage half is done; `t_lint.c` (the architecture-rule checks)
-is not started yet. `make coverage` found and fixed a real bug on its
-first real run: the test harness forks a child per test for crash
-isolation, and every child terminates via `_exit()`, which bypasses gcov's
-atexit-based flush — so every test was reporting 0% coverage despite
-passing. Fixed with an explicit `__gcov_dump()` before each `_exit()`,
-guarded so the symbol never appears in non-instrumented builds. `make
-coverage` now runs `tools/coverage-gate.sh`, which aggregates line/branch
-percentages across every `src/` file and **exits non-zero below
-threshold**. Current result: **91.17% line / 95.51% branch** coverage
-(gate: 90%/85%), with `util/buf.c` and `util/ver.c` both at 100% as
-required. One test (`symbols_count_via_section_headers`) is a known,
-commented `SKIP()` rather than a rushed fix — see `onebin/NOTES.md`.
+Task 11 is complete: both coverage and lint. `make coverage` found and
+fixed a real bug on its first real run: the test harness forks a child
+per test for crash isolation, and every child terminates via `_exit()`,
+which bypasses gcov's atexit-based flush — so every test was reporting 0%
+coverage despite passing. Fixed with an explicit `__gcov_dump()` before
+each `_exit()`, guarded so the symbol never appears in non-instrumented
+builds. `make coverage` now runs `tools/coverage-gate.sh`, which
+aggregates line/branch percentages across every `src/` file and **exits
+non-zero below threshold**. Current result: **90.89% line / 95.28%
+branch** coverage (gate: 90%/85%), with `util/buf.c` and `util/ver.c`
+both at 100% as required. One test (`symbols_count_via_section_headers`)
+is a known, commented `SKIP()` rather than a rushed fix — see
+`onebin/NOTES.md`.
+
+`tests/t_lint.c` implements all ten architecture rules from
+`03-TESTPLAN.md §5.7` and found four real issues on its first run: raw
+buffer indexing in `elf/strings.c` (fixed to go through `ob_rd8`), a
+`strcat()` call in `util/str.c` (rule 5 bans the function outright —
+replaced with a bounds-checked `memcpy`), two unchecked `malloc()` calls
+in `src/main.c` (fixed), and two finding IDs (`OB0004`, `OB0005`)
+declared in the spec's registry but never emitted anywhere — both are now
+implemented for real in `audit/audit.c` rather than exempted. `OB0035`
+remains the one deliberate, allowlisted exception (see `onebin/NOTES.md`).
+
+Task 12 is also complete: `onebin/README.md` and `tools/selftest.sh`.
+`make selftest` builds `onebin` itself with Profile S flags (`musl-gcc
+-static-pie`, falling back to `cc -static-pie` against glibc, or a
+clearly-worded `SKIP` if neither links) and audits the result. The report
+is genuinely not a clean PASS — `onebin`'s own source contains, as literal
+detection needles, several of the exact strings its own checks look for
+(`"dlopen"`, `"/etc/nsswitch.conf"`, `"libnss_"`, `"libgcc_s.so.1"`,
+`"libstdc++.so.6"`), so the audited binary necessarily contains them too.
+`selftest.sh` prints the real result and then explains why, rather than
+faking a clean pass or special-casing its own build — see
+`onebin/NOTES.md` for the full writeup, including a small concrete
+musl-vs-glibc comparison found along the way (glibc's static iconv/gconv
+machinery embeds extra host-toolchain paths musl doesn't have).
 
 ## Open design questions
 
