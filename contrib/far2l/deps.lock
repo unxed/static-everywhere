@@ -72,3 +72,20 @@ xz 5.8.3 3d3a1b973af218114f4f889bbaa2f4c037deaae0c8e815eec381c3d546b974a0 https:
 # hybrid --level 1 --strict` with 0 findings (`needed: libc.so.6
 # libpthread.so.0`).
 libarchive 3.8.9 f5a6539059cf5e597dbeda37bfa4874b1e8dea063c8d93bf85a2b44af90a5bd4 https://github.com/libarchive/libarchive/releases/download/v3.8.9/libarchive-3.8.9.tar.gz
+
+# --- graphics (GUI|SDL) --------------------------------------------------
+# FreeType: text rasterisation. Verified: configured with
+# -DBUILD_SHARED_LIBS=OFF, HarfBuzz/PNG/Brotli/BZip2 support disabled for
+# this first pass (HarfBuzz is next in this file and depends on FreeType,
+# so FreeType is built once now without it and will be rebuilt with it
+# enabled once HarfBuzz itself is pinned and built — the standard way out
+# of their circular dependency; PNG/Brotli/BZip2 support are for embedded
+# colour bitmaps / WOFF2 / bzip2-compressed PCF fonts respectively, none
+# of which far2l-sdl needs), pointed at this file's own zlib build via
+# explicit *_INCLUDE_DIR/*_LIBRARY cache variables. A smoketest linked
+# against the resulting libfreetype.a loaded a real host font
+# (/usr/share/fonts/truetype/dejavu/DejaVuSerif-Bold.ttf — proving Layer
+# 2 works, not just Layer 1 code) and rasterised a glyph, then passed
+# `onebin audit --profile hybrid --level 1 --strict` with 0 findings
+# (`needed: libc.so.6 libpthread.so.0`).
+freetype 2.14.3 e61b31ab26358b946e767ed7eb7f4bb2e507da1cfefeb7a8861ace7fd5c899a1 https://download.savannah.gnu.org/releases/freetype/freetype-2.14.3.tar.gz

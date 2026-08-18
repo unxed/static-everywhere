@@ -1,5 +1,28 @@
 # STATUS
 
+## Graphics group (step 3 of 4) started: FreeType builds and rasterises a real host font
+
+`freetype 2.14.3` pinned in `contrib/far2l/deps.lock`, static, ZLIB
+enabled (using this project's own pinned build), HarfBuzz/PNG/Brotli/
+BZip2 support disabled for this first pass — HarfBuzz is next and
+depends on FreeType, so the standard way through their circular
+dependency is: build FreeType without HarfBuzz first, build HarfBuzz
+against that, then rebuild FreeType a second time with HarfBuzz enabled.
+PNG/Brotli/BZip2 support (embedded colour bitmaps / WOFF2 / bzip2-
+compressed PCF fonts) aren't needed by `far2l-sdl`.
+
+Verified with something stronger than a synthetic round-trip: a
+smoketest linked against the resulting `libfreetype.a` opened a real
+host font — `/usr/share/fonts/truetype/dejavu/DejaVuSerif-Bold.ttf`,
+found 3506 glyphs, rasterised glyph `'A'` to a 20×18 bitmap. This is
+Layer 2 (`04-REFERENCE-far2l.md §3.5`/§7.7's "fontconfig reads the
+*host's* fonts" point) actually exercised, not just Layer 1 code
+compiling. `onebin audit --profile hybrid --level 1 --strict`: `needed:
+libc.so.6 libpthread.so.0`, 0 errors.
+
+Next: `HarfBuzz` (against this FreeType build), then a FreeType rebuild
+with `-DFT_DISABLE_HARFBUZZ=OFF`, then `Fontconfig`, then `SDL2`.
+
 ## Archives group (step 1 of 4) complete: libarchive builds and round-trips tar.gz/tar.bz2/tar.xz/zip against our own pinned zlib/bzip2/xz
 
 `libarchive 3.8.9` pinned in `contrib/far2l/deps.lock`, configured with
@@ -48,7 +71,7 @@ decided, not tentative:
    `NetRocks-SHELL` alone — there is no network gap to route around.
    Full detail and both builds' audit results: `04-REFERENCE-far2l.md
    §6.2.1`.
-3. **graphics** (`FreeType` → `HarfBuzz` → `Fontconfig` → `SDL2`): no
+3. **graphics** (`FreeType` ✅ (pass 1, no HarfBuzz yet) → `HarfBuzz` → `Fontconfig` → `SDL2`): no
    crypto/licence entanglement, and `far2l-sdl` is explicitly "the point
    of the exercise" per the top-level README.
 4. **network, the hard remainder** (`libssh` + a GPL-compatible crypto
