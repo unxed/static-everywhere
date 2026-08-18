@@ -1,38 +1,76 @@
 # STATUS
 
-## `contrib/far2l/deps.lock` started; toolchain finding: `-s` is required to actually reach a clean Level 1 pass, `-ffile-prefix-map` alone is not
+## Task 15 order, confirmed: archives (1) → network/FISH (2, already free) → graphics (3) → network/libssh-crypto (4)
 
-[Task 15](#tasks) begins here. Scope for this pass: network, archives and
-graphics — i.e. the third-party libraries `-DNETROCKS`, `-DMULTIARC` and
-`-DUSESDL` pull in, per `04-REFERENCE-far2l.md §5`. **Small atomic steps,
-one pinned+built+audited library per step, in dependency order** — not
-one giant deps.lock written from memory and hoped to compile. Planned
-order and why:
+[Task 15](#tasks) begins here. Scope: network, archives and graphics — the
+third-party libraries `-DNETROCKS`, `-DMULTIARC` and `-DUSESDL` pull in,
+per `04-REFERENCE-far2l.md §5`. **Small atomic steps, one pinned+built+
+audited library per step** — not one giant deps.lock written from memory
+and hoped to compile.
 
-1. **archives first** (`zlib` → `bzip2`/`xz` → `libarchive`): fewest
-   licence traps, and `zlib` is a transitive dependency of nearly
-   everything below it anyway (OpenSSL, libssh's compression, FreeType's
-   embedded-bitmap paths), so it is pinned before any grouping by feature.
-2. **graphics second** (`FreeType` → `HarfBuzz` → `Fontconfig` → `SDL2`):
-   no crypto/licence entanglement, and `far2l-sdl` is explicitly "the
-   point of the exercise" per the top-level README — worth reaching
-   before network, not after.
-3. **network last** (`libssh` + a crypto backend, `libnfs`, `neon`):
-   saved for last on purpose because `04-REFERENCE-far2l.md §7.7` already
-   rules OpenSSL out for a GPLv2 static build, so this group needs a
-   licence decision (GPL-compatible TLS backend, or ship NetRocks without
-   TLS-dependent protocols) before any line goes in deps.lock — that
-   decision should not block archives or graphics, which have no such
-   snag.
+The order below was revised once already this pass and the revision was
+confirmed by the person driving this project, so it now stands as
+decided, not tentative:
 
-**Verified this pass, for real, not simulated:** `zlib 1.3.2` downloaded
-from its GitHub release asset, hash computed locally (not copied from a
-webpage) and recorded in the new `contrib/far2l/deps.lock`, built as a
-static `.a` via `onebin-linux-hybrid.cmake` with real `zig 0.13.0`. A
-smoketest executable linked against that `.a` was audited with the real
-`onebin` binary (built from this repo's own `onebin/` sources, not a
-stub): `onebin audit --profile hybrid --level 1 --strict` — **PASS, 0
-errors, 0 warnings, 0 infos**, `needed: libc.so.6` only.
+1. **archives** (`zlib` ✅ → `bzip2` ✅ → `xz` ✅ → `libarchive` next):
+   fewest licence traps, and `zlib` is a transitive dependency of nearly
+   everything below it anyway, so it is pinned first regardless of
+   grouping.
+2. **network, and it turns out this needs nothing from deps.lock at
+   all.** far2l already ships `NetRocks-SHELL` (classic FISH — shells out
+   to the host's `ssh`, needs zero third-party libraries) today, at the
+   pinned `v_2.8.0` tag. A newer, faster evolution, `NetRocks-FISHPLUS`
+   (designed in `unxed/f4`, also zero third-party libraries), exists on
+   `master` and is confirmed, by the person driving this project, to be
+   close to landing in the next tagged release — at which point it
+   becomes part of the `far2l-tty`/`far2l-sdl` Level-1 targets with no
+   further work here. **No upstream proposal needed; nothing to do but
+   wait for the tag and re-point the pin.** Until then, `far2l-tty`
+   ships real, working, doctrine-clean network access via
+   `NetRocks-SHELL` alone — there is no network gap to route around.
+   Full detail and both builds' audit results: `04-REFERENCE-far2l.md
+   §6.2.1`.
+3. **graphics** (`FreeType` → `HarfBuzz` → `Fontconfig` → `SDL2`): no
+   crypto/licence entanglement, and `far2l-sdl` is explicitly "the point
+   of the exercise" per the top-level README.
+4. **network, the hard remainder** (`libssh` + a GPL-compatible crypto
+   backend for SFTP/SCP; `libnfs`; `neon` for WebDAV): still last,
+   because `04-REFERENCE-far2l.md §7.7` rules OpenSSL out for a GPLv2
+   static build and this group needs that licence decision (GnuTLS as
+   libssh's backend is the leading candidate — `NetRocks-NFS`'s own
+   `CMakeLists.txt` already opportunistically links `GnuTLS` when
+   present) before any line goes in deps.lock. Step 2 already proves this
+   decision blocks nothing else.
+
+**Verified this pass, for real, not simulated — three archives-group
+libraries, each built, linked into its own smoketest, and audited with
+the real `onebin` binary (built from this repo's own `onebin/` sources):**
+
+- **`zlib 1.3.2`** — GitHub release asset, hash computed locally. Static
+  `.a` via `onebin-linux-hybrid.cmake` (real `zig 0.13.0`).
+  `onebin audit --profile hybrid --level 1 --strict`: **PASS, 0 findings**, `needed: libc.so.6` only.
+- **`bzip2 1.0.8`** — no CMake support upstream (plain Makefile only), so
+  the 7 library `.c` files were compiled directly through the `zig-cc`/`zig-ar` wrappers instead of through a toolchain-file CMake build; same
+  Profile H flags. Same clean result.
+- **`xz 5.8.3`** (liblzma only, `-DBUILD_SHARED_LIBS=OFF`, no CLI tools)
+  — hash computed locally **and cross-checked against upstream's own `doc/SHA256SUMS`**, not just one mirror: this dependency shipped a real
+  supply-chain backdoor in versions 5.6.0/5.6.1 (CVE-2024-3094), so
+  `deps.lock`'s comment for this line says so, permanently, for whoever
+  edits it next. Same clean result.
+
+**Also verified this pass:** `NetRocks-SHELL` (from the `v_2.8.0` pin) and
+`NetRocks-FISHPLUS` (from `far2l` `master` pinned at `607459dedacc26c4b4ea981531f16bd281c9a21b`, 2026-08-18) both build clean with
+`onebin-linux-hybrid.cmake` and both audit as `needed: libc.so.6
+libdl.so.2 libpthread.so.0`, 0 errors — see item 2 above and `04-REFERENCE-far2l.md §6.2.1` for the full writeup, including a minor `onebin` false-positive found along the way (`OB0060` flags far2l's genuine
+`/var/tmp` runtime-fallback string in `utils/src/InMy.cpp` as if it were a
+leaked build path).
+
+**Not yet done:** `libarchive` itself (needs zlib+bzip2+xz as inputs, all
+three now ready), and `tools/build-far2l.sh` — still just the `04-REFERENCE-far2l.md §10` contract, no script exists, so nothing has
+consumed `deps.lock` yet; every build this pass used ad-hoc CMake/manual
+invocations to keep each step independently verifiable. Next atomic step:
+`libarchive`, configured down to the formats MULTIARC actually needs,
+against the three libraries above.
 
 **Toolchain finding, and a correction to this file's own prior entries:**
 getting that clean pass required patching `onebin-linux-hybrid.cmake` to

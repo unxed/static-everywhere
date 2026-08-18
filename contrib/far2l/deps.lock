@@ -31,3 +31,28 @@
 # and a smoketest program linked against it passes
 # `onebin audit --profile hybrid --level 1 --strict` with 0 findings.
 zlib 1.3.2 bb329a0a2cd0274d05519d61c667c062e06990d72e125ee2dfa8de64f0119d16 https://github.com/madler/zlib/releases/download/v1.3.2/zlib-1.3.2.tar.gz
+
+# bzip2 has no CMakeLists.txt of its own (plain Makefile only) and its
+# library sources have no external dependencies, so no CMake toolchain
+# integration was needed to prove this one — the 7 library .c files
+# (blocksort/huffman/crctable/randtable/compress/decompress/bzlib; not
+# bzip2.c/bzip2recover.c, which are the CLI tools MULTIARC doesn't need)
+# were compiled directly with the zig-cc wrapper and archived with
+# zig-ar. Verified: a smoketest linked against the resulting libbz2.a
+# passes `onebin audit --profile hybrid --level 1 --strict` with 0
+# findings (`needed: libc.so.6` only).
+bzip2 1.0.8 ab5a03176ee106d3f0fa90e381da478ddae405918153cca248e682cd0c4a2269 https://sourceware.org/pub/bzip2/bzip2-1.0.8.tar.gz
+
+# xz/liblzma. NOTE FOR WHOEVER TOUCHES THIS LINE NEXT: XZ Utils 5.6.0 and
+# 5.6.1 shipped a deliberate supply-chain backdoor (CVE-2024-3094) hidden
+# in the release tarballs' build machinery. Never trust a copied hash for
+# this dependency — always download and hash it yourself, and cross-check
+# against upstream's own doc/SHA256SUMS
+# (https://raw.githubusercontent.com/tukaani-project/xz/refs/heads/master/doc/SHA256SUMS)
+# before pinning a new version, not just against a single mirror. Done
+# for this line: both matched. Built via CMake
+# (-DBUILD_SHARED_LIBS=OFF -DXZ_TOOL_XZ=OFF and friends — library only,
+# no CLI tools) with onebin-linux-hybrid.cmake. Verified: a smoketest
+# linked against the resulting liblzma.a passes `onebin audit --profile
+# hybrid --level 1 --strict` with 0 findings (`needed: libc.so.6` only).
+xz 5.8.3 3d3a1b973af218114f4f889bbaa2f4c037deaae0c8e815eec381c3d546b974a0 https://github.com/tukaani-project/xz/releases/download/v5.8.3/xz-5.8.3.tar.gz
