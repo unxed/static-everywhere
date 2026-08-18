@@ -1,7 +1,7 @@
 git -C ./far2l-src describe --tags --exact-match
 test -n "${DEPS_PREFIX:?--deps-prefix is required for --config tty}"
 mkdir -p ./out/far2l-tty
-cmake -S ./far2l-src -B ./out/far2l-tty/_build -DCMAKE_TOOLCHAIN_FILE=<repo>/onebin/toolchain/onebin-linux-hybrid.cmake -DCMAKE_BUILD_TYPE=Release -DUSEWX=no -DUSESDL=no -DPYTHON=no -DUNRAR=no -DICU_MODE=prebuilt -DNR_OPENSSL=no -DNR_AWS=no  -DCMAKE_INSTALL_PREFIX=./out/far2l-tty/install
+cmake -S ./far2l-src -B ./out/far2l-tty/_build -DCMAKE_TOOLCHAIN_FILE=<repo>/onebin/toolchain/onebin-linux-hybrid.cmake -DCMAKE_BUILD_TYPE=Release -DUSEWX=no -DUSESDL=no -DPYTHON=no -DUNRAR=no -DICU_MODE=prebuilt -DNR_OPENSSL=no -DNR_AWS=no -DCMAKE_DISABLE_FIND_PACKAGE_OpenSSL=TRUE  -DCMAKE_INSTALL_PREFIX=./out/far2l-tty/install
 cmake --build ./out/far2l-tty/_build --parallel 4
 cmake --install ./out/far2l-tty/_build
 <repo>/onebin/build/onebin audit --profile hybrid --level 1 --strict ./out/far2l-tty/install/bin/far2l

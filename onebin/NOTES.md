@@ -286,9 +286,9 @@
   `if` condition is specifically exempt from `errexit`. Found while wiring
   `make far2l-plan`'s "`--no-fetch` with a missing source tree exits
   non-zero" check.
-  - **NetRocks OpenSSL components disabled in reference builds**: OpenSSL 3.x
-    (Apache-2.0) has licence incompatibility with GPLv2 when statically linked.
-    `tools/build-far2l.sh` explicitly passes `-DNR_OPENSSL=no -DNR_AWS=no` for
-    hybrid builds (`tty`, `sdl`, `wx`) and removes OpenSSL from `deps_for_config`
-    and `deps.lock`. Network connectivity remains fully operational via
-    `NetRocks-SHELL` / `NetRocks-FISHPLUS`.
+  - **OpenSSL disabled via CMake flags in far2l recipe**: OpenSSL 3.x (Apache-2.0)
+    has licence incompatibility with GPLv2 when statically linked. Upstream
+    far2l NetRocks auto-enables OpenSSL for FTPS and AWS S3 if `find_package(OpenSSL)`
+    succeeds. The build recipe explicitly sets `-DCMAKE_DISABLE_FIND_PACKAGE_OpenSSL=TRUE`
+    and `-DNR_OPENSSL=no -DNR_AWS=no`, disabling OpenSSL cleanly without
+    requiring any patches to far2l source code.

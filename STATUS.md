@@ -77,10 +77,10 @@ decided, not tentative:
 4. **network, the hard remainder** (`libssh` + a GPL-compatible crypto
    backend for SFTP/SCP; `libnfs`; `neon` for WebDAV): OpenSSL-dependent
    protocols in NetRocks (FTPS, AWS S3) are explicitly disabled in the
-   build plan via `-DNR_OPENSSL=no -DNR_AWS=no`, and OpenSSL is removed
-   from deps.lock to respect GPLv2 licence compatibility. Remote server
-   access is provided license-cleanly by `NetRocks-SHELL` / `NetRocks-FISHPLUS`.
-   GnuTLS integration for SFTP/SCP will be addressed separately.
+   build recipe via `-DNR_OPENSSL=no -DNR_AWS=no -DCMAKE_DISABLE_FIND_PACKAGE_OpenSSL=TRUE`,
+   avoiding GPLv2/Apache-2.0 licence incompatibility and completely preventing
+   CMake from discovering host OpenSSL headers. Remote server access is provided
+   licence-cleanly by `NetRocks-SHELL` / `NetRocks-FISHPLUS`.
 
 **Verified this pass, for real, not simulated — three archives-group
 libraries, each built, linked into its own smoketest, and audited with

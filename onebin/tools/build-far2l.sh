@@ -129,21 +129,21 @@ cmake_config_args() {
                 "-DCMAKE_TOOLCHAIN_FILE=${TOOLCHAIN_DIR}/onebin-linux-hybrid.cmake" \
                 "-DCMAKE_BUILD_TYPE=Release" \
                 "-DUSEWX=no" "-DUSESDL=no" "-DPYTHON=no" "-DUNRAR=no" "-DICU_MODE=prebuilt" \
-                "-DNR_OPENSSL=no" "-DNR_AWS=no"
+                "-DNR_OPENSSL=no" "-DNR_AWS=no" "-DCMAKE_DISABLE_FIND_PACKAGE_OpenSSL=TRUE"
             ;;
         sdl)
             printf '%s\n' \
                 "-DCMAKE_TOOLCHAIN_FILE=${TOOLCHAIN_DIR}/onebin-linux-hybrid.cmake" \
                 "-DCMAKE_BUILD_TYPE=Release" \
                 "-DUSEWX=no" "-DUSESDL=YES" "-DPYTHON=no" "-DUNRAR=no" "-DICU_MODE=prebuilt" \
-                "-DNR_OPENSSL=no" "-DNR_AWS=no"
+                "-DNR_OPENSSL=no" "-DNR_AWS=no" "-DCMAKE_DISABLE_FIND_PACKAGE_OpenSSL=TRUE"
             ;;
         wx)
             printf '%s\n' \
                 "-DCMAKE_TOOLCHAIN_FILE=${TOOLCHAIN_DIR}/onebin-linux-hybrid.cmake" \
                 "-DCMAKE_BUILD_TYPE=Release" \
                 "-DUSEWX=yes" "-DUSESDL=no" \
-                "-DNR_OPENSSL=no" "-DNR_AWS=no"
+                "-DNR_OPENSSL=no" "-DNR_AWS=no" "-DCMAKE_DISABLE_FIND_PACKAGE_OpenSSL=TRUE"
             ;;
     esac
 }
