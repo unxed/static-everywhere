@@ -59,14 +59,23 @@ set(_onebin_link_flags
 )
 
 # The linker flags above are not enough on their own: CMake's own
-# find_library()/find_path() (which find_package(X11) and friends use at
-# *configure* time, before any compiler flag is involved) search
-# CMAKE_LIBRARY_PATH/CMAKE_INCLUDE_PATH, a completely separate mechanism.
-# Without these, find_package(X11) fails outright rather than merely
-# linking incorrectly.
+# find_library() (which find_package(X11) and friends use at *configure*
+# time, before any compiler flag is involved) searches CMAKE_LIBRARY_PATH,
+# a mechanism entirely separate from linker -L flags. Without this,
+# find_package() fails outright rather than merely linking incorrectly.
+#
+# Deliberately NOT also adding CMAKE_INCLUDE_PATH here: doing so widens
+# every C++ translation unit's header search order, not just the ones that
+# actually need a host header, and that breaks zig's bundled libc++ ("tried
+# including <errno.h> but didn't find libc++'s <errno.h> header") for any
+# file that pulls in both a host header and libc++ — found while building
+# far2l's TTYX broker. A target that genuinely needs a host include
+# directory should add it itself (target_include_directories), which
+# find_package(X11) already does when it succeeds via CMAKE_LIBRARY_PATH
+# alone; this stays narrow rather than fixing one target by breaking
+# others.
 list(APPEND CMAKE_LIBRARY_PATH
     "/usr/lib/${CMAKE_HOST_SYSTEM_PROCESSOR}-linux-gnu" "/usr/lib" "/lib/${CMAKE_HOST_SYSTEM_PROCESSOR}-linux-gnu")
-list(APPEND CMAKE_INCLUDE_PATH "/usr/include")
 if(ONEBIN_EXPORT_DYNAMIC)
     list(APPEND _onebin_link_flags "-Wl,--export-dynamic")
 else()

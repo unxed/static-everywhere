@@ -19,21 +19,38 @@ actual link step, and `list(APPEND CMAKE_LIBRARY_PATH/CMAKE_INCLUDE_PATH
 ...)` for `find_package()` to succeed at all. Without this, Profile H
 cannot find *any* host library, which defeats the profile's entire point.
 
-**Found, not yet fixed:** with that in place, `find_package(X11)` now
-succeeds, but compiling any C++ translation unit that pulls in both an
-X11 header (via the include path `find_package(X11)` adds) and libc++
-(zig's bundled one) fails: `<cerrno> tried including <errno.h> but didn't
-find libc++'s <errno.h> header... your header search paths are not
-configured properly`. Adding the host's `/usr/include` to
-`CMAKE_INCLUDE_PATH` globally, needed for `find_path()` to locate X11
-headers at all, apparently lets it leak into this target's *compile*
-include order ahead of zig's own libc++ shims for at least one C++ file
-(`TTYX.cpp`). C-only files, and the plain `far2l-tty` binary without
-`TTYX`, are unaffected — this is specifically a C++-plus-host-headers
-interaction. Not solved this session; needs either a more targeted include
-path (per-target rather than global `CMAKE_INCLUDE_PATH`) or investigating
-whether `-isystem` ordering can be forced. Left as a known gap rather than
-a rushed, unverified fix.
+**Found, not yet fixed — and the mechanism is narrower and harder than
+first thought.** `find_package(X11)` succeeds via `CMAKE_LIBRARY_PATH`
+alone (confirmed: `-- Found X11: /usr/include`), so the fix above is
+correct and sufficient for library *discovery*. But compiling the one C++
+file that actually uses X11 (`WinPort/src/Backend/TTY/TTYX/TTYX.cpp`)
+still fails the same way: `<cerrno> tried including <errno.h> but didn't
+find libc++'s <errno.h> header`.
+
+The first hypothesis — that this project's own global `CMAKE_INCLUDE_PATH`
+addition was leaking `/usr/include` into every C++ target's compile order —
+was tested and **ruled out**: removing that line entirely (it is gone from
+`onebin-linux-hybrid.cmake` now; only `CMAKE_LIBRARY_PATH` remains) did not
+change the error at all. The real cause is narrower and not ours to fix
+from the toolchain file alone: `find_package(X11)` itself adds
+`target_include_directories(far2l_ttyx PRIVATE /usr/include)` for that one
+target, because X11's headers happen to live directly in `/usr/include`
+rather than a scoped subdirectory like `/usr/include/X11` (only `X11/Xlib.h`
+etc. do — the include *root* is still the bare, shared `/usr/include`).
+Any C++ file needing X11 therefore gets the host's plain `/usr/include`
+on its search path, which is exactly what breaks zig's bundled libc++'s
+internal header shims (they expect to see their own `<errno.h>`-equivalent
+before the host's). C-only files, and `far2l-tty` without `TTYX`, are
+unaffected — confirmed both before and after this investigation.
+
+Not solved this session. Candidate directions for later, not attempted:
+forcing `-isystem` order so zig's libc++ headers always come first
+regardless of what a target adds; or building this specific target against
+libstdc++ instead of libc++ (zig supports both); or accepting that `TTYX`
+under zig+libc++ is a known limitation and building it with the plain glibc
+`gcc` instead, in the same install tree, if CMake allows a per-target
+compiler override. Left as a known, precisely diagnosed gap rather than a
+rushed fix.
 
 ## far2l-tty: built, audited, PASS Level 1, runs — first real end-to-end result
 
