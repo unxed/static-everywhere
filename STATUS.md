@@ -1,5 +1,71 @@
 # STATUS
 
+## Graphics group (step 3 of 4) continued, BLOCKED: fontconfig pinned but not yet audit-clean
+
+`expat 2.8.3` pinned and verified (builds statically, hash cross-checked
+against upstream's own release notes). `fontconfig 2.18.3` pinned and
+building against this file's freetype+harfbuzz and expat, via a new
+Meson native file (`onebin/toolchain/onebin-linux-hybrid-meson.ini` --
+fontconfig and the planned SDL2 step use Meson, not CMake). **Not
+audit-clean yet — do not mark this step done.**
+
+Also fixed this pass: `zig-cc` silenced `-E` whenever Meson's
+`compiler.preprocess()` (used for fontconfig's gperf-template
+preprocessing) appended a trailing `-c` — GCC honors `-E` regardless of
+a later `-c`, zig's bundled Clang instead honors whichever came last.
+Wrapper now strips a redundant `-c` when `-E` is present.
+
+Two real findings already fixed:
+
+1. FreeType's installed `.pc` declares a *public* `Requires: zlib`, and
+   this project's own zlib build never installed a `zlib.pc` — pkg-config
+   silently substituted the **host's** system zlib, linking a dynamic
+   `libz.so.1` (GLIBC_2.35) into an otherwise-clean binary. Ad-hoc
+   `zlib.pc` written to prove the fix; needs folding into the zlib step
+   for real once `tools/build-far2l.sh` exists.
+2. fontconfig bakes `--sysconfdir`/`--datadir`/cache-dir in at *compile*
+   time with no runtime override. Building it against this project's own
+   sandbox `--prefix` baked in *our* install path instead of the host's
+   real `/etc/fonts` — a direct violation of this project's own Layer 2
+   doctrine ("fontconfig reads the host's fonts",
+   `04-REFERENCE-far2l.md` §3.5/§7.7). Fixed with explicit
+   `--sysconfdir=/etc --datadir=/usr/share
+   -Dcache-dir=/var/cache/fontconfig`, independent of `--prefix`.
+
+One finding **not yet fixed**, blocking a clean audit: the built
+`fc-match` requires `GLIBC_2.35` (baseline target 2.28). Traced via
+`objdump -T` + `nm` across every static lib to one undefined symbol,
+`hypotf`, coming from `libharfbuzz.a`. Confusing part: the *same*
+`libharfbuzz.a`, linked alone into the harfbuzz-only smoketest from the
+entry below, binds `hypotf` at `GLIBC_2.2.5` (correct) instead — so this
+isn't simply "harfbuzz's build is wrong", something about fontconfig's
+specific link pulls in a different path to `hypotf` or resolves its
+symbol version differently. Ruled out: this project's own extra
+`-L/usr/lib/x86_64-linux-gnu` etc. flags (added to the new Meson native
+file for host dynamic libraries like X11) are **not** the cause —
+reproduced the failure with an isolated manual `zig-cc` invocation of
+the exact link command both with and without those flags, `GLIBC_2.35`
+both times. Not yet investigated: whether `--start-group`/`--end-group`
+archive-member selection differs between the two links, pulling in a
+different translation unit inside `libharfbuzz.a` that calls `hypotf`
+without the same target-version pinning as the one the smoketest pulls
+in.
+
+Also found, unrelated but real and still unresolved in any build
+script: Meson's own build-tree `RUNPATH` auto-injection embeds
+`/usr/lib` and friends into `DT_RUNPATH` with **no explicit `-rpath`
+flag anywhere in the link command** — it's a post-link ELF patch, not a
+linker flag, so it can't be suppressed from the native file the way the
+CMake toolchain file's flags work. Worked around for testing with
+`patchelf --remove-rpath`; not yet a real fix folded into a build
+script.
+
+Next: find and fix the `hypotf`/GLIBC_2.35 root cause, get `fc-match`
+(and the fontconfig-linked smoketest, not yet written) to a clean
+`onebin audit --strict` PASS, decide how to fold the zlib.pc and
+RUNPATH-stripping fixes into the eventual `tools/build-far2l.sh`. Then
+SDL2, which will also need the Meson native file.
+
 ## Graphics group (step 3 of 4) continued: HarfBuzz pinned, FreeType rebuilt (pass 2) with it enabled
 
 `harfbuzz 14.2.1` pinned in `contrib/far2l/deps.lock`, built statically

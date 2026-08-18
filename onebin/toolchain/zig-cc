@@ -11,4 +11,30 @@ if ! command -v zig >/dev/null 2>&1; then
     exit 127
 fi
 
+# Found building fontconfig via Meson: meson's compiler.preprocess()
+# (used for fontconfig's gperf-template preprocessing step) invokes the
+# compiler with both -E (preprocess only) and a trailing -c. GCC honors
+# -E regardless of a later -c; zig's bundled Clang instead honors
+# whichever action flag came last on the command line, so the trailing
+# -c silences -E and the "preprocessed" gperf template gets fed to the
+# C *parser* instead, which fails on the file's gperf-only syntax
+# ("%{", "%struct-type", "%%"). Drop a redundant -c whenever -E is also
+# present, so zig cc's behavior matches GCC's and matches what the
+# caller actually asked for. Safe to do with plain word-splitting here
+# (no quoting of the intermediate list): every argument this project's
+# builds pass through this wrapper is a flag or a path with no embedded
+# whitespace.
+has_e=0
+for _onebin_arg in "$@"; do
+    if [ "$_onebin_arg" = "-E" ]; then
+        has_e=1
+    fi
+done
+if [ "$has_e" = 1 ]; then
+    # shellcheck disable=SC2046
+    set -- $(for _onebin_arg in "$@"; do
+        [ "$_onebin_arg" = "-c" ] || printf '%s\n' "$_onebin_arg"
+    done)
+fi
+
 exec zig cc "$@"

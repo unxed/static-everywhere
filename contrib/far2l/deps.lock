@@ -118,3 +118,71 @@ freetype 2.14.3 e61b31ab26358b946e767ed7eb7f4bb2e507da1cfefeb7a8861ace7fd5c899a1
 # just pointing `PKG_CONFIG_PATH` at this HarfBuzz build's installed
 # `harfbuzz.pc` is what actually gets it found.
 harfbuzz 14.2.1 a54a5d8e9380a41fbb762ce367bcbf7704792dfca0d93f1bbca86c5a57902e0e https://github.com/harfbuzz/harfbuzz/releases/download/14.2.1/harfbuzz-14.2.1.tar.xz
+
+# expat: XML parser for fontconfig's config-file backend
+# (-Dxml-backend=expat, chosen over libxml2 -- smaller, no extra
+# dependencies). Verified: builds statically via
+# onebin-linux-hybrid.cmake (has its own upstream CMakeLists.txt), no
+# smoketest of its own yet -- exercised indirectly through fontconfig
+# below, which does parse real host XML config (/etc/fonts) through it.
+# Hash cross-checked against the sha256 published in the project's own
+# GitHub release notes for R_2_8_3, not just computed locally.
+expat 2.8.3 b4cc2483927d5e90bf8c40b44a6b95b368b42a8a96e25883fce188b48a92b670 https://github.com/libexpat/libexpat/releases/download/R_2_8_3/expat-2.8.3.tar.bz2
+
+# fontconfig: NOT YET VERIFIED CLEAN -- pinned and building, but
+# onebin audit --strict does not pass yet. Left in deps.lock anyway
+# (rather than held back) so the version/hash is pinned and the two
+# real findings below are on record before the next session picks
+# this back up. See STATUS.md's fontconfig entry for the full
+# writeup. Built via Meson (onebin-linux-hybrid-meson.ini, new this
+# pass -- see toolchain/), static, against this file's own
+# freetype+harfbuzz and expat above.
+#
+# Two real, fixed findings so far:
+# 1. FreeType's installed .pc file declares a *public* (non-private)
+#    "Requires: zlib", so any pkg-config consumer of freetype2 -- like
+#    fontconfig via Meson -- also resolves "zlib" via pkg-config. This
+#    project's own zlib build (pinned above) never generated a zlib.pc,
+#    so pkg-config silently fell back to the HOST's system zlib.pc,
+#    linking the host's dynamic libz.so.1 (GLIBC_2.35) into an
+#    otherwise-clean Profile H binary. Fix: this project's zlib build
+#    must also install a zlib.pc pointing at itself; ad-hoc write of
+#    one was enough to prove the fix, still needs folding into
+#    deps.lock/build-far2l.sh's actual zlib step once that script
+#    exists.
+# 2. fontconfig bakes its configured --sysconfdir/--datadir/cache-dir
+#    into the binary at *compile* time (it has no runtime env-var
+#    override for these), so building it with our own sandbox
+#    --prefix baked its OWN /home/.../install-p2/etc/fonts in as the
+#    config path instead of the HOST's real /etc/fonts -- a direct
+#    violation of this project's own Layer 2 doctrine ("fontconfig
+#    reads the host's fonts", 04-REFERENCE-far2l.md §3.5/§7.7,
+#    already flagged once for FreeType). Fixed by configuring with
+#    --sysconfdir=/etc --datadir=/usr/share
+#    -Dcache-dir=/var/cache/fontconfig explicitly, independent of
+#    --prefix, so the built library reads the *host's* real fontconfig
+#    config/cache/font directories at runtime, exactly as intended.
+#
+# One further finding, root cause NOT YET FOUND:
+# 3. The final fc-match binary requires GLIBC_2.35 (baseline target is
+#    2.28), traced via objdump -T + nm across every static lib to a
+#    single undefined symbol, hypotf, pulled in from libharfbuzz.a.
+#    The confusing part: the SAME libharfbuzz.a linked into the
+#    harfbuzz-only smoketest from the harfbuzz entry above binds
+#    hypotf at GLIBC_2.2.5 (correct, compatible) instead -- so this is
+#    not simply "harfbuzz's build is broken", it is something specific
+#    to fontconfig's particular link (more of libharfbuzz.a pulled in,
+#    a different call path reaching hypotf, or something about
+#    fontconfig's own link command). Ruled out: this project's own
+#    extra `-L/usr/lib/x86_64-linux-gnu` etc. flags (added to
+#    onebin-linux-hybrid-meson.ini for host dynamic libraries like
+#    X11) are NOT the cause -- reproduced the failure with an isolated
+#    manual zig-cc invocation of the exact link command both with and
+#    without those flags, GLIBC_2.35 both times. Also found, unrelated
+#    but real: Meson's own build-tree RUNPATH auto-injection embeds
+#    /usr/lib and friends into DT_RUNPATH with no explicit -rpath flag
+#    anywhere in the link command (post-link ELF patch, not a linker
+#    flag) -- worked around with `patchelf --remove-rpath` for testing,
+#    not yet folded into any build script. Do not mark this group done
+#    until finding 3 has a real fix and a clean --strict pass.
+fontconfig 2.18.3 9ae01e1d53acdef56010c5451cd34aa41d325b2faccd8606448d8fa01b2496b3 https://gitlab.freedesktop.org/fontconfig/fontconfig/-/archive/2.18.3/fontconfig-2.18.3.tar.gz
