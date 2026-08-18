@@ -4,21 +4,27 @@
 
 **And read `04-REFERENCE-far2l.md §2.5` before designing anything else for
 far2l.** That section was written after actually reading far2l's source
-(something not done before the audit tool was specified and built), and it
-documents that far2l is a multi-process system that shells out to
-`/bin/sh`, forks a separate broker binary, and **re-executes itself under
-`sudo`** — plus that `utils/src/InstallPath.cpp` calls
-`dlsym(RTLD_DEFAULT, ...)` in core code without a NULL check, so a static
-far2l segfaults at startup rather than merely failing an audit.
+(something not done before the audit tool was specified and built). It
+documents a multi-process system — shells out to `/bin/sh`, forks a
+sibling broker binary, **re-executes itself under `sudo`** via symlinks
+back to its own binary — and it also corrects an overcorrection from an
+earlier revision of this note: **process-invocation via `/bin/sh`'s
+POSIX-guaranteed path, or via `$PATH` lookup for `sudo`/clipboard tools,
+is not a portability defect.** It is a different, older, much more stable
+contract than shared-library linking, and far2l uses it correctly
+(`execlp` for `$PATH` lookup, parameterised clipboard commands, no
+hardcoded version-specific paths). `onebin` has no way to see this layer
+and was never asked to; that is a scope boundary worth a future note
+([`FUTURE-IDEAS.md`](./FUTURE-IDEAS.md)), not an urgent gap in
+`01-SPEC-audit.md`.
 
-It also names a real gap in this project's own premise: the host contract
-and `onebin`'s whole notion of "dependencies" cover **shared libraries**,
-while far2l's actual host dependencies are **executables** (`/bin/sh`,
-`sudo`, `xclip`, its own broker). A statically linked far2l could score a
-perfect Level 1 and still be unable to run a command. "Zero dependencies"
-was being measured in the wrong units — that is a gap in
-`01-SPEC-audit.md`, and it should be addressed before any further
-conformance-level work.
+The two findings that **do** stand on their own, independent of any of the
+above: `utils/src/InstallPath.cpp:47` calls `dlsym(RTLD_DEFAULT, ...)` in
+core code with no NULL check, so a statically linked far2l **segfaults at
+startup** rather than merely failing an audit — Profile S is out for a
+confirmed reason, not a philosophical one. And NSS
+(`getpwuid`/`getpwnam`/`getgrnam`) is load-bearing for the panel's
+owner/group columns, not an edge case.
 
 
 Confirmed by an actual build attempt (far2l-tiny, Profile S, musl,

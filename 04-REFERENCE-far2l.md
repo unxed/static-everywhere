@@ -73,18 +73,20 @@ far2l is not "a file manager with plugins". It is a **multi-process
 system that launches, brokers and re-executes processes**, and that shape
 is load-bearing in the core, not in optional subsystems:
 
-| Behaviour | Where | Consequence |
+| Behaviour | Where | Kind (see below) |
 |---|---|---|
-| Runs commands through the system shell | `far2l/src/execute.cpp:208` — `execl("/bin/sh", "sh", "-c", ...)` | `/bin/sh` is a **hard runtime dependency**. The built-in terminal is not emulated; it shells out. |
-| Allocates PTYs and forks | `utils/src/MakePTYAndFork.cpp`, `utils/src/ExecAsync.cpp` (`fork`+`execvp`), `utils/src/POpen.cpp` | Core, not optional. |
-| Forks/execs a **separate broker binary** | `WinPort/src/Backend/TTY/TTYXGlue.cpp:153` — `execl(broker_path, ...)` | `far2l_ttyx.broker` is a second executable the first one must locate and launch. |
-| **Re-executes itself under `sudo`** | `WinPort/src/sudo/sudo_client.cpp:161` — `execlp("sudo", "-n", "-A", "-k", g_sudo_app, ipc, ...)` | `g_sudo_app` is `far2l_sudoapp`, a **symlink to `bin/far2l`**; `SUDO_ASKPASS` is `far2l_askpass`, also a symlink to `bin/far2l`. far2l launches `sudo`, which launches far2l again in another mode, which talks back over IPC. `sudo` is a host dependency. |
-| Shells out for clipboard and printing | `WinPort/src/Backend/ExtClipboardBackend.cpp` (`system`/`popen`), `TTY/TTYPrinterSupport.cpp` (`system`) | `xclip`/`wl-copy`/`lpr` etc. are host dependencies. |
-| Forks/execs a notification script | `WinPort/src/Backend/NotifySh.cpp:43` | ditto. |
-| **Resurrect**: survives an SSH disconnect and re-attaches on next launch | (feature-level; implied by the detach/reattach design) | Structurally requires a surviving process and attaching to it. |
+| Runs commands through the system shell | `far2l/src/execute.cpp:208` — `execl("/bin/sh", "sh", "-c", ...)` | POSIX-guaranteed path — stable, not a portability concern |
+| Allocates PTYs and forks | `utils/src/MakePTYAndFork.cpp`, `utils/src/ExecAsync.cpp` (`fork`+`execvp`), `utils/src/POpen.cpp` | Core Unix process-control APIs, not a dependency at all |
+| Forks/execs a **sibling broker binary** | `WinPort/src/Backend/TTY/TTYXGlue.cpp:153` — `execl(broker_path, ...)` | Multi-executable distribution shape — not a host dependency |
+| **Re-executes itself under `sudo`** | `WinPort/src/sudo/sudo_client.cpp:161` — `execlp("sudo", "-n", "-A", "-k", g_sudo_app, ipc, ...)` | `execlp`: found via `$PATH`. `g_sudo_app`/`SUDO_ASKPASS` are `far2l_sudoapp`/`far2l_askpass`, **symlinks to `bin/far2l`** — the same binary in another mode, talking back over IPC. `sudo` itself is a genuine, expected host tool, invoked the portable way. |
+| Shells out for clipboard and printing | `WinPort/src/Backend/ExtClipboardBackend.cpp` (`system`/`popen`), `TTY/TTYPrinterSupport.cpp` (`system`) | The command (`xclip`, `wl-copy`, ...) is a **parameter**, not hardcoded |
+| Forks/execs a notification script | `WinPort/src/Backend/NotifySh.cpp:43` | Same shape as clipboard/printing |
+| **Resurrect**: survives an SSH disconnect and re-attaches on next launch | (feature-level; implied by the detach/reattach design) | A real, deliberate architectural feature — the "killer feature" the multi-process shape exists to support |
 
-Two consequences that invalidate specific earlier claims in this
-document:
+Read the "kind" column before drawing conclusions from the "where" column
+alone — the next subsection explains why most of this table is not a
+finding at all. Two things in it *are* genuine consequences worth stating
+up front:
 
 **1. `dlsym(RTLD_DEFAULT, ...)` is in the core and is not NULL-checked.**
 `utils/src/InstallPath.cpp:47` resolves `GetPathTranslationPrefix` **out
@@ -113,34 +115,64 @@ owner/group columns — a defining file-manager feature), `getpwuid` in
 any host using LDAP/AD/SSSD the owner column degrades to numeric IDs;
 under static glibc this is precisely the `OB0034` case.
 
-### The measurement error this exposes
+### Two categories of "dependency", and only one of them is a problem
 
-The host contract, the allowlist, and `onebin`'s entire notion of
-"dependencies" are about **shared libraries**. far2l's real host
-dependencies are **executables**: `/bin/sh`, `sudo`, `xclip`/`wl-copy`,
-its own broker, and its own binary re-invoked through `sudo`. A
-statically linked far2l with an empty `DT_NEEDED` would score a perfect
-Level 1 and still be unable to run a single command, copy to the
-clipboard, or elevate privileges without a host that provides all of
-those.
+The table above lists process launches alongside real defects, and an
+earlier version of this section treated them as the same kind of finding.
+**They are not**, and the correction matters: `onebin`'s checks are about
+shared-library linking — a version-pinned, ABI-fragile contract, which is
+exactly why the manifesto cares about it. Invoking a well-known executable
+by its POSIX-guaranteed path or through `$PATH` is a completely different,
+much older and much more stable contract, and far2l uses it correctly:
 
-**"Zero dependencies" was being measured in the wrong units.** Passing
-this project's own audit is necessary, not sufficient, and for a program
-shaped like far2l it is not even close to sufficient. Any future
-"conformance level" work has to account for the executables a program
-requires, not only the libraries it links. That is a gap in
-`01-SPEC-audit.md`, not a gap in far2l.
+- `execl("/bin/sh", "sh", "-c", CmdStr, ...)` — an absolute path, but to a
+  location POSIX itself guarantees exists on any conforming system. This
+  is the same assumption every portable shebang line and every `system()`
+  call anywhere makes. It is not a fragile dependency; it is the floor
+  every Unix-like system stands on.
+- `execlp("sudo", "-n", "-A", "-k", g_sudo_app.c_str(), ...)` — `execlp`,
+  not `execl`: found via `$PATH`, not hardcoded, so it works with
+  whichever `sudo` (or `sudo`-compatible wrapper) the host actually has.
+- The clipboard/printing commands (`ExtClipboardBackend.cpp`,
+  `TTYPrinterSupport.cpp`) are **parameters**, not hardcoded strings — the
+  caller supplies `xclip`, `wl-copy`, or whatever fits the host, exactly
+  the shape you would want.
+- The broker (`far2l_ttyx.broker`) and the `sudoapp`/`askpass` symlinks
+  are not a host dependency at all — they are **far2l's own other
+  binaries**, part of the same install tree. That is a multi-executable
+  distribution shape, not a portability defect; it is the same category
+  of thing as a plugin, which this project already has a name for.
+
+**None of this needed correcting in far2l.** It is written with exactly
+the portability discipline the manifesto asks for, at the process-
+invocation layer. The two genuine defects are narrower and already stand
+on their own: the `dlsym(RTLD_DEFAULT, ...)` NULL-deref under static
+linking, and NSS being load-bearing rather than optional. Neither needs
+the process-invocation discussion to be true.
+
+### What this does say about `onebin`'s scope
+
+`onebin` audits ELF structure — `DT_NEEDED`, symbol versions, hardening
+flags. It has no way to see, and was never asked to see, "this binary
+`execl`s `/bin/sh` at runtime". That is not a bug in the tool or a gap
+demanding an urgent fix: **auditing process-invocation dependencies is a
+different, separable problem from auditing linked-library dependencies**,
+worth a paragraph in a future limitations section rather than a change to
+`01-SPEC-audit.md`'s scope. Recorded as a possible future direction, not
+a blocking gap: [`FUTURE-IDEAS.md`](./FUTURE-IDEAS.md).
 
 ### What this means for the reference-application plan
 
-- **Profile S is categorically wrong for far2l**, not merely difficult.
-  Do not attempt `far2l-tiny` again in that form.
-- **Profile H is the only viable target**, and even it needs the host
-  contract extended to name `/bin/sh` and `sudo` explicitly.
-- far2l remains a good reference application precisely *because* it broke
-  these assumptions — but the sections written before this was understood
-  (§6.1 especially) reflect the earlier misunderstanding and are corrected
-  in place rather than quietly rewritten.
+- **Profile S is categorically wrong for far2l**, for one confirmed
+  reason: the `dlsym(RTLD_DEFAULT, ...)` NULL-deref. Do not attempt
+  `far2l-tiny` again in that form.
+- **Profile H is the right target**, and needs no change to the host
+  contract for `/bin/sh`/`sudo`/clipboard tools — those were never a
+  library-linking concern in the first place.
+- far2l remains a good reference application because reading it properly
+  surfaced a real crash bug and a real NSS caveat — not because it broke
+  the doctrine. The sections written before this was understood (§6.1
+  especially) are corrected in place rather than quietly rewritten.
 
 ---
 
