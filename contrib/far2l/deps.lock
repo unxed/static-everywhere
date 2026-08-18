@@ -56,3 +56,19 @@ bzip2 1.0.8 ab5a03176ee106d3f0fa90e381da478ddae405918153cca248e682cd0c4a2269 htt
 # linked against the resulting liblzma.a passes `onebin audit --profile
 # hybrid --level 1 --strict` with 0 findings (`needed: libc.so.6` only).
 xz 5.8.3 3d3a1b973af218114f4f889bbaa2f4c037deaae0c8e815eec381c3d546b974a0 https://github.com/tukaani-project/xz/releases/download/v5.8.3/xz-5.8.3.tar.gz
+
+# libarchive itself — this is what MULTIARC actually links against.
+# Verified: configured with -DBUILD_SHARED_LIBS=OFF, CLI tools
+# (tar/cpio/cat/unzip) and their own test suite all disabled (MULTIARC
+# only needs the library), OpenSSL/mbedTLS/Nettle/LZO/expat/PCRE2POSIX
+# disabled (no need for xar/regex features MULTIARC doesn't use, and
+# OpenSSL would reopen the GPLv2 licence problem from §7.7 for no
+# benefit here), pointed at this file's own zlib/bzip2/xz builds above
+# via explicit *_INCLUDE_DIR/*_LIBRARY cache variables rather than a
+# global CMAKE_LIBRARY_PATH — same pin-everything-explicitly spirit as
+# this file. A smoketest round-tripped tar.gz, tar.bz2, tar.xz and zip
+# archives through the resulting libarchive.a (write then read back,
+# comparing entry name and content) and passed `onebin audit --profile
+# hybrid --level 1 --strict` with 0 findings (`needed: libc.so.6
+# libpthread.so.0`).
+libarchive 3.8.9 f5a6539059cf5e597dbeda37bfa4874b1e8dea063c8d93bf85a2b44af90a5bd4 https://github.com/libarchive/libarchive/releases/download/v3.8.9/libarchive-3.8.9.tar.gz

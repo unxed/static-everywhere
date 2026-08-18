@@ -1,5 +1,23 @@
 # STATUS
 
+## Archives group (step 1 of 4) complete: libarchive builds and round-trips tar.gz/tar.bz2/tar.xz/zip against our own pinned zlib/bzip2/xz
+
+`libarchive 3.8.9` pinned in `contrib/far2l/deps.lock`, configured with
+CLI tools, its own test suite, and OpenSSL/mbedTLS/Nettle/LZO/expat/
+PCRE2POSIX all disabled, pointed explicitly at this project's own static
+`zlib`/`bzip2`/`xz` builds via `*_INCLUDE_DIR`/`*_LIBRARY` cache
+variables rather than a global search path. A smoketest wrote and read
+back `tar.gz`, `tar.bz2`, `tar.xz` and `zip` archives through the
+resulting `libarchive.a` (all four round-tripped correctly) and passed
+`onebin audit --profile hybrid --level 1 --strict`: `needed: libc.so.6
+libpthread.so.0`, 0 errors.
+
+**Archives group is now done**: `zlib` → `bzip2` → `xz` → `libarchive`,
+each pinned with a locally-computed hash and each verified against the
+real `onebin` binary. Next up is graphics (step 3): `FreeType` →
+`HarfBuzz` → `Fontconfig` → `SDL2`. (Step 2, network, needed nothing —
+see the entry below.)
+
 ## Task 15 order, confirmed: archives (1) → network/FISH (2, already free) → graphics (3) → network/libssh-crypto (4)
 
 [Task 15](#tasks) begins here. Scope: network, archives and graphics — the
@@ -12,7 +30,7 @@ The order below was revised once already this pass and the revision was
 confirmed by the person driving this project, so it now stands as
 decided, not tentative:
 
-1. **archives** (`zlib` ✅ → `bzip2` ✅ → `xz` ✅ → `libarchive` next):
+1. **archives** (`zlib` ✅ → `bzip2` ✅ → `xz` ✅ → `libarchive` ✅ — group complete):
    fewest licence traps, and `zlib` is a transitive dependency of nearly
    everything below it anyway, so it is pinned first regardless of
    grouping.
@@ -65,12 +83,11 @@ libdl.so.2 libpthread.so.0`, 0 errors — see item 2 above and `04-REFERENCE-far
 `/var/tmp` runtime-fallback string in `utils/src/InMy.cpp` as if it were a
 leaked build path).
 
-**Not yet done:** `libarchive` itself (needs zlib+bzip2+xz as inputs, all
-three now ready), and `tools/build-far2l.sh` — still just the `04-REFERENCE-far2l.md §10` contract, no script exists, so nothing has
-consumed `deps.lock` yet; every build this pass used ad-hoc CMake/manual
-invocations to keep each step independently verifiable. Next atomic step:
-`libarchive`, configured down to the formats MULTIARC actually needs,
-against the three libraries above.
+**Not yet done:** `tools/build-far2l.sh` — still just the `04-REFERENCE-far2l.md §10` contract, no script exists, so nothing has
+consumed `deps.lock` yet; every build this pass (including `libarchive`,
+now also pinned and verified — see the top of this file) used ad-hoc
+CMake/manual invocations to keep each step independently verifiable.
+Next atomic step: graphics, starting with `FreeType`.
 
 **Toolchain finding, and a correction to this file's own prior entries:**
 getting that clean pass required patching `onebin-linux-hybrid.cmake` to
