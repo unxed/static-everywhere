@@ -1,5 +1,50 @@
 # STATUS
 
+## Graphics group (step 3 of 4) continued: HarfBuzz pinned, FreeType rebuilt (pass 2) with it enabled
+
+`harfbuzz 14.2.1` pinned in `contrib/far2l/deps.lock`, built statically
+against the FreeType-without-HarfBuzz pass from the entry below,
+Cairo/Graphite2/GLib/ICU/gobject/introspection and the subset/raster/
+vector/GPU sub-libraries all disabled — far2l-sdl only needs core
+shaping through `hb-ft`. Verified: a smoketest linked against the
+resulting `libharfbuzz.a` shaped real text (`"Static Everywhere"`)
+against the same real host font used below into 17 glyphs with
+non-zero advances. `onebin audit --profile hybrid --level 1 --strict`:
+`needed: libc.so.6 libm.so.6 libpthread.so.0`, 0 errors.
+
+Then closed the circular dependency: rebuilt `freetype 2.14.3` a second
+time (still the same pinned version — no `deps.lock` change needed for
+FreeType itself) with `-DFT_DISABLE_HARFBUZZ=OFF -DFT_DYNAMIC_HARFBUZZ=OFF
+-DFT_REQUIRE_HARFBUZZ=ON` against the HarfBuzz build above. Two real
+traps found and fixed doing this, both now documented in `deps.lock`'s
+comment so the next person doesn't rediscover them:
+
+1. FreeType's CMake defaults to `FT_DYNAMIC_HARFBUZZ=ON`, which makes it
+   `dlopen()` HarfBuzz at runtime instead of linking it — silently
+   reintroducing a `dlopen` this project spent real effort ruling out
+   elsewhere (see the far2l-tiny/Profile-S entry further down this
+   file). Must be turned off explicitly.
+2. The `*_INCLUDE_DIR`/`*_LIBRARY` cache-variable pattern this file uses
+   for every other dependency doesn't apply to FreeType's HarfBuzz
+   discovery: FreeType ships its own `builds/cmake/FindHarfBuzz.cmake`,
+   which wants singular `HarfBuzz_INCLUDE_DIR`/`HarfBuzz_LIBRARY` found
+   via pkg-config, not the cache variables `find_package(Freetype)` and
+   `find_package(ZLIB)` accept elsewhere. Pointing `PKG_CONFIG_PATH` at
+   the HarfBuzz build's installed `harfbuzz.pc` is what actually gets it
+   found.
+
+Verified the rebuild is not a no-op: `nm` on the resulting
+`libfreetype.a` shows 29 undefined `hb_*` symbols (it did not before),
+and `FT_CONFIG_OPTION_USE_HARFBUZZ` is now defined in the installed
+`ftoption.h`. A second smoketest, forcing the autohinter
+(`FT_LOAD_FORCE_AUTOHINT`) — the code path that actually consults
+HarfBuzz for OpenType coverage analysis during hinting — on the same
+host font rasterised glyph `'A'` to a 16×15 bitmap. `onebin audit
+--profile hybrid --level 1 --strict`: `needed: libc.so.6 libm.so.6
+libpthread.so.0`, 0 errors.
+
+Next: `Fontconfig`, then `SDL2`.
+
 ## Graphics group (step 3 of 4) started: FreeType builds and rasterises a real host font
 
 `freetype 2.14.3` pinned in `contrib/far2l/deps.lock`, static, ZLIB
