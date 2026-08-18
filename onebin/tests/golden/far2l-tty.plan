@@ -5,4 +5,4 @@ cmake -S ./far2l-src -B ./out/far2l-tty/_build -DCMAKE_TOOLCHAIN_FILE=<repo>/one
 cmake --build ./out/far2l-tty/_build --parallel 4
 cmake --install ./out/far2l-tty/_build
 <repo>/onebin/build/onebin audit --profile hybrid --level 1 --strict ./out/far2l-tty/install/bin/far2l
-<repo>/onebin/build/onebin audit --profile hybrid --level 1 --strict --allow libX11.so.6 --allow libXi.so.6 ./out/far2l-tty/install/lib/far2l/far2l_ttyx.broker
+<repo>/onebin/build/onebin audit --profile hybrid --level 1 --strict --allow libX11.so.6 --allow libXi.so.6 --allow libICE.so.6 --allow libSM.so.6 --allow libXext.so.6 ./out/far2l-tty/install/lib/far2l/far2l_ttyx.broker

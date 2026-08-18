@@ -603,7 +603,16 @@ The build script audits every artifact in `_build/install/`. Expected results:
 | `far2l` (`far2l-tty`, `far2l-sdl`) | H | only the six allowed sonames; `OB0041` warn for the `$ORIGIN` runpath; `OB0070` info for whatever SDL `dlopen`s |
 | `far2l_sdl.so` | M | `OB0038` info; same soname allowlist; **no** `OB0036` |
 | `far2l_gui.so` | M | in `far2l-wx` only: a long list of `OB0010` errors. Expected and recorded. |
-| `far2l_ttyx.broker` | H | `libX11.so.6`, `libXi.so.6` — allowed **only** via an explicit `--allow`, and only for this artifact. Document the exception in the CI config so nobody quietly widens the global allowlist. |
+| `far2l_ttyx.broker` | H | `libX11.so.6`, `libXi.so.6`, `libICE.so.6`, `libSM.so.6`, `libXext.so.6` — allowed **only** via an explicit `--allow`, and only for this artifact. Document the exception in the CI config so nobody quietly widens the global allowlist. |
+
+> **Correction, from an actual build (`onebin-linux-hybrid.cmake`, real
+> `zig`, real X11 dev headers).** The original three-soname list above
+> (`libX11.so.6`, `libXi.so.6`) was a guess and was incomplete. Linking
+> against real X11 transitively pulls in `libICE.so.6`/`libSM.so.6`
+> (X11 session management) and `libXext.so.6` (the extension library
+> `find_package(X11)` itself links against) even for this narrow a use of
+> Xlib. The five-entry list above is the one actually observed from a real
+> `far2l_ttyx.broker` binary's `DT_NEEDED`, not a prediction.
 | `*.far-plug-*` | M | `OB0038` info; clean otherwise |
 
 The audit runs with `--level 1 --strict` for `far2l-tiny`, `far2l-tty` and

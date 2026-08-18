@@ -158,13 +158,13 @@ audit_plan_for_config() {
         tty)
             printf '%s\n' \
                 "hybrid:1:strict::bin/far2l" \
-                "hybrid:1:strict:libX11.so.6,libXi.so.6:lib/far2l/far2l_ttyx.broker"
+                "hybrid:1:strict:libX11.so.6,libXi.so.6,libICE.so.6,libSM.so.6,libXext.so.6:lib/far2l/far2l_ttyx.broker"
             ;;
         sdl)
             printf '%s\n' \
                 "hybrid:1:strict::bin/far2l" \
                 "hybrid:1:strict::lib/far2l/far2l_sdl.so" \
-                "hybrid:1:strict:libX11.so.6,libXi.so.6:lib/far2l/far2l_ttyx.broker"
+                "hybrid:1:strict:libX11.so.6,libXi.so.6,libICE.so.6,libSM.so.6,libXext.so.6:lib/far2l/far2l_ttyx.broker"
             ;;
         wx)
             printf '%s\n' \
