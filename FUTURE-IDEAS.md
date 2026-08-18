@@ -644,6 +644,85 @@ rediscovered in private — with a pointer to where the actual work lives:
 
 ---
 
+## 3.5 The synthesis: APE-style polyglot + `libwinescape` = one binary, one architecture, every OS
+
+**Status: idea only, prompted by reading `libwinescape`'s own README next to
+Cosmopolitan's. Not scheduled. macOS explicitly unresolved — see the end of
+this section.**
+
+§1 and §3 above are two answers to two different halves of the same
+question, and reading them side by side is what this section is: §1 asks
+"how does *our own code* reach the host on an OS it wasn't compiled for",
+and answers it with a carried loader. §3 asks "how does a *genuinely native*
+Windows binary reach past Win32, when the thing underneath it happens to be
+Wine", and answers it by having the guest notice and cooperate. Cosmopolitan
+already ships the third piece neither of those sections needed on its own:
+**one file, valid as more than one native format at once**, dispatched by
+magic bytes the kernel (or `binfmt_misc`) recognises directly, no loader
+process involved before the OS's own loader takes over.
+
+Put together:
+
+1. **The file is a polyglot**, the way APE already is: bytes 0–1 are a valid
+   PE/MZ header (`MZqFpD` is the literal four-byte APE magic Cosmopolitan's
+   own `binfmt_misc` registration matches on), and the same bytes are
+   *also* a valid ELF header, and *also* a valid Mach-O header, each format
+   pointing its own loader at a different, non-overlapping region of the
+   same file. This is solved, shipping, and does not need reinventing —
+   it's Cosmopolitan's actual mechanism, not a proposal.
+2. **The ELF payload is an ordinary Static Everywhere binary** — Profile S
+   or H, built and audited exactly as this project already does, with none
+   of Cosmopolitan's own libc or its `--strace`/`--ftrace` machinery. On
+   Linux, the kernel's own ELF loader runs it directly. Zero Wine, zero
+   translation, zero involvement of anything this section is about — this
+   is the fast path, and it is just this project's existing reference
+   build.
+3. **The PE payload is a genuinely, honestly Windows binary** — built with
+   a normal Windows toolchain, linking normal Win32 DLLs, running on real
+   Windows with zero caveats, the same as any other `.exe`. This is what
+   makes it a `libwinescape`-shaped binary rather than a Cosmopolitan-shaped
+   one: it is not compiled against a universal libc that reimplements every
+   OS's syscalls from scratch. It is a real PE binary that happens to also
+   be readable as an ELF from a different offset.
+4. **`libwinescape`'s trick is what makes the PE payload interesting when
+   it *is* run through Wine specifically** — rather than paying Win32's
+   full translation tax on every call, the guest notices Wine underneath it
+   (§3.2's `getpid()` experiment) and reaches past Win32 for the parts of
+   Layer 3 Wine already exposes a stable path to. This matters only for the
+   case Cosmopolitan's own README flags as a real hazard: "some Linux
+   systems are configured to launch MZ executables under WINE" via
+   `binfmt_misc` — meaning a `chmod +x` polyglot file, double-clicked or
+   `exec`'d without an explicit interpreter, could in principle be picked
+   up by Wine's own `binfmt_misc` entry *instead of* the kernel's native
+   ELF path, depending on registration order and which entry matches first.
+   `libwinescape` is what keeps that accidental path from being the slow
+   one — if Wine ends up running the PE side regardless of intent, the
+   binary still notices and still reaches past Win32.
+
+**What this is not:** a claim that the two projects' loaders need to merge,
+or that this project should adopt Cosmopolitan's libc, or that
+`libwinescape`'s syscall table needs to grow to cover general Layer 3 work.
+It is an observation that the three pieces — a shipping polyglot-dispatch
+mechanism, an audited Static Everywhere ELF payload, and a
+cooperating-guest PE payload — are independently real and slot together
+without new engineering, which is the same kind of "the pieces already
+exist, nobody assembled them for this" observation §1.8's prior-art table
+makes about the loader idea generally.
+
+**Genuinely unresolved, not glossed over: macOS.** §1.7's "macOS is the
+wall" paragraph applies here without modification — Rosetta translates
+Mach-O, not PE, so there is no Wine-shaped compatibility layer to notice
+and cooperate with the way `libwinescape` does on Linux, and code signing
+still assumes a single, honest Mach-O the notary can inspect. A three-way
+polyglot (ELF/PE/Mach-O in one file) is exactly what Cosmopolitan already
+does, so the *file format* problem is solved; what's missing is a macOS
+equivalent of "the guest notices it's running under a translator and
+reaches past the slow path" — Rosetta 2 does not expose anything
+comparable to what Wine exposes, as far as this section's author has
+found. Left open rather than assumed away.
+
+---
+
 ## 4. What else belongs in this file
 
 Ideas that are not ready to be proposals, but should not be lost. Open a PR that

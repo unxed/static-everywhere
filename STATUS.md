@@ -1,5 +1,19 @@
 # STATUS
 
+## Housekeeping: two `deps.lock` files had diverged — consolidated to one
+
+Found while syncing this session's sandbox with `origin/main`:
+`onebin/contrib/far2l/deps.lock` (stale, never touched since its first
+draft) and `contrib/far2l/deps.lock` (the one all the real archives/
+graphics-group work since has gone into) existed side by side and had
+diverged completely — different versions, different hashes, some entries
+present in only one. `tools/build-far2l.sh` doesn't machine-parse either
+file (it only checks `test -d "$DEPS_PREFIX/$dep"` against a hardcoded
+per-config list), so this was never a functional bug, only a documentation
+consistency one — but a genuinely confusing one for anyone who found the
+wrong file first. Deleted the stale `onebin/`-prefixed copy;
+`contrib/far2l/deps.lock` (repo root) is now the one and only copy.
+
 ## far2l-sdl: CRITICAL CORRECTION -- SDL backend is not in any tagged far2l release; build in progress against a pinned master preview
 
 **Found by checking the real source before linking against it, not by
