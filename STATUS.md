@@ -1,5 +1,49 @@
 # STATUS
 
+## `NetRocks-SFTP.broker` itself now builds and audits clean against the mbedTLS/libssh pins -- not just a standalone smoketest
+
+Continuation of the same pass. The previous entry below verified
+`mbedtls`+`libssh` in isolation; this one builds the actual far2l target
+that consumes them.
+
+far2l's `cmake/modules/FindLibSSH.cmake` is a hand-written `find_library`/
+`find_path` module with no transitive-dependency info of its own.
+Pre-seeding its cache variables directly —
+`-DLIBSSH_LIBRARIES="<libssh.a>;<libmbedtls.a>;<libmbedx509.a>;
+<libmbedcrypto.a>;<libz.a>"` `-DLIBSSH_INCLUDE_DIRS=<libssh include dir>`
+— skips the search entirely (the module's own early-exit: "in cache
+already") and lets one CMake variable carry the whole static link chain,
+matching `NetRocks/CMakeLists.txt`'s own
+`target_link_libraries(NetRocks-SFTP utils ${LIBSSH_LIBRARIES})`.
+
+Built `NetRocks-SFTP.broker` from the pinned `v_2.8.0` tag with the same
+flags as the documented `far2l-tty` recipe (`04-REFERENCE-far2l.md`
+§6.2) plus `-DCOLORER=no -DMULTIARC=no -DUSEUCD=no` to narrow this pass
+to just the SFTP question (none of those three libraries are built in
+this session's fresh sandbox — nothing here persists between sessions,
+noted repeatedly elsewhere in this file). CMake's own configure log:
+`-- libssh found -> enjoy SFTP support in NetRocks`. Builds to
+completion — a real dynamically-linked PIE ELF.
+
+`onebin audit --profile hybrid --level 1`: `needed: ld-linux-
+x86-64.so.2 libc.so.6 libdl.so.2 libpthread.so.0` — exactly the Profile H
+allowlist, **0 errors**. No `libcrypto`/`libssl`/`libgcrypt`/`libgnutls`
+anywhere in `NEEDED` — confirms the static link is real, not just
+correct in the CMake summary. `--strict` promotes the single already-
+documented `OB0060` `/var/tmp` false positive (the same one noted for
+every other NetRocks broker in `04-REFERENCE-far2l.md` §6.2.1, traced to
+a genuine runtime-fallback string in `utils/src/InMy.cpp`) to a failure
+— not a new finding, the identical known pattern.
+
+`04-REFERENCE-far2l.md` updated: §5's libssh row and a new §6.2.2 now
+say mbedTLS specifically (this project's actual, verified choice)
+instead of listing GnuTLS/gcrypt/mbedTLS as interchangeable options.
+
+**Not yet done:** this used the same ad-hoc `cmake` pattern as every
+other pin in this file before `tools/build-far2l.sh` exists — folding it
+into that script is still open, and so is `libnfs`/`neon` (WebDAV), the
+rest of Task 15 group 4.
+
 ## Task 15 group 4 (network, the hard remainder) started: mbedTLS pinned instead of GnuTLS/libgcrypt, libssh builds clean, real end-to-end SSH handshake verified
 
 Picked up where the previous pass left off: `far2l-sdl` (archives + network/

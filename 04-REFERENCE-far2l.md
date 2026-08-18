@@ -385,7 +385,7 @@ files. **Everything under it is an audit target** — see §9.
 | libX11, libXi | TTY\|X, TTY\|Xi | Only ever linked into `far2l_ttyx.broker`, never the main binary. Prefer XCB where a choice exists; here there is none. |
 | libxml2 | Colorer plugin | ✅ static. `-DCOLORER=no` removes it. |
 | libuchardet | charset autodetect | ✅ static, small. `-DUSEUCD=no` removes it. |
-| libssh | NetRocks SFTP/SCP | ✅ static; uses libssh (supports GnuTLS/gcrypt/mbedTLS crypto backends without direct OpenSSL dependency in NetRocks). |
+| libssh | NetRocks SFTP/SCP | ✅ static, confirmed by an actual build (§6.2.2 below) — libssh 0.12.2 against **mbedTLS** (this project's chosen backend, not GnuTLS/libgcrypt — see §6.2.2 for why), OpenSSL never discoverable. |
 | OpenSSL | NetRocks FTPS, S3 | ⚠️ only needed for FTPS in NetRocks-FTP and AWS S3 in NetRocks-AWS; disabled in reference build to ensure GPLv2 licence compatibility. |
 | libsmbclient (Samba) | NetRocks SMB | ❌ practically unbundleable: huge, `dlopen`s its own modules, drags Kerberos. **Disable it** — NetRocks degrades gracefully. |
 | libnfs | NetRocks NFS | ✅ static, small. |
@@ -466,6 +466,59 @@ cmake -DCMAKE_TOOLCHAIN_FILE=<repo>/onebin/toolchain/onebin-linux-hybrid.cmake \
 > **Because `master` is explicitly unstable and this project pins tags, not branches (§2, §7.8), FISH+ is not part of the `far2l-tty`/`far2l-sdl` Level-1 targets above until it ships in a `v_*` tag.** Confirmed by an actual build against `far2l` `master` pinned at `607459dedacc26c4b4ea981531f16bd281c9a21b` (2026-08-18), same toolchain, same flags as `far2l-tty` above: `NetRocks-FISHPLUS.broker` builds, and `onebin audit --profile hybrid --level 1 --strict` gives `needed: libc.so.6 libdl.so.2 libpthread.so.0` — the same clean result as `NetRocks-SHELL`, **0 errors**. (One `OB0060` warning appeared on all four NetRocks brokers built this way, including `FILE`; traced to a real string in `utils/src/InMy.cpp` — a legitimate `/var/tmp` runtime fallback path, not a build-tree leak. `onebin`'s heuristic cannot yet tell the two apart; worth a note in `onebin/NOTES.md`, not a build defect.)
 >
 > **The person driving this project confirms upstream is close to tagging a release that includes FISH+.** Until that tag exists, ship `far2l-tty`/`far2l-sdl` from `v_2.8.0` with `NetRocks-SHELL` as the real, working network story (§ above — no gap, no waiting), and re-check `git ls-remote --tags` for the new release before promoting `NetRocks-FISHPLUS` from "preview pinned at `607459d`" into the Level-1 target list. No upstream proposal needed — this is not our patch to offer, it is already upstream's own work landing on its own schedule.
+
+### 6.2.2 `NetRocks-SFTP.broker` — libssh against mbedTLS, built and audited for real
+
+[#622-netrocks-sftpbroker--libssh-against-mbedtls-built-and-audited-for-real](#622-netrocks-sftpbroker--libssh-against-mbedtls-built-and-audited-for-real)
+
+> **Correction to this section's own prior wording.** It used to say libssh
+> "supports GnuTLS/gcrypt/mbedTLS crypto backends" as if the three were
+> interchangeable. Checked libssh 0.12.2's actual `CMakeLists.txt` before
+> building anything: `WITH_GCRYPT` now prints `message(WARNING "libgcrypt
+> cryptographic backend is deprecated and will be removed in future
+> releases.")` at configure time, and GnuTLS was never attempted — it pulls
+> in nettle/gmp/libtasn1/p11-kit, a far heavier chain than anything else
+> `deps.lock` pins. **This project's actual choice is mbedTLS**: Apache-2.0
+> (GPL-compatible, same reasoning as §7.7's OpenSSL exclusion), a single
+> self-contained source tree, not deprecated.
+>
+> `mbedtls 3.6.6` (LTS, supported to March 2027) and `libssh 0.12.2` are
+> pinned in `contrib/far2l/deps.lock`, with the full build flags and a real
+> found-in-the-wild libssh portability bug (`#warn` instead of the
+> standard `#warning` in `src/threads/mbedtls.c`, which zig's Clang 18
+> rejects as a hard compile error — fixed by enabling
+> `MBEDTLS_THREADING_C`/`MBEDTLS_THREADING_PTHREAD` in mbedTLS's own
+> config, not by patching libssh). Full writeup: `STATUS.md`.
+>
+> **Confirmed by an actual build of the real target, not a standalone
+> smoketest alone.** far2l's own `cmake/modules/FindLibSSH.cmake` is a
+> hand-written `find_library`/`find_path` module with no transitive-
+> dependency information — pre-seeding its cache variables directly
+> (`-DLIBSSH_LIBRARIES="<libssh.a>;<libmbedtls.a>;<libmbedx509.a>;
+> <libmbedcrypto.a>;<libz.a>"` `-DLIBSSH_INCLUDE_DIRS=<libssh's include>`)
+> bypasses the search entirely and lets one variable carry the whole
+> static link line, the same trick `NetRocks-SFTP`'s
+> `target_link_libraries(NetRocks-SFTP utils ${LIBSSH_LIBRARIES})` was
+> already written to consume. Built `NetRocks-SFTP.broker` from the
+> pinned `v_2.8.0` tag with `onebin-linux-hybrid.cmake`, the same
+> `far2l-tty` flags as §6.2 plus `-DCOLORER=no -DMULTIARC=no -DUSEUCD=no`
+> (narrowing this pass to just the SFTP question) — CMake's own configure
+> log says `-- libssh found -> enjoy SFTP support in NetRocks`. Builds to
+> completion, a real dynamically-linked PIE ELF.
+>
+> `onebin audit --profile hybrid --level 1`: `needed: ld-linux-
+> x86-64.so.2 libc.so.6 libdl.so.2 libpthread.so.0` — exactly the Profile H
+> allowlist, **0 errors** (`--strict` promotes the same already-documented
+> `OB0060` `/var/tmp` false positive noted for every other NetRocks broker
+> above to a failure — not a new finding). No `libcrypto`/`libssl`/
+> `libgcrypt`/`libgnutls` in `NEEDED`: mbedTLS and libssh really are fully
+> static, not just absent from the CMake summary.
+>
+> Not yet done: this build used the `far2l-tty`-style ad-hoc `cmake`
+> invocation, the same pattern every other pin in this document was
+> verified with before `tools/build-far2l.sh` existed — folding it into
+> that script once it exists is still open. `libnfs` and `neon` (WebDAV),
+> the rest of Task 15 group 4 per `STATUS.md`, remain unpinned.
 
 ### 6.3 `far2l-sdl` — Profile H, Level 1 — **the headline demo**
 
