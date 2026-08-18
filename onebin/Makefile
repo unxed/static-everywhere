@@ -29,7 +29,7 @@ TEST_SRC = tests/test_main.c tests/t_skeleton.c tests/t_buf.c tests/t_ver.c \
            tests/report_fixtures.c tests/t_checks_needed.c tests/t_checks_profile.c \
            tests/t_checks_glibc.c tests/t_checks_rpath.c tests/t_checks_harden.c \
            tests/t_checks_hygiene.c tests/t_checks_host.c tests/t_checks_meta.c \
-           tests/t_audit.c tests/t_cli.c tests/t_lint.c $(LIB_SRC)
+           tests/t_audit.c tests/t_cli.c tests/t_lint.c tests/t_far2l_plan.c $(LIB_SRC)
 
 all: build/onebin
 
@@ -92,6 +92,24 @@ selftest:
 lint:
 	@echo "Lint target (source lint tests in progress)"
 
+far2l-plan:
+	@for c in tiny tty sdl wx; do \
+		echo "--- $$c ---"; \
+		./tools/build-far2l.sh --config $$c --print-plan > /tmp/onebin-far2l-$$c.plan || exit 1; \
+		diff -u tests/golden/far2l-$$c.plan /tmp/onebin-far2l-$$c.plan || exit 1; \
+	done
+	@echo "far2l-plan: all four configurations match their golden files"
+	@if command -v shellcheck >/dev/null 2>&1; then \
+		shellcheck tools/build-far2l.sh && echo "shellcheck: clean"; \
+	else \
+		echo "SKIP: shellcheck not installed"; \
+	fi
+	@if ./tools/build-far2l.sh --config tiny --no-fetch --src /tmp/onebin-far2l-plan-nonexistent-src >/dev/null 2>&1; then \
+		echo "FAIL: --no-fetch with a missing source tree must exit non-zero"; exit 1; \
+	else \
+		echo "--no-fetch clean-error check: exit non-zero, as required"; \
+	fi
+
 install: build/onebin
 	mkdir -p $(DESTDIR)$(PREFIX)/bin
 	cp build/onebin $(DESTDIR)$(PREFIX)/bin/onebin
@@ -99,4 +117,4 @@ install: build/onebin
 clean:
 	rm -rf build
 
-.PHONY: all test test-asan test-ubsan fuzz coverage golden selftest lint install clean
+.PHONY: all test test-asan test-ubsan fuzz coverage golden selftest lint far2l-plan install clean

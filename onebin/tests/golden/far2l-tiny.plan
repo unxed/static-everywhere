@@ -1,0 +1,6 @@
+git -C ./far2l-src describe --tags --exact-match
+mkdir -p ./out/far2l-tiny
+cmake -S ./far2l-src -B ./out/far2l-tiny/_build -DCMAKE_TOOLCHAIN_FILE=<repo>/onebin/toolchain/onebin-linux-static.cmake -DCMAKE_BUILD_TYPE=Release -DMUSL=1 -DUSEWX=no -DUSESDL=no -DTTYX=no -DTTYXI=no -DUSEUCD=no -DCOLORER=no -DNETROCKS=no -DMULTIARC=no -DARCLITE=no -DPYTHON=no -DUNRAR=no -DICU_MODE=prebuilt -DADB=no -DALIGN=no -DAUTOWRAP=no -DCALC=no -DCOMPARE=no -DDRAWLINE=no -DEDITCASE=no -DEDITORCOMP=no -DEDSORT=no -DFILECASE=no -DHEXITOR=no -DIMAGEVIEWER=no -DINCSRCH=no -DINSIDE=no -DMEMO=no -DOPENWITH=no -DSIMPLEINDENT=no -DTMPPANEL=no -DTRUNCATE=no  -DCMAKE_INSTALL_PREFIX=./out/far2l-tiny/install
+cmake --build ./out/far2l-tiny/_build --parallel 4
+cmake --install ./out/far2l-tiny/_build
+<repo>/onebin/build/onebin audit --profile static --level 1 --strict ./out/far2l-tiny/install/bin/far2l

@@ -268,3 +268,21 @@
   musl/glibc runtime objects' embedded debug paths, which
   `-ffile-prefix-map` cannot reach since it only affects this project's
   own compilation units, not zig's precompiled ones).
+- **Task 15's `--print-plan` determinism rule caught a real bug**: the
+  audit command in the printed plan initially embedded `${ONEBIN_ROOT}`
+  resolved via `cd && pwd` — an absolute, machine-specific path — which
+  directly violates "no absolute paths outside those given on the command
+  line". Fixed by resolving every real path as usual for actual execution,
+  but having `plan_step()` rewrite `${ONEBIN_ROOT}` to the same
+  `<repo>/onebin/...` placeholder `04-REFERENCE-far2l.md §6` itself uses,
+  via one `sed` substitution — so real runs always use correct absolute
+  paths and printed plans never depend on where the repository happens to
+  be checked out.
+- **`Makefile`'s `.POSIX:` special target makes each recipe line run with
+  implicit `errexit` semantics** — a bare `cmd; code=$?; ...` pattern to
+  capture and branch on a command's exit status breaks, because the recipe
+  aborts on `cmd`'s nonzero exit before `code=$?` ever runs. The portable
+  fix is `if cmd; then ... else ...; fi`, since a failing command as an
+  `if` condition is specifically exempt from `errexit`. Found while wiring
+  `make far2l-plan`'s "`--no-fetch` with a missing source tree exits
+  non-zero" check.

@@ -1,0 +1,53 @@
+# contrib/far2l/deps.lock — 00-AGENT-TASK.md Task 15.
+#
+# One line per third-party dependency actually needed by the four
+# configurations in 04-REFERENCE-far2l.md §6: name version sha256 url.
+# Comments (#) and blank lines ignored. tools/build-far2l.sh reads this
+# file; versions and hashes are never hardcoded in the script itself.
+#
+# Every hash below was computed from a real download in this session
+# (`sha256sum` on the file at the pinned URL) — none are fabricated. Where
+# a hash could not be obtained the column holds "-", per this task's own
+# instruction that a missing hash is honest and a fabricated one is not;
+# as of this writing every entry here was actually fetched and hashed, so
+# there are no "-" rows, but the column format keeps that possible for a
+# future addition made without network access.
+#
+# far2l itself is pinned separately, as a git tag (04-REFERENCE-far2l.md
+# §2): FAR2L_TAG=v_2.8.0, checked out via `git clone --depth 1 --branch`,
+# never a tarball (§7.8 — a detached tarball checkout makes `git describe
+# --tag` disagree with packaging/version and poisons the build with a
+# commit-hash version string).
+#
+# far2l-tiny needs NONE of these: every optional subsystem that would pull
+# a third-party library is explicitly disabled in its cmake invocation
+# (04-REFERENCE-far2l.md §6.1) — that is the entire point of the
+# configuration. Every dependency below is for far2l-tty / far2l-sdl
+# (NetRocks, MultiArc, Colorer, UCD charset detection default to "yes" and
+# are left there) and far2l-sdl's GUI|SDL backend specifically.
+#
+# libsmbclient is deliberately NOT listed: 04-REFERENCE-far2l.md's cheat
+# sheet calls it "practically unbundleable... disable it", and NetRocks
+# degrades each protocol independently when its library is absent
+# (04-REFERENCE-far2l.md §4.2's -DNETROCKS row) — so simply not providing
+# it under --deps-prefix is the correct way to disable SMB support without
+# a dedicated CMake flag for it.
+#
+# wxWidgets is deliberately NOT listed: far2l-wx (04-REFERENCE-far2l.md
+# §6.4) is built against the host's own dynamic wxWidgets package on
+# purpose — it exists to measure a Level-1 failure, not to avoid one, and
+# statically bundling wxWidgets/GTK would be enormous effort spent making
+# a configuration that is supposed to fail look like it doesn't.
+
+# name          version   sha256                                                            url
+libssh           0.10.6    1861d498f5b6f1741b6abc73e608478491edcf9c9d4b6630eef6e74596de9dc1  https://www.libssh.org/files/0.10/libssh-0.10.6.tar.xz
+openssl          3.3.2     2e8a40b01979afe8be0bbfb3de5dc1c6709fedb46d6c89c10da114ab5fc3d281  https://github.com/openssl/openssl/releases/download/openssl-3.3.2/openssl-3.3.2.tar.gz
+libnfs           6.0.2     4e5459cc3e0242447879004e9ad28286d4d27daa42cbdcde423248fad911e747  https://github.com/sahlberg/libnfs/archive/refs/tags/libnfs-6.0.2.tar.gz
+neon             0.33.0    659a5cc9cea05e6e7864094f1e13a77abbbdbab452f04d751a8c16a9447cf4b8  https://notroj.github.io/neon/neon-0.33.0.tar.gz
+libarchive       3.7.4     f887755c434a736a609cbd28d87ddbfbe9d6a3bb5b703c22c02f6af80a802735  https://github.com/libarchive/libarchive/releases/download/v3.7.4/libarchive-3.7.4.tar.xz
+libxml2          2.12.6    889c593a881a3db5fdd96cc9318c87df34eb648edfc458272ad46fd607353fbb  https://download.gnome.org/sources/libxml2/2.12/libxml2-2.12.6.tar.xz
+libuchardet      0.0.8     e97a60cfc00a1c147a674b097bb1422abd9fa78a2d9ce3f3fdcc2e78a34ac5f0  https://www.freedesktop.org/software/uchardet/releases/uchardet-0.0.8.tar.xz
+sdl2             2.30.9    24b574f71c87a763f50704bbb630cbe38298d544a1f890f099a4696b1d6beba4  https://github.com/libsdl-org/SDL/releases/download/release-2.30.9/SDL2-2.30.9.tar.gz
+freetype         2.13.3    0550350666d427c74daeb85d5ac7bb353acba5f76956395995311a9c6f063289  https://sourceforge.net/projects/freetype/files/freetype2/2.13.3/freetype-2.13.3.tar.xz
+harfbuzz         10.1.0    6ce3520f2d089a33cef0fc48321334b8e0b72141f6a763719aaaecd2779ecb82  https://github.com/harfbuzz/harfbuzz/releases/download/10.1.0/harfbuzz-10.1.0.tar.xz
+fontconfig       2.15.0    63a0658d0e06e0fa886106452b58ef04f21f58202ea02a94c39de0d3335d7c0e  https://www.freedesktop.org/software/fontconfig/release/fontconfig-2.15.0.tar.xz
