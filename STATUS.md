@@ -38,8 +38,14 @@ Progress so far, this pass, rebuilding into a fresh `/tmp/deps-prefix`:
 confirmed defined) → `expat` → `fontconfig` (via the manual-copy
 workaround above) → `uchardet` (real CMake target name is
 `libuchardet`, not `uchardet_static` — found via `cmake --build .
---target help`) all built and installed. **Not yet done:** `sdl2`, and
-the actual `far2l-sdl` configure/build/audit. No `onebin audit` has run
+--target help`) → `sdl2` (CMake, not Meson — an earlier guess in this
+file was wrong; `-DSDL_STATIC=ON -DSDL_SHARED=OFF
+-DCMAKE_POSITION_INDEPENDENT_CODE=ON -DSDL_TEST=OFF`, X11 found and
+`dlopen`'d as designed, Wayland not found in this sandbox so left off,
+clean install with no host-filesystem side effects unlike fontconfig)
+all built and installed. **Every dependency in `deps.lock` is now built
+into `/tmp/deps-prefix`.** **Not yet done:** the actual `far2l-sdl`
+configure/build/audit — that's the next step. No `onebin audit` has run
 against anything from this rebuild pass yet.
 
 ## Housekeeping: two `deps.lock` files had diverged — consolidated to one
