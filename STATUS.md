@@ -1,5 +1,79 @@
 # STATUS
 
+## Task 15 group 4 (network, the hard remainder) started: mbedTLS pinned instead of GnuTLS/libgcrypt, libssh builds clean, real end-to-end SSH handshake verified
+
+Picked up where the previous pass left off: `far2l-sdl` (archives + network/
+FISH + graphics groups) is done; this pass starts Task 15 group 4 —
+`libssh` + a GPL-compatible crypto backend for `NetRocks-SFTP.broker`.
+
+**Correction to this project's own plan, found by reading libssh's actual
+`CMakeLists.txt` before pinning anything, not by assumption:** the
+Task-15-order entry below says "libssh + a GnuTLS/libgcrypt crypto
+backend". Checked directly against libssh 0.12.2: `WITH_GCRYPT` still
+exists but now emits `message(WARNING "libgcrypt cryptographic backend
+is deprecated and will be removed in future releases.")` at configure
+time. GnuTLS was never actually tried — it pulls in nettle/gmp/libtasn1/
+p11-kit, a much heavier chain than anything else pinned in `deps.lock` so
+far. **Pinned mbedTLS instead**: Apache-2.0 (same GPL-compatibility
+reasoning as `04-REFERENCE-far2l.md` §7.7's OpenSSL exclusion), a single
+self-contained source tree, not deprecated. `04-REFERENCE-far2l.md`
+line 388 already listed mbedTLS as a supported backend — only this
+file's own Task-15-order note was stale.
+
+`mbedtls 3.6.6` (LTS, supported to March 2027) pinned in
+`contrib/far2l/deps.lock`, hash cross-checked against the release notes'
+published SHA256. Built static via `onebin-linux-hybrid.cmake`. A
+smoketest calling a real `mbedtls_sha256()` passed `onebin audit
+--profile hybrid --level 1 --strict` clean (`needed: libc.so.6` only,
+`-fPIE -pie` required — `ET_EXEC` trips `OB0054`, same as every other
+pin in this file).
+
+**Real bug found in libssh itself, not this project's code:** mbedTLS's
+stock `mbedtls_config.h` ships `MBEDTLS_THREADING_C`/
+`MBEDTLS_THREADING_PTHREAD` both disabled by default. libssh's
+`src/threads/mbedtls.c` falls into the `#else` branch of its own
+`#ifdef MBEDTLS_THREADING_ALT / #elif MBEDTLS_THREADING_PTHREAD` when
+neither is defined, and that branch uses `#warn` (GCC/old-Clang-only)
+instead of the portable `#warning` — zig's Clang 18 rejects `#warn`
+outright as an invalid preprocessing directive, a hard compile error
+regardless of whether the function is ever called. Confirmed the real
+fix: rebuilding mbedTLS with `python3 scripts/config.py set
+MBEDTLS_THREADING_C` and `... set MBEDTLS_THREADING_PTHREAD` (mbedTLS
+already links pthread via its own `find_package(Threads)`, so this is
+free) routes libssh down the `MBEDTLS_THREADING_PTHREAD` branch instead,
+and it compiles clean. Recorded in `deps.lock`'s `mbedtls` entry so
+`tools/build-far2l.sh`'s eventual mbedtls step applies it.
+
+`libssh 0.12.2` pinned in `deps.lock`, built against this pass's own
+zlib and mbedTLS pins: `WITH_MBEDTLS=ON WITH_GCRYPT=OFF
+CMAKE_DISABLE_FIND_PACKAGE_OpenSSL=TRUE WITH_GSSAPI=OFF WITH_SERVER=OFF
+WITH_PCAP=OFF WITH_EXAMPLES=OFF WITH_NACL=OFF WITH_SFTP=ON
+BUILD_SHARED_LIBS=OFF`. `WITH_NACL` gracefully degrades to `OFF` on its
+own (`find_package(NaCl)` result, confirmed by reading
+`DefineOptions.cmake` directly) — not a hard requirement.
+
+**Verified with more than a link check, for real:** started this
+project's own `sshd` on loopback with a freshly generated ed25519 host
+key and an ed25519 client key restricted to `authorized_keys`-only auth.
+A smoketest's `ssh_connect()` + `ssh_userauth_publickey_auto()` both
+succeeded — a genuine SSH2 key exchange and public-key authentication
+through the mbedTLS backend end to end, not a synthetic API-surface
+check. `onebin audit --profile hybrid --level 1 --strict` on the
+resulting binary: **PASS, 0 errors, 0 warnings**; `needed: ld-linux-
+x86-64.so.2 libc.so.6 libpthread.so.0` — no `libcrypto`/`libssl`/
+`libgcrypt`/`libgnutls` anywhere in `NEEDED`, confirming OpenSSL and
+libgcrypt really are absent from the link, not just from the CMake
+configure summary.
+
+**Not yet done:** the actual `NetRocks-SFTP.broker` CMake target (far2l's
+own build, not a standalone smoketest) hasn't been configured against
+these pins yet; folding `mbedtls`+`libssh` into `tools/build-far2l.sh`'s
+`sftp`/full configs; and `04-REFERENCE-far2l.md`'s NetRocks-SFTP row
+(line 388) could be tightened to name mbedTLS as this project's actual
+choice rather than leaving all three backends listed as equally live
+options. `libnfs` and `neon` (WebDAV) — the rest of Task 15 group 4 per
+the order below — remain untouched.
+
 ## Toolchain fix: `onebin-linux-hybrid.cmake` now finds Debian/Ubuntu's multiarch headers automatically
 
 Found by a real user hitting it building `far2l-sdl` with `apt`-installed
@@ -552,8 +626,10 @@ decided, not tentative:
    build recipe via `-DNR_OPENSSL=no -DNR_AWS=no -DCMAKE_DISABLE_FIND_PACKAGE_OpenSSL=TRUE`,
    avoiding GPLv2/Apache-2.0 licence incompatibility and completely preventing
    CMake from discovering host OpenSSL headers. `NetRocks-SFTP.broker` (SFTP/SCP)
-   only depends on `libssh` (which on Linux distros can use GnuTLS/libgcrypt) and
-   does not include OpenSSL headers directly; `NetRocks-SHELL.broker` (SHELL/FISH)
+   only depends on `libssh` (which on Linux distros can use GnuTLS/libgcrypt/
+   mbedTLS — see the correction below: this project pinned mbedTLS, not
+   GnuTLS/libgcrypt) and does not include OpenSSL headers directly;
+   `NetRocks-SHELL.broker` (SHELL/FISH)
    is completely standalone (PTY-driven `ssh` client). Both build and remain
    available in NetRocks even with OpenSSL fully disabled.
 
