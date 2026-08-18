@@ -36,11 +36,11 @@ Progress so far, this pass, rebuilding into a fresh `/tmp/deps-prefix`:
 `zlib` → `bzip2` → `xz` → `libarchive` → `freetype` (pass 1) →
 `harfbuzz` → `freetype` (pass 2, `FT_CONFIG_OPTION_USE_HARFBUZZ`
 confirmed defined) → `expat` → `fontconfig` (via the manual-copy
-workaround above) all built and installed. **Not yet done:** `uchardet`
-(build failed on an incorrect CMake target name, `uchardet_static` —
-needs `cmake --build . --target help` to find the real one before
-retrying), `sdl2`, and the actual `far2l-sdl` configure/build/audit. No
-`onebin audit` has run against anything from this rebuild pass yet.
+workaround above) → `uchardet` (real CMake target name is
+`libuchardet`, not `uchardet_static` — found via `cmake --build .
+--target help`) all built and installed. **Not yet done:** `sdl2`, and
+the actual `far2l-sdl` configure/build/audit. No `onebin audit` has run
+against anything from this rebuild pass yet.
 
 ## Housekeeping: two `deps.lock` files had diverged — consolidated to one
 
