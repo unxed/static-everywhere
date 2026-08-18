@@ -89,3 +89,32 @@ libarchive 3.8.9 f5a6539059cf5e597dbeda37bfa4874b1e8dea063c8d93bf85a2b44af90a5bd
 # `onebin audit --profile hybrid --level 1 --strict` with 0 findings
 # (`needed: libc.so.6 libpthread.so.0`).
 freetype 2.14.3 e61b31ab26358b946e767ed7eb7f4bb2e507da1cfefeb7a8861ace7fd5c899a1 https://download.savannah.gnu.org/releases/freetype/freetype-2.14.3.tar.gz
+
+# HarfBuzz: text shaping for far2l-sdl. Built against the freetype line
+# above (pass 1, no HarfBuzz — see that entry's comment), with
+# Cairo/Graphite2/GLib/ICU/gobject/introspection and the subset/raster/
+# vector/GPU sub-libraries all disabled (far2l-sdl needs only core
+# shaping via hb-ft, none of that). Verified: `onebin-linux-hybrid.cmake`
+# build succeeds, and a smoketest linked against the resulting
+# libharfbuzz.a shapes real text ("Static Everywhere") against a real
+# host font (/usr/share/fonts/truetype/dejavu/DejaVuSerif-Bold.ttf) into
+# 17 glyphs with non-zero advances — Layer 2 exercised, not just Layer 1
+# code compiling. Passes `onebin audit --profile hybrid --level 1
+# --strict` with 0 findings (`needed: libc.so.6 libm.so.6
+# libpthread.so.0`).
+#
+# TRAP FOR WHOEVER TOUCHES THE FREETYPE LINE NEXT: FreeType's CMake
+# defaults to `FT_DYNAMIC_HARFBUZZ=ON`, which makes it `dlopen()` HarfBuzz
+# at runtime instead of linking it — silently reintroducing a dlopen this
+# project spent effort ruling out elsewhere. The freetype line above must
+# be rebuilt (pass 2) with `-DFT_DYNAMIC_HARFBUZZ=OFF -DFT_REQUIRE_HARFBUZZ=ON`
+# once this line is consumed, so `FT_CONFIG_OPTION_USE_HARFBUZZ` is compiled
+# in and `libfreetype.a` references `hb_*` symbols directly (confirmed via
+# `nm`: 29 undefined `hb_*` symbols in the pass-2 archive) rather than
+# reaching for `dlopen("libharfbuzz.so...")`. Also note the *_INCLUDE_DIRS/
+# *_LIBRARY cache-variable trick used elsewhere in this file does not apply
+# here: FreeType's own `builds/cmake/FindHarfBuzz.cmake` module looks for
+# `HarfBuzz_INCLUDE_DIR`/`HarfBuzz_LIBRARY` (singular, via pkg-config), so
+# just pointing `PKG_CONFIG_PATH` at this HarfBuzz build's installed
+# `harfbuzz.pc` is what actually gets it found.
+harfbuzz 14.2.1 a54a5d8e9380a41fbb762ce367bcbf7704792dfca0d93f1bbca86c5a57902e0e https://github.com/harfbuzz/harfbuzz/releases/download/14.2.1/harfbuzz-14.2.1.tar.xz
