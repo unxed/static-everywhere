@@ -1,5 +1,47 @@
 # STATUS
 
+## far2l-sdl dependency rebuild in progress: a real hazard found while rebuilding fontconfig — `DESTDIR` is not optional
+
+Rebuilding the graphics-group dependency chain from scratch (this
+project's built libraries live only in the ephemeral sandbox that built
+them — see `NOTES` below on why nothing here persisted from the prior
+session's own sandbox) surfaced a real, worth-remembering hazard:
+**`fontconfig`'s own Meson custom install script
+(`conf.d/link_confs.py`) does not respect `DESTDIR`.** Running `meson
+install -C build` — even with `DESTDIR=$STAGING` set, which correctly
+redirects every *ordinary* install target — still made that one custom
+script symlink files directly into the **real, absolute**
+`/etc/fonts/conf.d` and overwrite `/etc/fonts/fonts.conf` on the actual
+build host, not the staging directory. This happened **twice** in this
+session (the second time via the same command run again while
+re-verifying the first fix), each time confirmed and corrected by
+diffing against the untouched package (`dpkg-deb -x` on the downloaded
+`.deb`) and either force-reinstalling the Ubuntu package
+(`--force-confmiss`) or copying the packaged file back by hand, then
+diffing again to confirm an exact match before moving on.
+
+**On a shared or long-lived host, this would have been a real, silent
+corruption of the system's actual font configuration** — not a sandbox
+inconvenience. The correct, permanent fix for any future rebuild of this
+dependency: **do not run `fontconfig`'s `meson install` at all.** Copy
+`libfontconfig.a`, `fontconfig.pc`, and the `fontconfig/` header
+directory out of the build tree by hand (`build/libfontconfig.a`, the
+source tree's `fontconfig/` include directory, and the generated `.pc`
+found under `build/`) instead of trusting the install step to stay
+inside `DESTDIR`. `contrib/far2l/deps.lock`'s `fontconfig` entry should
+carry this warning verbatim the next time it's touched, so nobody
+re-discovers it by overwriting their own `/etc/fonts` again.
+
+Progress so far, this pass, rebuilding into a fresh `/tmp/deps-prefix`:
+`zlib` → `bzip2` → `xz` → `libarchive` → `freetype` (pass 1) →
+`harfbuzz` → `freetype` (pass 2, `FT_CONFIG_OPTION_USE_HARFBUZZ`
+confirmed defined) → `expat` → `fontconfig` (via the manual-copy
+workaround above) all built and installed. **Not yet done:** `uchardet`
+(build failed on an incorrect CMake target name, `uchardet_static` —
+needs `cmake --build . --target help` to find the real one before
+retrying), `sdl2`, and the actual `far2l-sdl` configure/build/audit. No
+`onebin audit` has run against anything from this rebuild pass yet.
+
 ## Housekeeping: two `deps.lock` files had diverged — consolidated to one
 
 Found while syncing this session's sandbox with `origin/main`:

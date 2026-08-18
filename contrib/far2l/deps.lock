@@ -200,6 +200,15 @@ expat 2.8.3 b4cc2483927d5e90bf8c40b44a6b95b368b42a8a96e25883fce188b48a92b670 htt
 # the corrected onebin-linux-hybrid-meson.ini -- if hypotf-style
 # findings show up again with a `requires GLIBC_x.y` newer than the
 # baseline, check c_link_args/cpp_link_args for -target first.
+#
+# DANGER, confirmed twice: fontconfig's own Meson custom install script
+# (conf.d/link_confs.py) does NOT respect DESTDIR. `DESTDIR=$STAGING
+# meson install` still writes directly into the REAL, absolute
+# /etc/fonts/conf.d and overwrites /etc/fonts/fonts.conf on the actual
+# build host -- confirmed by diffing against the untouched .deb both
+# times it happened. Do not run `meson install` for this dependency at
+# all. Copy libfontconfig.a, the generated fontconfig.pc, and the
+# fontconfig/ header directory out of the build tree by hand instead.
 fontconfig 2.18.3 9ae01e1d53acdef56010c5451cd34aa41d325b2faccd8606448d8fa01b2496b3 https://gitlab.freedesktop.org/fontconfig/fontconfig/-/archive/2.18.3/fontconfig-2.18.3.tar.gz
 
 # SDL2: the graphics group's last library -- "the point of the exercise"
