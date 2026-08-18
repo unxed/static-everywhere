@@ -2,6 +2,25 @@
 
 ## READ THIS FIRST: do not attempt Profile S (static, no dlopen) for far2l or f4/f4-qt
 
+**And read `04-REFERENCE-far2l.md §2.5` before designing anything else for
+far2l.** That section was written after actually reading far2l's source
+(something not done before the audit tool was specified and built), and it
+documents that far2l is a multi-process system that shells out to
+`/bin/sh`, forks a separate broker binary, and **re-executes itself under
+`sudo`** — plus that `utils/src/InstallPath.cpp` calls
+`dlsym(RTLD_DEFAULT, ...)` in core code without a NULL check, so a static
+far2l segfaults at startup rather than merely failing an audit.
+
+It also names a real gap in this project's own premise: the host contract
+and `onebin`'s whole notion of "dependencies" cover **shared libraries**,
+while far2l's actual host dependencies are **executables** (`/bin/sh`,
+`sudo`, `xclip`, its own broker). A statically linked far2l could score a
+perfect Level 1 and still be unable to run a command. "Zero dependencies"
+was being measured in the wrong units — that is a gap in
+`01-SPEC-audit.md`, and it should be addressed before any further
+conformance-level work.
+
+
 Confirmed by an actual build attempt (far2l-tiny, Profile S, musl,
 `--fetch`'d and built to completion): even with every optional plugin and
 every GUI backend disabled at cmake configure time, the resulting `far2l`

@@ -62,6 +62,88 @@ latest stable far2l"; our CI uses the pin.
 
 ---
 
+## 2.5 What far2l actually is — read this before designing anything for it
+
+**This section exists because the audit tool was designed, specified and
+built before anyone read far2l's source properly.** The result was a
+reference-application plan that was wrong in its premises, not merely
+optimistic. Corrected here from the actual code at `v_2.8.0`.
+
+far2l is not "a file manager with plugins". It is a **multi-process
+system that launches, brokers and re-executes processes**, and that shape
+is load-bearing in the core, not in optional subsystems:
+
+| Behaviour | Where | Consequence |
+|---|---|---|
+| Runs commands through the system shell | `far2l/src/execute.cpp:208` — `execl("/bin/sh", "sh", "-c", ...)` | `/bin/sh` is a **hard runtime dependency**. The built-in terminal is not emulated; it shells out. |
+| Allocates PTYs and forks | `utils/src/MakePTYAndFork.cpp`, `utils/src/ExecAsync.cpp` (`fork`+`execvp`), `utils/src/POpen.cpp` | Core, not optional. |
+| Forks/execs a **separate broker binary** | `WinPort/src/Backend/TTY/TTYXGlue.cpp:153` — `execl(broker_path, ...)` | `far2l_ttyx.broker` is a second executable the first one must locate and launch. |
+| **Re-executes itself under `sudo`** | `WinPort/src/sudo/sudo_client.cpp:161` — `execlp("sudo", "-n", "-A", "-k", g_sudo_app, ipc, ...)` | `g_sudo_app` is `far2l_sudoapp`, a **symlink to `bin/far2l`**; `SUDO_ASKPASS` is `far2l_askpass`, also a symlink to `bin/far2l`. far2l launches `sudo`, which launches far2l again in another mode, which talks back over IPC. `sudo` is a host dependency. |
+| Shells out for clipboard and printing | `WinPort/src/Backend/ExtClipboardBackend.cpp` (`system`/`popen`), `TTY/TTYPrinterSupport.cpp` (`system`) | `xclip`/`wl-copy`/`lpr` etc. are host dependencies. |
+| Forks/execs a notification script | `WinPort/src/Backend/NotifySh.cpp:43` | ditto. |
+| **Resurrect**: survives an SSH disconnect and re-attaches on next launch | (feature-level; implied by the detach/reattach design) | Structurally requires a surviving process and attaching to it. |
+
+Two consequences that invalidate specific earlier claims in this
+document:
+
+**1. `dlsym(RTLD_DEFAULT, ...)` is in the core and is not NULL-checked.**
+`utils/src/InstallPath.cpp:47` resolves `GetPathTranslationPrefix` **out
+of the main executable's own dynamic symbol table** and calls the result
+immediately:
+
+```c
+static tGetPathTranslationPrefix pGetPathTranslationPrefix =
+    (tGetPathTranslationPrefix)dlsym(RTLD_DEFAULT, "GetPathTranslationPrefix");
+return TranslateInstallPathT(path, dir_from, dir_to, pGetPathTranslationPrefix());
+```
+
+`utils` is linked into everything. In a fully static binary there is no
+dynamic symbol table, `dlsym` returns `NULL`, and the very next statement
+calls it. So **Profile S far2l does not "fail an audit" — it segfaults at
+startup**, the first time any install path is translated (which is during
+startup, locating `share/far2l`). §6.1's original "no plugins and no GUI,
+because Profile S has no dlopen" was not merely optimistic; it described
+a build that cannot run at all.
+
+**2. NSS is a core dependency, not an edge case.** `getpwuid` at
+`utils/src/InMy.cpp:69` (locating the home directory, at startup),
+`getpwuid`/`getpwnam`/`getgrnam` in `far2l/src/fileowner.cpp` (the panel's
+owner/group columns — a defining file-manager feature), `getpwuid` in
+`far2l/src/mix/CachedCreds.cpp`. Under musl there is no NSS at all, so on
+any host using LDAP/AD/SSSD the owner column degrades to numeric IDs;
+under static glibc this is precisely the `OB0034` case.
+
+### The measurement error this exposes
+
+The host contract, the allowlist, and `onebin`'s entire notion of
+"dependencies" are about **shared libraries**. far2l's real host
+dependencies are **executables**: `/bin/sh`, `sudo`, `xclip`/`wl-copy`,
+its own broker, and its own binary re-invoked through `sudo`. A
+statically linked far2l with an empty `DT_NEEDED` would score a perfect
+Level 1 and still be unable to run a single command, copy to the
+clipboard, or elevate privileges without a host that provides all of
+those.
+
+**"Zero dependencies" was being measured in the wrong units.** Passing
+this project's own audit is necessary, not sufficient, and for a program
+shaped like far2l it is not even close to sufficient. Any future
+"conformance level" work has to account for the executables a program
+requires, not only the libraries it links. That is a gap in
+`01-SPEC-audit.md`, not a gap in far2l.
+
+### What this means for the reference-application plan
+
+- **Profile S is categorically wrong for far2l**, not merely difficult.
+  Do not attempt `far2l-tiny` again in that form.
+- **Profile H is the only viable target**, and even it needs the host
+  contract extended to name `/bin/sh` and `sudo` explicitly.
+- far2l remains a good reference application precisely *because* it broke
+  these assumptions — but the sections written before this was understood
+  (§6.1 especially) reflect the earlier misunderstanding and are corrected
+  in place rather than quietly rewritten.
+
+---
+
 ## 3. Architecture you must know
 
 ### 3.1 Process model
