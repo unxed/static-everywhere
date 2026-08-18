@@ -75,13 +75,12 @@ decided, not tentative:
    crypto/licence entanglement, and `far2l-sdl` is explicitly "the point
    of the exercise" per the top-level README.
 4. **network, the hard remainder** (`libssh` + a GPL-compatible crypto
-   backend for SFTP/SCP; `libnfs`; `neon` for WebDAV): still last,
-   because `04-REFERENCE-far2l.md §7.7` rules OpenSSL out for a GPLv2
-   static build and this group needs that licence decision (GnuTLS as
-   libssh's backend is the leading candidate — `NetRocks-NFS`'s own
-   `CMakeLists.txt` already opportunistically links `GnuTLS` when
-   present) before any line goes in deps.lock. Step 2 already proves this
-   decision blocks nothing else.
+   backend for SFTP/SCP; `libnfs`; `neon` for WebDAV): OpenSSL-dependent
+   protocols in NetRocks (FTPS, AWS S3) are explicitly disabled in the
+   build plan via `-DNR_OPENSSL=no -DNR_AWS=no`, and OpenSSL is removed
+   from deps.lock to respect GPLv2 licence compatibility. Remote server
+   access is provided license-cleanly by `NetRocks-SHELL` / `NetRocks-FISHPLUS`.
+   GnuTLS integration for SFTP/SCP will be addressed separately.
 
 **Verified this pass, for real, not simulated — three archives-group
 libraries, each built, linked into its own smoketest, and audited with

@@ -41,7 +41,6 @@
 
 # name          version   sha256                                                            url
 libssh           0.10.6    1861d498f5b6f1741b6abc73e608478491edcf9c9d4b6630eef6e74596de9dc1  https://www.libssh.org/files/0.10/libssh-0.10.6.tar.xz
-openssl          3.3.2     2e8a40b01979afe8be0bbfb3de5dc1c6709fedb46d6c89c10da114ab5fc3d281  https://github.com/openssl/openssl/releases/download/openssl-3.3.2/openssl-3.3.2.tar.gz
 libnfs           6.0.2     4e5459cc3e0242447879004e9ad28286d4d27daa42cbdcde423248fad911e747  https://github.com/sahlberg/libnfs/archive/refs/tags/libnfs-6.0.2.tar.gz
 neon             0.33.0    659a5cc9cea05e6e7864094f1e13a77abbbdbab452f04d751a8c16a9447cf4b8  https://notroj.github.io/neon/neon-0.33.0.tar.gz
 libarchive       3.7.4     f887755c434a736a609cbd28d87ddbfbe9d6a3bb5b703c22c02f6af80a802735  https://github.com/libarchive/libarchive/releases/download/v3.7.4/libarchive-3.7.4.tar.xz

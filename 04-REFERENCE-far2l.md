@@ -438,7 +438,8 @@ present as `$ORIGIN`-relative modules, TTY|X and TTY|Xi via the broker.
 ```sh
 cmake -DCMAKE_TOOLCHAIN_FILE=<repo>/onebin/toolchain/onebin-linux-hybrid.cmake \
       -DCMAKE_BUILD_TYPE=Release \
-      -DUSEWX=no -DUSESDL=no -DPYTHON=no -DUNRAR=no -DICU_MODE=prebuilt ..
+      -DUSEWX=no -DUSESDL=no -DPYTHON=no -DUNRAR=no -DICU_MODE=prebuilt \
+      -DNR_OPENSSL=no -DNR_AWS=no ..
 ```
 
 ### 6.2.1 Network in `far2l-tty`/`far2l-sdl`, for free: `NetRocks-SHELL` and `NetRocks-FISHPLUS`
@@ -465,7 +466,8 @@ reads the host's fonts.
 ```sh
 cmake -DCMAKE_TOOLCHAIN_FILE=<repo>/onebin/toolchain/onebin-linux-hybrid.cmake \
       -DCMAKE_BUILD_TYPE=Release \
-      -DUSEWX=no -DUSESDL=YES -DPYTHON=no -DUNRAR=no -DICU_MODE=prebuilt ..
+      -DUSEWX=no -DUSESDL=YES -DPYTHON=no -DUNRAR=no -DICU_MODE=prebuilt \
+      -DNR_OPENSSL=no -DNR_AWS=no ..
 ```
 
 ### 6.4 `far2l-wx` — Profile H, Level 0 only, **expected to fail Level 1**
@@ -476,7 +478,8 @@ in the cheat sheet.
 
 ```sh
 cmake -DCMAKE_TOOLCHAIN_FILE=<repo>/onebin/toolchain/onebin-linux-hybrid.cmake \
-      -DCMAKE_BUILD_TYPE=Release -DUSEWX=yes -DUSESDL=no ..
+      -DCMAKE_BUILD_TYPE=Release -DUSEWX=yes -DUSESDL=no \
+      -DNR_OPENSSL=no -DNR_AWS=no ..
 ```
 
 ---

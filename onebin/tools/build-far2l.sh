@@ -103,8 +103,8 @@ ONEBIN_BIN="${ONEBIN_ROOT}/build/onebin"
 deps_for_config() {
     case "$1" in
         tiny) ;; # none: every optional subsystem that would need one is off
-        tty|wx) printf '%s\n' libssh openssl libnfs neon libarchive libxml2 libuchardet ;;
-        sdl) printf '%s\n' libssh openssl libnfs neon libarchive libxml2 libuchardet sdl2 freetype harfbuzz fontconfig ;;
+        tty|wx) printf '%s\n' libssh libnfs neon libarchive libxml2 libuchardet ;;
+        sdl) printf '%s\n' libssh libnfs neon libarchive libxml2 libuchardet sdl2 freetype harfbuzz fontconfig ;;
     esac
 }
 
@@ -128,19 +128,22 @@ cmake_config_args() {
             printf '%s\n' \
                 "-DCMAKE_TOOLCHAIN_FILE=${TOOLCHAIN_DIR}/onebin-linux-hybrid.cmake" \
                 "-DCMAKE_BUILD_TYPE=Release" \
-                "-DUSEWX=no" "-DUSESDL=no" "-DPYTHON=no" "-DUNRAR=no" "-DICU_MODE=prebuilt"
+                "-DUSEWX=no" "-DUSESDL=no" "-DPYTHON=no" "-DUNRAR=no" "-DICU_MODE=prebuilt" \
+                "-DNR_OPENSSL=no" "-DNR_AWS=no"
             ;;
         sdl)
             printf '%s\n' \
                 "-DCMAKE_TOOLCHAIN_FILE=${TOOLCHAIN_DIR}/onebin-linux-hybrid.cmake" \
                 "-DCMAKE_BUILD_TYPE=Release" \
-                "-DUSEWX=no" "-DUSESDL=YES" "-DPYTHON=no" "-DUNRAR=no" "-DICU_MODE=prebuilt"
+                "-DUSEWX=no" "-DUSESDL=YES" "-DPYTHON=no" "-DUNRAR=no" "-DICU_MODE=prebuilt" \
+                "-DNR_OPENSSL=no" "-DNR_AWS=no"
             ;;
         wx)
             printf '%s\n' \
                 "-DCMAKE_TOOLCHAIN_FILE=${TOOLCHAIN_DIR}/onebin-linux-hybrid.cmake" \
                 "-DCMAKE_BUILD_TYPE=Release" \
-                "-DUSEWX=yes" "-DUSESDL=no"
+                "-DUSEWX=yes" "-DUSESDL=no" \
+                "-DNR_OPENSSL=no" "-DNR_AWS=no"
             ;;
     esac
 }
