@@ -1,5 +1,65 @@
 # STATUS
 
+## `contrib/far2l/deps.lock` started; toolchain finding: `-s` is required to actually reach a clean Level 1 pass, `-ffile-prefix-map` alone is not
+
+[Task 15](#tasks) begins here. Scope for this pass: network, archives and
+graphics — i.e. the third-party libraries `-DNETROCKS`, `-DMULTIARC` and
+`-DUSESDL` pull in, per `04-REFERENCE-far2l.md §5`. **Small atomic steps,
+one pinned+built+audited library per step, in dependency order** — not
+one giant deps.lock written from memory and hoped to compile. Planned
+order and why:
+
+1. **archives first** (`zlib` → `bzip2`/`xz` → `libarchive`): fewest
+   licence traps, and `zlib` is a transitive dependency of nearly
+   everything below it anyway (OpenSSL, libssh's compression, FreeType's
+   embedded-bitmap paths), so it is pinned before any grouping by feature.
+2. **graphics second** (`FreeType` → `HarfBuzz` → `Fontconfig` → `SDL2`):
+   no crypto/licence entanglement, and `far2l-sdl` is explicitly "the
+   point of the exercise" per the top-level README — worth reaching
+   before network, not after.
+3. **network last** (`libssh` + a crypto backend, `libnfs`, `neon`):
+   saved for last on purpose because `04-REFERENCE-far2l.md §7.7` already
+   rules OpenSSL out for a GPLv2 static build, so this group needs a
+   licence decision (GPL-compatible TLS backend, or ship NetRocks without
+   TLS-dependent protocols) before any line goes in deps.lock — that
+   decision should not block archives or graphics, which have no such
+   snag.
+
+**Verified this pass, for real, not simulated:** `zlib 1.3.2` downloaded
+from its GitHub release asset, hash computed locally (not copied from a
+webpage) and recorded in the new `contrib/far2l/deps.lock`, built as a
+static `.a` via `onebin-linux-hybrid.cmake` with real `zig 0.13.0`. A
+smoketest executable linked against that `.a` was audited with the real
+`onebin` binary (built from this repo's own `onebin/` sources, not a
+stub): `onebin audit --profile hybrid --level 1 --strict` — **PASS, 0
+errors, 0 warnings, 0 infos**, `needed: libc.so.6` only.
+
+**Toolchain finding, and a correction to this file's own prior entries:**
+getting that clean pass required patching `onebin-linux-hybrid.cmake` to
+add `-s` to the link flags. Without it, a hybrid build — even one that
+already passes `-ffile-prefix-map` for its own source and build
+directories, exactly as earlier entries in this file assumed was
+sufficient — still FAILs `OB0060` with warnings pointing at paths like
+`.../zig/lib/libc/glibc/sysdeps/x86_64/...`. These come from **zig's own
+bundled glibc CRT startup objects** (`crti`, `crtn`, `start-*.S`, ...),
+which were already compiled with embedded DWARF debug info referencing
+*zig's own build tree* when zig itself was built — no
+`-ffile-prefix-map` on a downstream invocation can reach object code
+that predates it. `-s` (strip symbols and debug info at link time) does
+reach it, and is a no-downside default for `CMAKE_BUILD_TYPE=Release`
+regardless. Confirmed no regression: `onebin/toolchain/tests/`' existing
+`hello_c`/`hello_cxx` smoketest still builds and still audits PASS Level
+1 through the patched file.
+
+**Not yet done:** `bzip2`/`xz`/`libarchive` (rest of the archives group),
+`tools/build-far2l.sh` itself (still just the four-line contract in
+`04-REFERENCE-far2l.md §10`, no script exists), and therefore no far2l
+build has actually consumed `deps.lock` yet — today's zlib build used a
+standalone smoketest, not far2l's own CMake, to keep this step small and
+independently verifiable. Next atomic step: pin and build `bzip2` the
+same way (smallest remaining archives-group library), then `xz`, then
+attempt `libarchive` against both.
+
 ## Toolchain finding: `zig cc -target` does not search host library paths — fixed; a second, unresolved issue found while trying
 
 While attempting to also build `far2l_ttyx.broker` (needs `libX11`/`libXi`,
@@ -174,8 +234,7 @@ Roadmap in [DESIGN-onebin.md §10](./DESIGN-onebin.md). Task list in
 | 12 | self-audit and documentation | done |
 | 13 | `tools/audit.sh` learns about modules | done |
 | 14 | CMake toolchain files + `zig-*` wrappers | done |
-| 15 | `tools/build-far2l.sh` + `contrib/far2l/deps.lock` | **next** |
-| 15 | `tools/build-far2l.sh` + `contrib/far2l/deps.lock` | not started |
+| 15 | `tools/build-far2l.sh` + `contrib/far2l/deps.lock` | **in progress** |
 | 16 | `contrib/far2l/UPSTREAM.md` | not started |
 | 17 | `tools/build-f4-qt.sh` + `contrib/f4-qt/deps.lock` | not started |
 | 18 | Level 1 runtime gate for GUI artifacts (03-TESTPLAN.md) | not started |

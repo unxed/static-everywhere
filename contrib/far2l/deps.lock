@@ -1,0 +1,33 @@
+# contrib/far2l/deps.lock — pinned static third-party library sources for
+# the far2l reference build. Read by tools/build-far2l.sh (§10 of
+# 04-REFERENCE-far2l.md); never hardcoded in the script and never "latest".
+#
+# Format: one dependency per line, four whitespace-separated fields:
+#   name  version  sha256  url
+#
+# - `name` is the deps.lock key tools/build-far2l.sh looks up, not
+#   necessarily the upstream project name (e.g. multiple libs may share a
+#   vendor).
+# - `version` is the upstream release version string, exactly as upstream
+#   names its tag/tarball.
+# - `sha256` is the checksum of the exact tarball at `url`, computed and
+#   verified locally before this line was added — never copied from a
+#   webpage's stated hash without also downloading and hashing the file.
+# - `url` must point at an immutable release asset (a versioned release
+#   tarball or a tag archive), never a branch or a "latest" redirect.
+#
+# Comment lines (`#`) and blank lines are ignored. Do not reorder entries
+# without a reason; the order below is dependency order, roughly matching
+# 04-REFERENCE-far2l.md §5's table, grouped by which far2l feature area
+# pulls each one in (archives / network / graphics). Update STATUS.md's
+# task table when a group is completed.
+
+# --- archives (MULTIARC) -----------------------------------------------
+# zlib is the common base of nearly everything below it in this file
+# (libarchive's deflate support, OpenSSL, libssh's compression, FreeType's
+# PNG-embedded-font paths) as well as of MULTIARC directly, so it is
+# pinned first regardless of group. Verified: builds clean as a static
+# .a with onebin-linux-hybrid.cmake (zig 0.13.0, x86_64-linux-gnu.2.28),
+# and a smoketest program linked against it passes
+# `onebin audit --profile hybrid --level 1 --strict` with 0 findings.
+zlib 1.3.2 bb329a0a2cd0274d05519d61c667c062e06990d72e125ee2dfa8de64f0119d16 https://github.com/madler/zlib/releases/download/v1.3.2/zlib-1.3.2.tar.gz

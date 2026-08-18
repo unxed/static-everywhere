@@ -57,6 +57,21 @@ set(_onebin_link_flags
     "-Wl,--gc-sections"   # zig cc identifies as Clang — see the static file's note
     "-Wl,-z,relro" "-Wl,-z,now" "-Wl,-z,noexecstack"
     "-pie"
+    # Empirically required (found while building a static-zlib smoketest):
+    # zig's bundled glibc CRT startup objects (crti/crtn/start-*.S, etc.)
+    # ship with DWARF debug info that embeds *zig's own* build-tree paths
+    # (e.g. ".../lib/libc/glibc/sysdeps/x86_64/..."). Those objects were
+    # already compiled when zig itself was built, so no -ffile-prefix-map
+    # on *this* invocation can touch them — OB0060 fires on paths that do
+    # not belong to this project at all. `-s` (strip symbol table and
+    # debug info at link time) is the fix that actually reaches them;
+    # -ffile-prefix-map alone (as STATUS.md previously assumed) is not
+    # sufficient by itself. Confirmed: a hybrid build with
+    # -ffile-prefix-map but without -s still FAILs OB0060 with 7 zig-path
+    # warnings; adding -s clears it to a clean PASS Level 1, 0 findings.
+    # Release binaries should not carry debug info anyway, so this is a
+    # no-downside default for CMAKE_BUILD_TYPE=Release, not a workaround.
+    "-s"
     # Empirically required (found while building far2l-tty): zig cc
     # -target does NOT search the host's normal system library directories
     # by default, even for a target that otherwise matches the host
