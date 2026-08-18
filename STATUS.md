@@ -1,5 +1,35 @@
 # STATUS
 
+## far2l-tty: built, audited, PASS Level 1, runs — first real end-to-end result
+
+Confirmed for real, not simulated: `far2l` (v_2.8.0, NetRocks/MultiArc/
+Colorer/UCD disabled — the third-party deps in `contrib/far2l/deps.lock`
+were not yet built for this pass) configured with
+`onebin-linux-hybrid.cmake` via the `zig-cc`/`zig-c++` wrappers, built
+completely, produced a real dynamically-linked PIE binary. `onebin audit
+--profile hybrid --level 1` on the result: `needed:` is exactly
+`ld-linux-x86-64.so.2 libc.so.6 libdl.so.2 libm.so.6 libpthread.so.0` —
+the allowlist and nothing else — **0 errors, PASS, exit 0**. `far2l
+--help` runs and prints real output. `--strict` currently shows FAIL only
+because of 10 `OB0060` build-path warnings (this ad-hoc manual cmake
+invocation didn't pass `-ffile-prefix-map`, which the toolchain file
+normally supplies automatically) — not a structural problem.
+
+This is the project's first confirmed instance of the whole chain working
+end to end: `onebin` (the linter) auditing a binary built by
+`onebin`'s own toolchain files, of a real, complex, third-party
+application, correctly. The install step separately hit a real far2l
+CMake bug (`share/far2l/themes` install rule recurses on itself, producing
+a `lib/far2l/lib/far2l/lib/far2l/...` path until "File name too long") —
+unrelated to Static Everywhere, worth an upstream bug report, did not
+block auditing the binary itself.
+
+Next actual step, not yet done: build the third-party deps in
+`contrib/far2l/deps.lock` and rerun via `tools/build-far2l.sh` itself
+(not the ad-hoc manual `cmake` invocation used for this pass) to get
+NetRocks/MultiArc/Colorer/UCD included, and to audit the
+`far2l_ttyx.broker` artifact too.
+
 ## READ THIS FIRST: do not attempt Profile S (static, no dlopen) for far2l or f4/f4-qt
 
 **And read `04-REFERENCE-far2l.md §2.5` before designing anything else for
