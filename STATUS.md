@@ -44,9 +44,26 @@ file was wrong; `-DSDL_STATIC=ON -DSDL_SHARED=OFF
 `dlopen`'d as designed, Wayland not found in this sandbox so left off,
 clean install with no host-filesystem side effects unlike fontconfig)
 all built and installed. **Every dependency in `deps.lock` is now built
-into `/tmp/deps-prefix`.** **Not yet done:** the actual `far2l-sdl`
-configure/build/audit — that's the next step. No `onebin audit` has run
-against anything from this rebuild pass yet.
+into `/tmp/deps-prefix`.**
+
+**`far2l-sdl`'s CMake configure step now succeeds**, for real, against
+this pass's own rebuilt dependencies — cloned far2l fresh and checked out
+the pinned `65c29da43971eb1a4f4f43097621cb384a95e04d` commit directly
+(git confirms `git hash: 65c29da43`, `Version: 2.8.0-2026-08-18-65c29da43-beta`,
+matching the preview-build framing). One new finding: far2l's own
+`FindUchardet.cmake` uses `find_library`/`find_path`, not `pkg-config` —
+`PKG_CONFIG_PATH` alone (which found every other dependency correctly)
+was not enough; needed explicit `-DUCHARDET_LIBRARY=.../libuchardet.a
+-DUCHARDET_INCLUDE_DIR=.../include` cache variables, the same pattern
+already documented for X11 in `onebin-linux-hybrid.cmake`'s own history.
+`-DCOLORER=no` still needed (libxml2 not pinned yet). One harmless
+warning: MTP plugin disabled (no `libusb-1.0` dev package in this
+sandbox) — not a blocker, not part of this build's scope.
+
+**Not yet done:** the actual `ninja`/`make` build of the `far2l` target,
+and any `onebin audit`. Configure succeeding is not the same as the
+binary existing — do not claim more than this until the build itself
+completes.
 
 ## Housekeeping: two `deps.lock` files had diverged — consolidated to one
 
