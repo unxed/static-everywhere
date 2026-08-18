@@ -292,3 +292,9 @@
     succeeds. The build recipe explicitly sets `-DCMAKE_DISABLE_FIND_PACKAGE_OpenSSL=TRUE`
     and `-DNR_OPENSSL=no -DNR_AWS=no`, disabling OpenSSL cleanly without
     requiring any patches to far2l source code.
+  - **NetRocks SSH-based protocols (SFTP/SCP/SHELL) do not require OpenSSL**:
+    `NetRocks-SFTP.broker` links against `libssh` headers/library directly, which
+    handles cryptographic operations via its own configured backend (e.g. GnuTLS or
+    libgcrypt), without referencing OpenSSL headers in NetRocks source code.
+    `NetRocks-SHELL.broker` uses the external `ssh` executable via PTY. Disabling
+    OpenSSL only removes `NetRocks-AWS` (S3) and FTPS support in `NetRocks-FTP`.

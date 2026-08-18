@@ -374,8 +374,8 @@ files. **Everything under it is an audit target** — see §9.
 | libX11, libXi | TTY\|X, TTY\|Xi | Only ever linked into `far2l_ttyx.broker`, never the main binary. Prefer XCB where a choice exists; here there is none. |
 | libxml2 | Colorer plugin | ✅ static. `-DCOLORER=no` removes it. |
 | libuchardet | charset autodetect | ✅ static, small. `-DUSEUCD=no` removes it. |
-| libssh | NetRocks SFTP/SCP | ✅ static; needs a crypto backend. |
-| OpenSSL | NetRocks FTPS, S3 | ✅ static (`no-shared no-dso`) — **but see the licence note in §7.7.** Never bundle CA certificates: read the host's. |
+| libssh | NetRocks SFTP/SCP | ✅ static; uses libssh (supports GnuTLS/gcrypt/mbedTLS crypto backends without direct OpenSSL dependency in NetRocks). |
+| OpenSSL | NetRocks FTPS, S3 | ⚠️ only needed for FTPS in NetRocks-FTP and AWS S3 in NetRocks-AWS; disabled in reference build to ensure GPLv2 licence compatibility. |
 | libsmbclient (Samba) | NetRocks SMB | ❌ practically unbundleable: huge, `dlopen`s its own modules, drags Kerberos. **Disable it** — NetRocks degrades gracefully. |
 | libnfs | NetRocks NFS | ✅ static, small. |
 | neon | NetRocks WebDAV | ✅ static. |

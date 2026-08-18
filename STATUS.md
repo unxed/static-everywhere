@@ -79,8 +79,11 @@ decided, not tentative:
    protocols in NetRocks (FTPS, AWS S3) are explicitly disabled in the
    build recipe via `-DNR_OPENSSL=no -DNR_AWS=no -DCMAKE_DISABLE_FIND_PACKAGE_OpenSSL=TRUE`,
    avoiding GPLv2/Apache-2.0 licence incompatibility and completely preventing
-   CMake from discovering host OpenSSL headers. Remote server access is provided
-   licence-cleanly by `NetRocks-SHELL` / `NetRocks-FISHPLUS`.
+   CMake from discovering host OpenSSL headers. `NetRocks-SFTP.broker` (SFTP/SCP)
+   only depends on `libssh` (which on Linux distros can use GnuTLS/libgcrypt) and
+   does not include OpenSSL headers directly; `NetRocks-SHELL.broker` (SHELL/FISH)
+   is completely standalone (PTY-driven `ssh` client). Both build and remain
+   available in NetRocks even with OpenSSL fully disabled.
 
 **Verified this pass, for real, not simulated — three archives-group
 libraries, each built, linked into its own smoketest, and audited with
