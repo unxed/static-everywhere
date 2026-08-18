@@ -60,10 +60,60 @@ already documented for X11 in `onebin-linux-hybrid.cmake`'s own history.
 warning: MTP plugin disabled (no `libusb-1.0` dev package in this
 sandbox) — not a blocker, not part of this build's scope.
 
-**Not yet done:** the actual `ninja`/`make` build of the `far2l` target,
-and any `onebin audit`. Configure succeeding is not the same as the
-binary existing — do not claim more than this until the build itself
-completes.
+**The build completed, for real — 100%, all plugins, the SDL backend
+module, the whole thing.** And the headline result:
+
+```
+== /tmp/build-sdl/install/far2l ==
+  profile: hybrid (--profile)   class: ELF64 LE x86_64 ET_DYN
+  interp:  /lib64/ld-linux-x86-64.so.2
+  needed:  ld-linux-x86-64.so.2 libc.so.6 libdl.so.2 libm.so.6 libpthread.so.0
+  glibc:   requires GLIBC_2.28, baseline 2.28
+  warn  OB0060  ...two build-path findings, already-documented false positives on far2l's own /var/tmp and print-fragment runtime strings...
+PASS  Level 1  (0 errors, 2 warnings, 0 infos)
+```
+
+**far2l-sdl's main binary passes Level 1 clean** — the graphical file
+manager, no toolkit on the target, exactly the claim the top-level README
+makes. `needed:` is the allowlist and nothing else; `GLIBC_2.28` exactly,
+matching the pinned baseline.
+
+One real, small trap found and fixed along the way: `UCHARDET_INCLUDE_DIR`
+must point at the directory *containing* `uchardet.h` directly
+(`.../include/uchardet`), not its parent (`.../include`) — far2l's own
+`#include <uchardet.h>` is flat, matching the system-package convention
+(`/usr/include/uchardet.h`), which our own install layout
+(`.../include/uchardet/uchardet.h`) doesn't match by default.
+
+**`far2l_sdl.so` (the dlopen'd SDL backend module) is not yet clean —
+two real findings, not yet fixed:**
+
+```
+== /tmp/build-sdl/install/far2l_sdl.so ==
+  needed:  libc.so.6 libdl.so.2 libm.so.6 libpthread.so.0 libz.so.1
+  FAIL  OB0010  not on the allowlist: libz.so.1
+  FAIL  OB0036  no PT_INTERP in a file audited as Profile H
+FAIL  Level 1  (2 errors, 3 warnings, 12 infos)
+```
+
+1. `libz.so.1` (the **host's** dynamic zlib) leaked into this one shared
+   module specifically, despite this project's own static `zlib.a` being
+   built and used correctly everywhere else in this same build (the main
+   `far2l` binary has no such leak). Needs investigation: likely this
+   module's own CMake target doesn't inherit the same explicit
+   `ZLIB_LIBRARY`/`ZLIB_INCLUDE_DIR` cache hints the top-level configure
+   used, and falls back to CMake's own default `FindZLIB` search, which
+   finds the host's.
+2. `OB0036` ("no PT_INTERP in a file audited as Profile H") looks like a
+   genuine **false positive in `onebin` itself**: `PT_INTERP` is
+   exclusively how the kernel locates an interpreter for an *executable*
+   it is about to run directly; a `dlopen`'d shared module never has one,
+   by design, regardless of profile. Needs checking
+   `onebin/src/audit/checks/c_profile.c`'s `OB0036` logic for whether it
+   distinguishes `ET_EXEC`/`ET_DYN`-as-executable from `ET_DYN`-as-shared-
+   module before flagging this.
+
+Both are the next concrete steps, not done yet.
 
 ## Housekeeping: two `deps.lock` files had diverged — consolidated to one
 
