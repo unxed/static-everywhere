@@ -129,27 +129,29 @@ harfbuzz 14.2.1 a54a5d8e9380a41fbb762ce367bcbf7704792dfca0d93f1bbca86c5a57902e0e
 # GitHub release notes for R_2_8_3, not just computed locally.
 expat 2.8.3 b4cc2483927d5e90bf8c40b44a6b95b368b42a8a96e25883fce188b48a92b670 https://github.com/libexpat/libexpat/releases/download/R_2_8_3/expat-2.8.3.tar.bz2
 
-# fontconfig: NOT YET VERIFIED CLEAN -- pinned and building, but
-# onebin audit --strict does not pass yet. Left in deps.lock anyway
-# (rather than held back) so the version/hash is pinned and the two
-# real findings below are on record before the next session picks
-# this back up. See STATUS.md's fontconfig entry for the full
-# writeup. Built via Meson (onebin-linux-hybrid-meson.ini, new this
-# pass -- see toolchain/), static, against this file's own
-# freetype+harfbuzz and expat above.
+# fontconfig: reads the HOST's real font config/cache (Layer 2),
+# static against this file's own freetype+harfbuzz and expat. Built
+# via Meson (onebin-linux-hybrid-meson.ini). Verified: fc-match,
+# fc-cache, fc-list, fc-query and fc-cat all pass `onebin audit
+# --profile hybrid --level 1 --strict` with 0 findings (`needed:
+# libc.so.6 libm.so.6 libpthread.so.0`, GLIBC_2.28 -- exactly the
+# baseline, nothing newer). fc-match run against the real host's
+# /etc/fonts + /usr/share/fonts correctly resolved "DejaVu Serif" and
+# "monospace" to real installed font files.
 #
-# Two real, fixed findings so far:
+# Three real findings along the way, all fixed:
+#
 # 1. FreeType's installed .pc file declares a *public* (non-private)
 #    "Requires: zlib", so any pkg-config consumer of freetype2 -- like
 #    fontconfig via Meson -- also resolves "zlib" via pkg-config. This
-#    project's own zlib build (pinned above) never generated a zlib.pc,
-#    so pkg-config silently fell back to the HOST's system zlib.pc,
-#    linking the host's dynamic libz.so.1 (GLIBC_2.35) into an
-#    otherwise-clean Profile H binary. Fix: this project's zlib build
-#    must also install a zlib.pc pointing at itself; ad-hoc write of
-#    one was enough to prove the fix, still needs folding into
-#    deps.lock/build-far2l.sh's actual zlib step once that script
-#    exists.
+#    project's own zlib build never generated a zlib.pc, so pkg-config
+#    silently fell back to the HOST's system zlib.pc, linking the
+#    host's dynamic libz.so.1 (GLIBC_2.35) into an otherwise-clean
+#    Profile H binary. Fixed by installing a zlib.pc for this
+#    project's own static zlib build and pointing PKG_CONFIG_PATH at
+#    it ahead of the system one -- still needs folding into the zlib
+#    step for real once tools/build-far2l.sh exists.
+#
 # 2. fontconfig bakes its configured --sysconfdir/--datadir/cache-dir
 #    into the binary at *compile* time (it has no runtime env-var
 #    override for these), so building it with our own sandbox
@@ -163,26 +165,39 @@ expat 2.8.3 b4cc2483927d5e90bf8c40b44a6b95b368b42a8a96e25883fce188b48a92b670 htt
 #    --prefix, so the built library reads the *host's* real fontconfig
 #    config/cache/font directories at runtime, exactly as intended.
 #
-# One further finding, root cause NOT YET FOUND:
-# 3. The final fc-match binary requires GLIBC_2.35 (baseline target is
-#    2.28), traced via objdump -T + nm across every static lib to a
-#    single undefined symbol, hypotf, pulled in from libharfbuzz.a.
-#    The confusing part: the SAME libharfbuzz.a linked into the
-#    harfbuzz-only smoketest from the harfbuzz entry above binds
-#    hypotf at GLIBC_2.2.5 (correct, compatible) instead -- so this is
-#    not simply "harfbuzz's build is broken", it is something specific
-#    to fontconfig's particular link (more of libharfbuzz.a pulled in,
-#    a different call path reaching hypotf, or something about
-#    fontconfig's own link command). Ruled out: this project's own
-#    extra `-L/usr/lib/x86_64-linux-gnu` etc. flags (added to
-#    onebin-linux-hybrid-meson.ini for host dynamic libraries like
-#    X11) are NOT the cause -- reproduced the failure with an isolated
-#    manual zig-cc invocation of the exact link command both with and
-#    without those flags, GLIBC_2.35 both times. Also found, unrelated
-#    but real: Meson's own build-tree RUNPATH auto-injection embeds
-#    /usr/lib and friends into DT_RUNPATH with no explicit -rpath flag
-#    anywhere in the link command (post-link ELF patch, not a linker
-#    flag) -- worked around with `patchelf --remove-rpath` for testing,
-#    not yet folded into any build script. Do not mark this group done
-#    until finding 3 has a real fix and a clean --strict pass.
+# 3. THE REAL BUG, and the one that actually caused the GLIBC_2.35
+#    finding first reported here (item 1 above was a real, separate
+#    bug, but fixing it alone did not fix the GLIBC_2.35 symptom --
+#    that's what made this one so confusing to isolate): Meson runs
+#    the final link step as a SEPARATE compiler-as-linker-driver
+#    invocation using only c_link_args/cpp_link_args, never
+#    c_args/cpp_args -- unlike CMake, which folds CMAKE_C_FLAGS_INIT
+#    into the link command too (why onebin-linux-hybrid.cmake never
+#    hit this). onebin-linux-hybrid-meson.ini had `-target
+#    x86_64-linux-gnu.2.28` only in c_args/cpp_args, not in
+#    c_link_args/cpp_link_args. Without -target at link time, zig's
+#    bundled Clang driver falls back to the *native host* target for
+#    link-time decisions (sysroot, default crt/libc search, multiarch
+#    triple), even though every object file was compiled correctly for
+#    the pinned baseline -- so NEEDED SONAMEs still looked right
+#    (libc.so.6/libm.so.6), but individual undefined symbols (hypotf,
+#    from libharfbuzz.a, in this case) silently bound against the
+#    HOST's newest available versioned symbol instead of the pinned
+#    baseline's. Confirmed with a controlled A/B: the exact same
+#    libharfbuzz.a object, linked with -target present, binds hypotf at
+#    GLIBC_2.2.5; linked without it, GLIBC_2.35 -- same relocation,
+#    different linker behaviour purely from -target's absence. Fixed by
+#    adding -target x86_64-linux-gnu.2.28 to
+#    c_link_args/cpp_link_args too. This also happened to fix the
+#    unexplained Meson build-tree RUNPATH auto-injection
+#    (/usr/lib/etc into DT_RUNPATH with no explicit -rpath flag
+#    anywhere) noted in an earlier version of this comment -- the
+#    rebuilt binaries carry no RPATH/RUNPATH at all, so whatever
+#    triggered that was tied to the same missing-target link
+#    invocation. `patchelf --remove-rpath` is no longer needed.
+#
+# Any other Meson-based dependency in this file (SDL2, next) MUST use
+# the corrected onebin-linux-hybrid-meson.ini -- if hypotf-style
+# findings show up again with a `requires GLIBC_x.y` newer than the
+# baseline, check c_link_args/cpp_link_args for -target first.
 fontconfig 2.18.3 9ae01e1d53acdef56010c5451cd34aa41d325b2faccd8606448d8fa01b2496b3 https://gitlab.freedesktop.org/fontconfig/fontconfig/-/archive/2.18.3/fontconfig-2.18.3.tar.gz
