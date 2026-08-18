@@ -1,5 +1,40 @@
 # STATUS
 
+## Toolchain finding: `zig cc -target` does not search host library paths — fixed; a second, unresolved issue found while trying
+
+While attempting to also build `far2l_ttyx.broker` (needs `libX11`/`libXi`,
+installed via `apt install libx11-dev libxi-dev` — correctly host-provided
+per Profile H, not something to add to `deps.lock`):
+
+**Fixed, and landed in `onebin-linux-hybrid.cmake`:** `zig cc -target
+x86_64-linux-gnu.2.28` does not search the host's normal system library
+directories by default, even though the target otherwise matches the host
+exactly — confirmed directly (`zig cc -target ... -lX11` fails with
+`unable to find dynamic system library 'X11'... searched paths: none`).
+Worse, `find_package(X11)` fails at CMake *configure* time, before any
+compiler flag matters, because it uses `find_library()`/`find_path()`
+against `CMAKE_LIBRARY_PATH`/`CMAKE_INCLUDE_PATH` — a separate mechanism
+from linker `-L` flags. Fixed by adding both: linker `-L` flags for the
+actual link step, and `list(APPEND CMAKE_LIBRARY_PATH/CMAKE_INCLUDE_PATH
+...)` for `find_package()` to succeed at all. Without this, Profile H
+cannot find *any* host library, which defeats the profile's entire point.
+
+**Found, not yet fixed:** with that in place, `find_package(X11)` now
+succeeds, but compiling any C++ translation unit that pulls in both an
+X11 header (via the include path `find_package(X11)` adds) and libc++
+(zig's bundled one) fails: `<cerrno> tried including <errno.h> but didn't
+find libc++'s <errno.h> header... your header search paths are not
+configured properly`. Adding the host's `/usr/include` to
+`CMAKE_INCLUDE_PATH` globally, needed for `find_path()` to locate X11
+headers at all, apparently lets it leak into this target's *compile*
+include order ahead of zig's own libc++ shims for at least one C++ file
+(`TTYX.cpp`). C-only files, and the plain `far2l-tty` binary without
+`TTYX`, are unaffected — this is specifically a C++-plus-host-headers
+interaction. Not solved this session; needs either a more targeted include
+path (per-target rather than global `CMAKE_INCLUDE_PATH`) or investigating
+whether `-isystem` ordering can be forced. Left as a known gap rather than
+a rushed, unverified fix.
+
 ## far2l-tty: built, audited, PASS Level 1, runs — first real end-to-end result
 
 Confirmed for real, not simulated: `far2l` (v_2.8.0, NetRocks/MultiArc/

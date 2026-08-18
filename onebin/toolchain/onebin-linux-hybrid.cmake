@@ -47,7 +47,26 @@ set(_onebin_link_flags
     "-Wl,--gc-sections"   # zig cc identifies as Clang — see the static file's note
     "-Wl,-z,relro" "-Wl,-z,now" "-Wl,-z,noexecstack"
     "-pie"
+    # Empirically required (found while building far2l-tty): zig cc
+    # -target does NOT search the host's normal system library directories
+    # by default, even for a target that otherwise matches the host
+    # exactly ("unable to find dynamic system library 'X11' using strategy
+    # 'paths_first'. searched paths: none"). Profile H's entire point is
+    # dynamic linking against host-provided libraries, so without this the
+    # toolchain file would be unable to find anything beyond libc itself.
+    "-L/usr/lib/${CMAKE_HOST_SYSTEM_PROCESSOR}-linux-gnu"
+    "-L/usr/lib" "-L/lib/${CMAKE_HOST_SYSTEM_PROCESSOR}-linux-gnu"
 )
+
+# The linker flags above are not enough on their own: CMake's own
+# find_library()/find_path() (which find_package(X11) and friends use at
+# *configure* time, before any compiler flag is involved) search
+# CMAKE_LIBRARY_PATH/CMAKE_INCLUDE_PATH, a completely separate mechanism.
+# Without these, find_package(X11) fails outright rather than merely
+# linking incorrectly.
+list(APPEND CMAKE_LIBRARY_PATH
+    "/usr/lib/${CMAKE_HOST_SYSTEM_PROCESSOR}-linux-gnu" "/usr/lib" "/lib/${CMAKE_HOST_SYSTEM_PROCESSOR}-linux-gnu")
+list(APPEND CMAKE_INCLUDE_PATH "/usr/include")
 if(ONEBIN_EXPORT_DYNAMIC)
     list(APPEND _onebin_link_flags "-Wl,--export-dynamic")
 else()
