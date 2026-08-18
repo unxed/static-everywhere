@@ -4,5 +4,5 @@ mkdir -p ./out/far2l-wx
 cmake -S ./far2l-src -B ./out/far2l-wx/_build -DCMAKE_TOOLCHAIN_FILE=<repo>/onebin/toolchain/onebin-linux-hybrid.cmake -DCMAKE_BUILD_TYPE=Release -DUSEWX=yes -DUSESDL=no -DNR_OPENSSL=no -DNR_AWS=no -DCMAKE_DISABLE_FIND_PACKAGE_OpenSSL=TRUE  -DCMAKE_INSTALL_PREFIX=./out/far2l-wx/install
 cmake --build ./out/far2l-wx/_build --parallel 4
 cmake --install ./out/far2l-wx/_build
-<repo>/onebin/build/onebin audit --profile hybrid --level 0 ./out/far2l-wx/install/bin/far2l
-<repo>/onebin/build/onebin audit --profile hybrid --level 0 ./out/far2l-wx/install/lib/far2l/far2l_gui.so
+<repo>/onebin/build/onebin audit --profile hybrid --level 0 ./out/far2l-wx/install/far2l
+<repo>/onebin/build/onebin audit --profile module --level 0 ./out/far2l-wx/install/far2l_gui.so

@@ -261,6 +261,17 @@ Consequences, in order of how much trouble they cause:
 
 Default `CMAKE_INSTALL_PREFIX` is `/usr` on Linux and `/usr/local` on macOS/BSD.
 
+> **Correction, from an actual build.** The layout above is what a real
+> system-wide package install (`CMAKE_INSTALL_PREFIX=/usr`) produces, but
+> `cmake --install` with a *custom* prefix — exactly what
+> `tools/build-far2l.sh` uses — installs **flat**, with no `bin/`/`lib/`
+> split at all: `<prefix>/far2l`, `<prefix>/far2l_sdl.so`,
+> `<prefix>/far2l_ttyx.broker`, `<prefix>/far2l_askpass`, directly.
+> Confirmed against a real `far2l-sdl` build and used to correct
+> `tools/build-far2l.sh`'s own artifact paths. If a future far2l release
+> changes this (adopts `GNUInstallDirs` regardless of prefix), re-verify
+> before trusting either layout blindly.
+
 **A build tree is also a working tree.** After `cmake --build .`, far2l runs
 directly from `_build/install/far2l` with everything beside it — the executable
 locates its modules and data relative to itself, so both the flat `install/`

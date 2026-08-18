@@ -139,9 +139,43 @@ far2l's own genuine `/var/tmp` and `/tmp/far2l-*-fragment` *runtime*
 strings (not build paths) — not a defect, not blocking, already recorded
 earlier in this file's history.
 
+`tools/build-far2l.sh` itself now matches this pass's verified reality,
+not the pre-build assumptions it started with. Two real discrepancies
+fixed, both confirmed against the actual build rather than guessed:
+
+1. **far2l installs flat**, not into `<prefix>/bin`/`<prefix>/lib/far2l`
+   as `04-REFERENCE-far2l.md §3.4` originally documented — confirmed by
+   listing the real install tree (`far2l`, `far2l_sdl.so`,
+   `far2l_ttyx.broker` directly under the prefix). §3.4 corrected in
+   place with a note; `audit_plan_for_config`'s relpaths fixed to match
+   (`far2l`, not `bin/far2l`).
+2. **`far2l_sdl.so` must be audited with `--profile module`, not
+   `--profile hybrid`** — confirmed real: `hybrid` incorrectly demands
+   `PT_INTERP`, which a `dlopen`'d shared object never has by design.
+   Fixed in the script.
+
+Also scoped `cmake_config_args`'s `sdl` case down to
+`-DNETROCKS=no -DMULTIARC=no -DCOLORER=no`, matching exactly what this
+pass actually verified (graphics group only) rather than claiming the
+full `deps.lock`-stated default (NetRocks/MultiArc/Colorer still `yes`)
+works when it hasn't been built that way yet — documented inline as
+temporary, not a design decision.
+
+**Verified the corrected script for real**, not just re-generated golden
+files: `./tools/build-far2l.sh --config sdl --out /tmp/build-sdl
+--audit-only` against this pass's actual build directory reproduces
+every finding from the manual audits exactly — all three artifacts show
+**0 errors**; the run's overall exit code is 1 only because
+`--strict` (called for by `04-REFERENCE-far2l.md §9`'s own policy for
+this configuration) promotes the two-or-three already-known `OB0060`
+runtime-string warnings on each artifact to failures — expected,
+documented behaviour, not a script bug. `make far2l-plan`: all four
+golden plans regenerated and matching, shellcheck clean.
+
 far2l-sdl's own build-vs-audit loop is, as of this pass, **complete**:
 configured, built, both real findings chased down and fixed, all three
-artifacts independently confirmed clean:
+artifacts independently confirmed clean, and the automation script now
+reproduces all of it correctly:
 
 ```
 == /tmp/build-sdl/install/far2l_ttyx.broker ==  (--profile hybrid,

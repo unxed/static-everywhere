@@ -136,7 +136,19 @@ cmake_config_args() {
                 "-DCMAKE_TOOLCHAIN_FILE=${TOOLCHAIN_DIR}/onebin-linux-hybrid.cmake" \
                 "-DCMAKE_BUILD_TYPE=Release" \
                 "-DUSEWX=no" "-DUSESDL=YES" "-DPYTHON=no" "-DUNRAR=no" "-DICU_MODE=prebuilt" \
-                "-DNR_OPENSSL=no" "-DNR_AWS=no" "-DCMAKE_DISABLE_FIND_PACKAGE_OpenSSL=TRUE"
+                "-DNR_OPENSSL=no" "-DNR_AWS=no" "-DCMAKE_DISABLE_FIND_PACKAGE_OpenSSL=TRUE" \
+                "-DNETROCKS=no" "-DMULTIARC=no" "-DCOLORER=no"
+            # NETROCKS/MULTIARC/COLORER=no above is TEMPORARY, scoped to
+            # this pass's verified build (graphics group only: FreeType/
+            # HarfBuzz/Fontconfig/SDL2/uchardet, real onebin audit PASS
+            # for far2l/far2l_sdl.so/far2l_ttyx.broker — see STATUS.md).
+            # deps.lock's own stated policy is to leave these at their
+            # far2l defaults (yes) for sdl; turning them back on needs
+            # libssh/libarchive/libxml2 (already pinned+built standalone
+            # in the archives group) verified against a REAL far2l
+            # NETROCKS/MULTIARC/COLORER build, which hasn't happened yet
+            # — a distinct, not-yet-done follow-up, not a design decision
+            # to keep them off.
             ;;
         wx)
             printf '%s\n' \
@@ -152,27 +164,36 @@ cmake_config_args() {
 # "profile:level:strict:extra_allow:relpath", one per line. extra_allow is
 # comma-separated sonames, or empty. strict is the literal word "strict"
 # or empty.
+#
+# Paths are flat (e.g. "far2l", not "bin/far2l") — confirmed against a
+# real build, not the "<prefix>/bin/..." layout 04-REFERENCE-far2l.md
+# §3.4 originally documented (a real correction, made after actually
+# running `cmake --install`; that section now notes the discrepancy).
+# far2l_sdl.so is audited as --profile module, not hybrid: it is a
+# dlopen'd shared object, never has PT_INTERP by design, and --profile
+# hybrid's OB0036 ("no PT_INTERP") is the wrong check for it — confirmed
+# by building this exact artifact and re-auditing both ways.
 audit_plan_for_config() {
     case "$1" in
         tiny)
             printf '%s\n' \
-                "static:1:strict::bin/far2l"
+                "static:1:strict::far2l"
             ;;
         tty)
             printf '%s\n' \
-                "hybrid:1:strict::bin/far2l" \
-                "hybrid:1:strict:libX11.so.6,libXi.so.6,libICE.so.6,libSM.so.6,libXext.so.6:lib/far2l/far2l_ttyx.broker"
+                "hybrid:1:strict::far2l" \
+                "hybrid:1:strict:libX11.so.6,libXi.so.6,libICE.so.6,libSM.so.6,libXext.so.6:far2l_ttyx.broker"
             ;;
         sdl)
             printf '%s\n' \
-                "hybrid:1:strict::bin/far2l" \
-                "hybrid:1:strict::lib/far2l/far2l_sdl.so" \
-                "hybrid:1:strict:libX11.so.6,libXi.so.6,libICE.so.6,libSM.so.6,libXext.so.6:lib/far2l/far2l_ttyx.broker"
+                "hybrid:1:strict::far2l" \
+                "module:1:strict::far2l_sdl.so" \
+                "hybrid:1:strict:libX11.so.6,libXi.so.6,libICE.so.6,libSM.so.6,libXext.so.6:far2l_ttyx.broker"
             ;;
         wx)
             printf '%s\n' \
-                "hybrid:0:::bin/far2l" \
-                "hybrid:0:::lib/far2l/far2l_gui.so"
+                "hybrid:0:::far2l" \
+                "module:0:::far2l_gui.so"
             ;;
     esac
 }

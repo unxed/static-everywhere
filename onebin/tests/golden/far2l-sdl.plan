@@ -1,9 +1,9 @@
 git -C ./far2l-src describe --tags --exact-match
 test -n "${DEPS_PREFIX:?--deps-prefix is required for --config sdl}"
 mkdir -p ./out/far2l-sdl
-cmake -S ./far2l-src -B ./out/far2l-sdl/_build -DCMAKE_TOOLCHAIN_FILE=<repo>/onebin/toolchain/onebin-linux-hybrid.cmake -DCMAKE_BUILD_TYPE=Release -DUSEWX=no -DUSESDL=YES -DPYTHON=no -DUNRAR=no -DICU_MODE=prebuilt -DNR_OPENSSL=no -DNR_AWS=no -DCMAKE_DISABLE_FIND_PACKAGE_OpenSSL=TRUE  -DCMAKE_INSTALL_PREFIX=./out/far2l-sdl/install
+cmake -S ./far2l-src -B ./out/far2l-sdl/_build -DCMAKE_TOOLCHAIN_FILE=<repo>/onebin/toolchain/onebin-linux-hybrid.cmake -DCMAKE_BUILD_TYPE=Release -DUSEWX=no -DUSESDL=YES -DPYTHON=no -DUNRAR=no -DICU_MODE=prebuilt -DNR_OPENSSL=no -DNR_AWS=no -DCMAKE_DISABLE_FIND_PACKAGE_OpenSSL=TRUE -DNETROCKS=no -DMULTIARC=no -DCOLORER=no  -DCMAKE_INSTALL_PREFIX=./out/far2l-sdl/install
 cmake --build ./out/far2l-sdl/_build --parallel 4
 cmake --install ./out/far2l-sdl/_build
-<repo>/onebin/build/onebin audit --profile hybrid --level 1 --strict ./out/far2l-sdl/install/bin/far2l
-<repo>/onebin/build/onebin audit --profile hybrid --level 1 --strict ./out/far2l-sdl/install/lib/far2l/far2l_sdl.so
-<repo>/onebin/build/onebin audit --profile hybrid --level 1 --strict --allow libX11.so.6 --allow libXi.so.6 --allow libICE.so.6 --allow libSM.so.6 --allow libXext.so.6 ./out/far2l-sdl/install/lib/far2l/far2l_ttyx.broker
+<repo>/onebin/build/onebin audit --profile hybrid --level 1 --strict ./out/far2l-sdl/install/far2l
+<repo>/onebin/build/onebin audit --profile module --level 1 --strict ./out/far2l-sdl/install/far2l_sdl.so
+<repo>/onebin/build/onebin audit --profile hybrid --level 1 --strict --allow libX11.so.6 --allow libXi.so.6 --allow libICE.so.6 --allow libSM.so.6 --allow libXext.so.6 ./out/far2l-sdl/install/far2l_ttyx.broker
