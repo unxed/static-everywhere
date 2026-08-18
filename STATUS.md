@@ -140,13 +140,26 @@ strings (not build paths) — not a defect, not blocking, already recorded
 earlier in this file's history.
 
 far2l-sdl's own build-vs-audit loop is, as of this pass, **complete**:
-configured, built, both real findings chased down and fixed, both
-artifacts independently confirmed clean. What's left for far2l overall:
+configured, built, both real findings chased down and fixed, all three
+artifacts independently confirmed clean:
+
+```
+== /tmp/build-sdl/install/far2l_ttyx.broker ==  (--profile hybrid,
+   --allow libX11.so.6,libXi.so.6,libICE.so.6,libSM.so.6,libXext.so.6)
+  needed:  libICE.so.6 libSM.so.6 libX11.so.6 libXext.so.6 libXi.so.6
+           libc.so.6 libdl.so.2 libpthread.so.0
+PASS  Level 1  (0 errors, 1 warning, 3 infos)
+```
+
+**All three far2l-sdl artifacts (`far2l`, `far2l_sdl.so`,
+`far2l_ttyx.broker`) now audit clean.** The broker's `needed:` is exactly
+the six-soname allowlist this project settled on for it back when the
+TTYX/libc++ toolchain conflict was fixed — no surprises, confirming that
+finding held for this build too. What's left for far2l overall:
 `tools/build-far2l.sh` itself has not yet been used for this pass (every
 step so far used ad-hoc manual commands, deliberately, to keep each one
 independently verifiable) — folding this pass's exact flags back into
-the script, and the `far2l_ttyx.broker` artifact for this same build,
-remain open.
+the script is the next step.
 
 ## Housekeeping: two `deps.lock` files had diverged — consolidated to one
 
