@@ -307,3 +307,34 @@ uchardet 0.0.8 e97a60cfc00a1c147a674b097bb1422abd9fa78a2d9ce3f3fdcc2e78a34ac5f0 
 # No hash/url line for far2l itself: it is cloned by tag/commit per
 # 04-REFERENCE-far2l.md §2, not fetched as a tarball like every other
 # entry in this file.
+
+# far2l-sdl progress (STATUS.md has the full writeup): far2l/far2l
+# (main binary) built clean -- onebin audit --strict: 0 errors, 2
+# pre-existing-pattern OB0060 warnings only (legit /tmp,/var/tmp
+# runtime strings). far2l_sdl.so (the dlopen'd module) exposed two
+# REAL onebin-linux-hybrid.cmake bugs, both fixed: (1) CMake uses
+# CMAKE_MODULE_LINKER_FLAGS for MODULE targets, not
+# CMAKE_SHARED_LINKER_FLAGS -- the toolchain file never set it, so
+# far2l_sdl.so got none of the hardening/-s flags; (2) `-pie` was in
+# the flags shared by EXE/SHARED/MODULE, but `-pie` and `-shared`
+# are mutually exclusive for zig's linker -- latent bug never
+# exposed before because nothing had linked a real SHARED/MODULE
+# target through this file yet. Also added CMAKE_SKIP_RPATH=ON
+# (CMake was auto-baking a non-$ORIGIN RPATH from far2l's own
+# target_link_directories()).
+#
+# NOT YET FIXED: after those fixes, far2l_sdl.so links libfontconfig
+# and libfreetype DYNAMICALLY against the HOST's system .so instead
+# of this project's own static .a builds. Root cause identified: the
+# toolchain file's global host -L dirs (/usr/lib/x86_64-linux-gnu
+# etc., needed for X11 discovery) are emitted by CMake BEFORE
+# per-target target_link_directories() (which is where far2l's
+# pkg-config-derived -L to this project's own install prefix lands),
+# and GNU ld resolves a bare `-lNAME` against the FIRST -L directory
+# that contains any matching file, without preferring a later
+# directory's .a over an earlier directory's .so. This ordering is
+# imposed by CMake itself (global linker flags always precede
+# per-target ones) and is not fixable by reordering within this
+# toolchain file alone. Needs a real fix next session -- candidates:
+# -Wl,-Bstatic/-Bdynamic bracketing, or dropping the blanket host -L
+# in favor of a narrower per-target mechanism.

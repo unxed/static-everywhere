@@ -56,7 +56,6 @@ set(_onebin_link_flags
     "-static-libstdc++"
     "-Wl,--gc-sections"   # zig cc identifies as Clang — see the static file's note
     "-Wl,-z,relro" "-Wl,-z,now" "-Wl,-z,noexecstack"
-    "-pie"
     # Empirically required (found while building a static-zlib smoketest):
     # zig's bundled glibc CRT startup objects (crti/crtn/start-*.S, etc.)
     # ship with DWARF debug info that embeds *zig's own* build-tree paths
@@ -111,5 +110,32 @@ else()
         "zig's linker does not currently support it (verified against zig 0.13.0).")
 endif()
 string(JOIN " " _onebin_link_flags_str ${_onebin_link_flags})
-set(CMAKE_EXE_LINKER_FLAGS_INIT    "${_onebin_link_flags_str}")
+# -pie is EXE-only: `-shared`/MODULE outputs are dynamic libraries, and
+# a dynamic library cannot itself be a position-independent *executable*
+# (confirmed: zig's linker rejects `-pie` combined with `-shared` outright
+# — "dynamic libraries cannot be position independent executables").
+# This was a latent bug in CMAKE_SHARED_LINKER_FLAGS_INIT below even
+# before MODULE support was added — nothing had linked an actual SHARED
+# target through this file yet to expose it. Shared objects are
+# PIC-by-default from CMAKE_POSITION_INDEPENDENT_CODE/-fPIC already
+# passed at compile time; they don't need -pie at link time too.
+set(CMAKE_EXE_LINKER_FLAGS_INIT    "${_onebin_link_flags_str} -pie")
 set(CMAKE_SHARED_LINKER_FLAGS_INIT "${_onebin_link_flags_str}")
+# Found building far2l_sdl.so (add_library(... MODULE ...) — a dlopen'd
+# plugin, CMake's third linker-flags variable family besides EXE/SHARED):
+# CMake uses CMAKE_MODULE_LINKER_FLAGS for MODULE targets, not
+# CMAKE_SHARED_LINKER_FLAGS. Without this, MODULE targets got none of
+# the hardening/strip flags above — confirmed missing -s produced 951
+# embedded build-path strings and a non-$ORIGIN RPATH baked in from
+# pkg-config-derived -L dirs, both real onebin audit failures.
+set(CMAKE_MODULE_LINKER_FLAGS_INIT "${_onebin_link_flags_str}")
+
+# CMake auto-embeds an RPATH for every target_link_directories()/-L dir
+# a project adds (default CMAKE_SKIP_RPATH=OFF), which is exactly how
+# far2l_sdl.so ended up with a non-$ORIGIN RPATH pointing at this
+# project's own sandbox library paths (from far2l's own
+# target_link_directories(far2l_sdl PRIVATE ${SDL2_LIBRARY_DIRS} ...)).
+# Static/allowlisted-dynamic Profile H artifacts should never carry a
+# baked build-tree RPATH at all — turn the whole mechanism off globally
+# rather than special-case every downstream project's CMakeLists.
+set(CMAKE_SKIP_RPATH ON)
