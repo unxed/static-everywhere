@@ -286,6 +286,20 @@ Four builds. Each has a name used everywhere else in this repository.
 Fully static musl, static-PIE, zero host dependencies, runs on `FROM scratch`.
 **No plugins and no GUI**, because Profile S has no `dlopen` (§7.3).
 
+> **Correction, from an actual build (`--fetch`'d, built to completion,
+> audited for real).** This configuration as specified below does **not**
+> achieve Profile S. The resulting binary contains musl's literal
+> `"Dynamic loading not supported"` dlopen stub string regardless of every
+> plugin/GUI flag being off, and `onebin audit` correctly FAILs it on
+> `OB0033`. far2l calls `dlopen` from code no cmake flag disables — most
+> likely WinPort's `LoadLibrary` shim and/or the `resurrect` feature
+> (detach/reattach across an SSH disconnect, which structurally requires
+> attaching to a running process). **Do not re-attempt this as a quick
+> fix**; it needs either an upstream patch removing the call, or retargeting
+> this configuration at Profile H and dropping the zero-findings claim.
+> far2l's real Level-1 targets are `far2l-tty` and `far2l-sdl` below, where
+> `dlopen` is expected and allowed by design.
+
 ```sh
 cmake -DCMAKE_TOOLCHAIN_FILE=<repo>/onebin/toolchain/onebin-linux-static.cmake \
       -DCMAKE_BUILD_TYPE=Release \

@@ -319,6 +319,14 @@ job you must actually run.
 
 ### 7.7 `CGO_ENABLED=0` can still `dlopen` — which contradicts our risk table
 
+> **Consequence, confirmed by an actual far2l build attempt (see
+> `STATUS.md`'s top note and `04-REFERENCE-far2l.md §6.1`): f4 is a
+> dlopen *user*, which means f4/f4-qt must target Profile H, not Profile
+> S.** Do not attempt a Profile S build of f4 or f4-qt expecting zero
+> dlopen evidence from `onebin audit` — it will FAIL on OB0033 for the
+> same structural reason far2l-tiny did, and re-discovering that is a
+> waste of a session. Target Profile H from the start.
+
 `DESIGN-onebin.md §11` row 1 says Profile S plus `dlopen` is impossible, because
 a static musl binary has no dynamic loader. True for C. **Not a law of nature.**
 

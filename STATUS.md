@@ -1,5 +1,39 @@
 # STATUS
 
+## READ THIS FIRST: do not attempt Profile S (static, no dlopen) for far2l or f4/f4-qt
+
+Confirmed by an actual build attempt (far2l-tiny, Profile S, musl,
+`--fetch`'d and built to completion): even with every optional plugin and
+every GUI backend disabled at cmake configure time, the resulting `far2l`
+binary still contains musl's literal `"Dynamic loading not supported"`
+dlopen stub string, which `onebin`'s OB0033 check correctly reports as a
+FAIL, not a false positive. far2l calls `dlopen` unconditionally somewhere
+in code that cannot be disabled by any cmake flag — very likely WinPort's
+`LoadLibrary` shim and/or the `resurrect` feature (far2l detaches and
+re-attaches to itself across an SSH disconnect, which structurally
+requires attaching to a running process — see the user's own description
+of this feature). far2l-tiny (Profile S) is **not achievable without a
+real upstream patch removing that call**, contradicting
+`04-REFERENCE-far2l.md §6.1`'s "no plugins and no GUI, because Profile S
+has no dlopen" claim. **Do not re-attempt far2l-tiny as a quick fix. Do
+not spend a session rediscovering this.** The correct next steps are
+either (a) find and patch the specific dlopen call site upstream, or (b)
+retarget far2l-tiny at Profile H instead of Profile S and drop the "Level
+1 with zero findings" claim for it, documenting why. far2l's real,
+intended targets remain `far2l-tty` and `far2l-sdl` (Profile H, dlopen
+explicitly allowed by design) — build and audit those first; they were
+never expected to be dlopen-free.
+
+The same risk applies to **f4/f4-qt**: `05-REFERENCE-f4-qt.md §7.7`
+already documents that f4's Go core does `dlopen` via `purego`/`goffi`
+even under `CGO_ENABLED=0` — this was recorded there as evidence that
+Profile S *can* dlopen in principle (amending DESIGN-onebin.md §11 row 1),
+but it equally means **f4 itself is a dlopen user, not a dlopen-free
+program**. Do not attempt to build f4 or the Qt wrapper (f4-qt) under
+Profile S expecting zero dlopen evidence. Target Profile H for both, the
+same as far2l.
+
+
 The live state of this repository. **Updated on every change.** If it disagrees
 with any other document, this file is right and the other document is stale —
 say so in your report.
