@@ -36,6 +36,16 @@ set(_onebin_flags
     "-fstack-protector-strong"
     "-ffile-prefix-map=${CMAKE_SOURCE_DIR}=."
     "-ffile-prefix-map=${CMAKE_BINARY_DIR}=."
+    # Neutralizes a real conflict found while building far2l's TTYX broker:
+    # a project that does plain `include_directories(/usr/include)` (not
+    # `SYSTEM`) for some third-party header gives that directory `-I`
+    # priority, which shadows zig's bundled libc++ header shims for any
+    # C++ file that also pulls in the STL ("<cerrno> tried including
+    # <errno.h> but didn't find libc++'s <errno.h> header"). Adding the
+    # same path back in as `-isystem` — confirmed empirically, in either
+    # flag order — restores libc++'s priority regardless of what a later
+    # plain `-I/usr/include` does. Harmless when nothing needs it.
+    "-isystem /usr/include"
 )
 string(JOIN " " _onebin_flags_str ${_onebin_flags})
 set(CMAKE_C_FLAGS_INIT   "${_onebin_flags_str}")

@@ -407,3 +407,32 @@ usage, not something fixable from this project's toolchain file alone.
 Stopping here for this session rather than patching upstream modules under
 time pressure. **`far2l-tty` without `TTYX` remains a clean, confirmed
 PASS Level 1** — that result stands unaffected by any of this.
+
+## Update: the TTYX/libc++ conflict is FIXED, and `far2l_ttyx.broker` now builds
+
+Found the exact mechanism by reading `WinPort/src/Backend/TTY/TTYX/CMakeLists.txt`
+directly: it calls plain `include_directories(${X11_INCLUDE_DIR})`, not
+`target_include_directories(... SYSTEM ...)`, giving `/usr/include` `-I`
+(high) priority instead of `-isystem` (low) — confirmed as the exact cause
+by an isolated `zig c++` reproduction, and confirmed the fix by the same
+isolated method before touching CMake again: adding `/usr/include` back in
+as `-isystem` (in *either* flag order relative to the offending `-I`)
+restores libc++'s priority and compiles cleanly.
+
+Added `-isystem /usr/include` to `onebin-linux-hybrid.cmake`'s common
+flags. **Real result: `far2l_ttyx.broker` now builds completely** — a
+real, dynamically-linked PIE ELF, `TTYX.cpp` compiles without error. This
+does not touch upstream far2l at all; it is a toolchain-file-only fix.
+
+Audited for real: `onebin audit --profile hybrid --level 1 --allow
+libX11.so.6 --allow libXi.so.6` on the broker gives `needed: libICE.so.6
+libSM.so.6 libX11.so.6 libXext.so.6 libXi.so.6 libc.so.6 libdl.so.2
+libpthread.so.0` — **3 errors**: `libICE.so.6`, `libSM.so.6`,
+`libXext.so.6` are not on the allowlist. This is a genuine, useful
+finding, not a toolchain problem: `04-REFERENCE-far2l.md §9`'s planned
+`--allow` list (`libX11.so.6`, `libXi.so.6`) is **incomplete** — linking
+against real X11 transitively pulls in ICE/SM (session management) and
+Xext, which the reference document didn't anticipate. `04-REFERENCE-far2l.md
+§9`'s table needs updating to add these three to the broker's `--allow`
+list, and `tools/build-far2l.sh`'s `audit_plan_for_config` for `tty`/`sdl`
+needs the same three sonames added. Not yet done — the next small step.
