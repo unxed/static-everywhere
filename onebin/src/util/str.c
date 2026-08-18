@@ -53,8 +53,9 @@ int ob_str_sanitize(const char *src, char *dst, size_t dstsz) {
     size_t copy = (keep < dstsz - 1) ? keep : dstsz - 1;
     memcpy(dst, marked, copy);
     dst[copy] = '\0';
-    if (dstsz - strlen(dst) > 3) {
-        strcat(dst, "...");
+    size_t used = strlen(dst);
+    if (dstsz - used > 3) {
+        memcpy(dst + used, "...", 4); /* includes the NUL */
     }
     return changed;
 }

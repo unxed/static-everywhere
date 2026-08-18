@@ -204,6 +204,30 @@ ob_audit_status ob_audit_file(const ob_audit_options *opts, ob_report *out) {
         char soname[ONEBIN_MAX_STRING + 1];
         if (ob_dynamic_string(&img, &dyn, dyn.soname_stroff, soname, sizeof(soname)) == OB_STR_OK) {
             ob_report_set_soname(out, soname);
+            ob_report_add_finding(out, "OB0005", "elf.shared", OB_SEV_INFO, soname,
+                                   "shared object with a DT_SONAME");
+        }
+    }
+    /* OB0004, 01-SPEC-audit.md §6.1: "If two PT_LOADs claim the same
+     * address, the first wins. Emit OB0004 (info) noting the overlap." One
+     * finding per offending later segment, subject is its starting vaddr. */
+    for (size_t i = 0; i < img.nphdrs; i++) {
+        if (img.phdrs[i].p_type != PT_LOAD) {
+            continue;
+        }
+        for (size_t j = 0; j < i; j++) {
+            if (img.phdrs[j].p_type != PT_LOAD) {
+                continue;
+            }
+            uint64_t v = img.phdrs[i].p_vaddr;
+            if (v >= img.phdrs[j].p_vaddr &&
+                v - img.phdrs[j].p_vaddr < img.phdrs[j].p_filesz) {
+                char subj[32];
+                snprintf(subj, sizeof(subj), "0x%llx", (unsigned long long)v);
+                ob_report_add_finding(out, "OB0004", "elf.overlap", OB_SEV_INFO, subj,
+                                       "PT_LOAD claims an address an earlier PT_LOAD already maps; the earlier one wins");
+                break;
+            }
         }
     }
     for (size_t i = 0; i < img.nphdrs; i++) {

@@ -12,18 +12,21 @@ void ob_strings_scan(const ob_buf *buf, ob_strings_cb cb, void *user) {
     }
     size_t i = 0;
     while (i < buf->len) {
-        if (!is_strchar(buf->p[i])) {
+        uint8_t c;
+        if (ob_rd8(buf, i, &c) != 0 || !is_strchar(c)) {
             i++;
             continue;
         }
         size_t start = i;
-        while (i < buf->len && is_strchar(buf->p[i]) &&
-               (i - start) < ONEBIN_MAX_STRING) {
+        for (;;) {
+            if (i - start >= ONEBIN_MAX_STRING || ob_rd8(buf, i, &c) != 0 || !is_strchar(c)) {
+                break;
+            }
             i++;
         }
         size_t runlen = i - start;
         if (runlen >= 4) {
-            cb((const char *)&buf->p[start], runlen, start, user);
+            cb((const char *)(buf->p + start), runlen, start, user);
         }
         /* If the run was cut short only by the ONEBIN_MAX_STRING cap (not
          * by an out-of-range byte or EOF), the outer loop resumes scanning

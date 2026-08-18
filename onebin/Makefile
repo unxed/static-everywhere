@@ -29,7 +29,7 @@ TEST_SRC = tests/test_main.c tests/t_skeleton.c tests/t_buf.c tests/t_ver.c \
            tests/report_fixtures.c tests/t_checks_needed.c tests/t_checks_profile.c \
            tests/t_checks_glibc.c tests/t_checks_rpath.c tests/t_checks_harden.c \
            tests/t_checks_hygiene.c tests/t_checks_host.c tests/t_checks_meta.c \
-           tests/t_audit.c tests/t_cli.c $(LIB_SRC)
+           tests/t_audit.c tests/t_cli.c tests/t_lint.c $(LIB_SRC)
 
 all: build/onebin
 

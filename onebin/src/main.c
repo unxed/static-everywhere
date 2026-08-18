@@ -91,8 +91,17 @@ int main(int argc, char **argv) {
         const char *write_baseline_path = NULL;
         long max_file = -1;
         const char **allow = malloc((size_t)argc * sizeof(char *));
+        if (!allow) {
+            fprintf(stderr, "error: out of memory\n");
+            return 2;
+        }
         int nallow = 0;
         const char **files = malloc((size_t)argc * sizeof(char *));
+        if (!files) {
+            fprintf(stderr, "error: out of memory\n");
+            free(allow);
+            return 2;
+        }
         int nfiles = 0;
         int no_more_opts = 0;
 

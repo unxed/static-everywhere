@@ -190,3 +190,26 @@
   than a rushed guess. Left as `SKIP()` with a comment pointing at the gap,
   which is honest about what's tested and what isn't, rather than a
   green checkmark that lies.
+- **`t_lint.c` found four real issues on its first run**, not just style
+  nits: `elf/strings.c` indexed `buf->p[i]` directly instead of going
+  through `ob_rd8` (rule 1 exists precisely because a string scanner is
+  exactly the code walking attacker-controlled bytes one at a time —
+  fixed); `util/str.c` used `strcat()` even though the call site had
+  already computed the remaining space safely (rule 5 bans the function
+  outright, not just unsafe uses of it — replaced with a bounds-checked
+  `memcpy`); and `src/main.c` had two `malloc()` call sites for `--allow`/
+  file-path arrays with no NULL check at all (rule 6 — fixed by checking
+  each immediately after its own call rather than batching both checks
+  after both allocations, which had also technically violated the "within
+  3 lines" window). `OB0004` (`elf.overlap`) and `OB0005` (`elf.shared`)
+  were declared in `01-SPEC-audit.md §8`'s registry but never emitted
+  anywhere in `src/` — rule 8 caught this, and both are now implemented
+  for real in `audit/audit.c` (duplicate `PT_LOAD` vaddr detection per
+  §6.1's "first wins" rule, and a plain "this is a shared object" note)
+  rather than exempted to make the test pass.
+- **`OB0035` is the one deliberate exception to rule 8**, allowlisted by
+  name in `t_lint.c` with a comment pointing back to the earlier NOTES.md
+  entry explaining why (implementing it as an unconditional fallback would
+  reintroduce the false positive `03-TESTPLAN.md §4.3 #1` explicitly
+  guards against). One documented exception, not a loophole — every other
+  ID in the registry is a hard requirement.
