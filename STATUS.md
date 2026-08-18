@@ -394,3 +394,16 @@ machinery embeds extra host-toolchain paths musl doesn't have).
   than into `~/.local/share`. The recovery path for a broken self-update is "the
   user deletes a directory they can see", which only works if they can see it.
   Manifesto §7.2, `DESIGN-onebin.md` §4 and §5.7.
+
+## Update: `-stdlib=libstdc++` ruled out for the TTYX/libc++ conflict
+
+Tried directly, outside CMake: `zig c++ -stdlib=libstdc++` silently
+ignores the flag (`argument unused during compilation`) and always uses
+its own bundled libc++ regardless — confirmed with an isolated invocation,
+not a guess. The likely real fix is that `find_package(X11)`'s
+`target_include_directories` uses plain `-I` (high priority) rather than
+`-isystem` for `/usr/include` — upstream CMake/far2l's own `FindX11.cmake`
+usage, not something fixable from this project's toolchain file alone.
+Stopping here for this session rather than patching upstream modules under
+time pressure. **`far2l-tty` without `TTYX` remains a clean, confirmed
+PASS Level 1** — that result stands unaffected by any of this.
