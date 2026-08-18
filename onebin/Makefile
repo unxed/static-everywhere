@@ -76,8 +76,9 @@ fuzz:
 coverage:
 	@mkdir -p build/cov
 	@if $(CC) --coverage -E - < /dev/null >/dev/null 2>&1; then \
-		$(CC) $(CFLAGS) --coverage $(INCLUDES) -Itests $(TEST_SRC) -o build/cov/tests && \
-		./build/cov/tests; \
+		$(CC) $(CFLAGS) -DONEBIN_COVERAGE --coverage $(INCLUDES) -Itests $(TEST_SRC) -o build/cov/tests && \
+		./build/cov/tests && \
+		tools/coverage-gate.sh; \
 	else \
 		echo "SKIP: gcov coverage not supported by $(CC)"; \
 	fi

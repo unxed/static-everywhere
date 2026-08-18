@@ -7,6 +7,24 @@
 #include <signal.h>
 #include "test.h"
 
+/* This harness forks a child process per test for crash isolation (a
+ * SIGSEGV in one test must not take down the whole suite), and every child
+ * terminates via _exit() rather than returning from main() — which is
+ * exactly the path gcov's atexit-registered counter flush never runs.
+ * Without this, `make coverage` reports 0% for every line, because every
+ * line of library code only ever executes inside a child that _exit()s.
+ * __gcov_dump() flushes explicitly; GCC's runtime merges (sums) into the
+ * shared .gcda file rather than overwriting it, so sequential children
+ * accumulate correctly. Only declared/called when ONEBIN_COVERAGE is
+ * defined (the Makefile's `coverage` target defines it) — the symbol does
+ * not exist in a non-instrumented build. */
+#ifdef ONEBIN_COVERAGE
+extern void __gcov_dump(void);
+#define OB_GCOV_DUMP() __gcov_dump()
+#else
+#define OB_GCOV_DUMP() ((void)0)
+#endif
+
 test_case_t *g_test_list_head = NULL;
 test_case_t *g_test_list_tail = NULL;
 
@@ -42,6 +60,7 @@ void test_fail(const char *file, int line, const char *msg) {
             (void)written;
         }
     }
+    OB_GCOV_DUMP();
     _exit(1);
 }
 
@@ -56,6 +75,7 @@ void test_skip(const char *file, int line, const char *msg) {
             (void)written;
         }
     }
+    OB_GCOV_DUMP();
     _exit(77);
 }
 
@@ -124,6 +144,7 @@ int main(int argc, char **argv) {
             alarm(10);
             tc->fn();
             close(pfd[1]);
+            OB_GCOV_DUMP();
             _exit(0);
         }
 

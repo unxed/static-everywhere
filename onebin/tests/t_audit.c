@@ -164,6 +164,102 @@ TEST(audit_forced_profile_overrides_autodetect) {
     eg_free(o); unlink(path);
 }
 
+TEST(audit_shared_lib_sets_soname) {
+    char path[128];
+    tmp_path(path, sizeof(path), "7");
+    eg *o = eg_preset_shared_lib();
+    ASSERT_EQ_INT(eg_write(o, path), 0);
+
+    ob_audit_options opts;
+    ob_audit_options_init(&opts);
+    opts.file_path = path;
+
+    ob_report r;
+    ASSERT_EQ_INT(ob_audit_file(&opts, &r), OB_AUDIT_OK);
+    ASSERT_NOT_NULL(r.soname);
+    ASSERT_EQ_STR(r.soname, "libfoo.so.1");
+
+    ob_report_free(&r);
+    eg_free(o); unlink(path);
+}
+
+TEST(audit_static_nopie_type_and_arm_machine) {
+    char path[128];
+    tmp_path(path, sizeof(path), "8");
+    eg *o = eg_preset_static_nopie();
+    ASSERT_EQ_INT(eg_write(o, path), 0);
+
+    ob_audit_options opts;
+    ob_audit_options_init(&opts);
+    opts.file_path = path;
+
+    ob_report r;
+    ASSERT_EQ_INT(ob_audit_file(&opts, &r), OB_AUDIT_OK);
+    ASSERT_EQ_STR(r.type, "ET_EXEC");
+
+    ob_report_free(&r);
+    eg_free(o); unlink(path);
+
+    char path2[128];
+    tmp_path(path2, sizeof(path2), "9");
+    eg *o2 = eg_new(64, EG_LE, EM_AARCH64, ET_DYN);
+    ASSERT_EQ_INT(eg_write(o2, path2), 0);
+    ob_audit_options opts2;
+    ob_audit_options_init(&opts2);
+    opts2.file_path = path2;
+    ob_report r2;
+    ASSERT_EQ_INT(ob_audit_file(&opts2, &r2), OB_AUDIT_OK);
+    ASSERT_EQ_STR(r2.machine, "aarch64");
+    ob_report_free(&r2);
+    eg_free(o2); unlink(path2);
+}
+
+TEST(audit_runpath_and_rpath_populate_report) {
+    char path[128];
+    tmp_path(path, sizeof(path), "10");
+    eg *o = eg_new(64, EG_LE, EM_X86_64, ET_DYN);
+    eg_set_runpath(o, "$ORIGIN/lib:/opt/x");
+    eg_set_rpath(o, "$ORIGIN/old");
+    ASSERT_EQ_INT(eg_write(o, path), 0);
+
+    ob_audit_options opts;
+    ob_audit_options_init(&opts);
+    opts.file_path = path;
+
+    ob_report r;
+    ASSERT_EQ_INT(ob_audit_file(&opts, &r), OB_AUDIT_OK);
+    ASSERT_EQ_INT(r.nrunpath, 2);
+    ASSERT_EQ_INT(r.nrpath, 1);
+
+    ob_report_free(&r);
+    eg_free(o); unlink(path);
+}
+
+TEST(audit_bad_class_is_fatal_ob0002) {
+    char path[128];
+    tmp_path(path, sizeof(path), "11");
+    eg *o = eg_new(64, EG_LE, EM_X86_64, ET_DYN);
+    size_t len;
+    uint8_t *raw = eg_emit(o, &len);
+    raw[4] = 7; /* EI_CLASS: invalid */
+    FILE *f = fopen(path, "wb");
+    ASSERT_NOT_NULL(f);
+    fwrite(raw, 1, len, f);
+    fclose(f);
+    free(raw);
+
+    ob_audit_options opts;
+    ob_audit_options_init(&opts);
+    opts.file_path = path;
+
+    ob_report r;
+    ASSERT_EQ_INT(ob_audit_file(&opts, &r), OB_AUDIT_FATAL);
+    ASSERT_TRUE(has_id(&r, "OB0002"));
+
+    ob_report_free(&r);
+    eg_free(o); unlink(path);
+}
+
 TEST(audit_json_and_text_render_without_crash) {
     char path[128];
     tmp_path(path, sizeof(path), "6");

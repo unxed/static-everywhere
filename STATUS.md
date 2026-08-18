@@ -29,7 +29,7 @@ Roadmap in [DESIGN-onebin.md §10](./DESIGN-onebin.md). Task list in
 | 8 | the checks, **including Profile M** | done |
 | 9 | the CLI | done |
 | 10 | malformed corpus and fuzzer | done |
-| 11 | coverage and lint test | **next** |
+| 11 | coverage (done) / lint test (not started) | **partial** |
 | 11 | coverage and lint test | not started |
 | 12 | self-audit and documentation | not started |
 | 13 | `tools/audit.sh` learns about modules | done |
@@ -39,7 +39,7 @@ Roadmap in [DESIGN-onebin.md §10](./DESIGN-onebin.md). Task list in
 | 17 | `tools/build-f4-qt.sh` + `contrib/f4-qt/deps.lock` | not started |
 | 18 | Level 1 runtime gate for GUI artifacts (03-TESTPLAN.md) | not started |
 
-`make test`: 245 passed, 0 failed, 2 skipped. `make test-asan` and `make
+`make test`: 249 passed, 0 failed, 3 skipped. `make test-asan` and `make
 test-ubsan` both clean.
 
 `tools/audit.sh` implements the profile ladder as of Task 13, so the shell
@@ -161,6 +161,20 @@ binary, so ASan/UBSan see everything.
 `make fuzz FUZZ_ITERS=200000`, plus additional runs up to 100000
 iterations each at four other seeds, all completed with **zero crashes,
 zero timeouts, and zero sanitizer reports**.
+
+Task 11's coverage half is done; `t_lint.c` (the architecture-rule checks)
+is not started yet. `make coverage` found and fixed a real bug on its
+first real run: the test harness forks a child per test for crash
+isolation, and every child terminates via `_exit()`, which bypasses gcov's
+atexit-based flush — so every test was reporting 0% coverage despite
+passing. Fixed with an explicit `__gcov_dump()` before each `_exit()`,
+guarded so the symbol never appears in non-instrumented builds. `make
+coverage` now runs `tools/coverage-gate.sh`, which aggregates line/branch
+percentages across every `src/` file and **exits non-zero below
+threshold**. Current result: **91.17% line / 95.51% branch** coverage
+(gate: 90%/85%), with `util/buf.c` and `util/ver.c` both at 100% as
+required. One test (`symbols_count_via_section_headers`) is a known,
+commented `SKIP()` rather than a rushed fix — see `onebin/NOTES.md`.
 
 ## Open design questions
 
