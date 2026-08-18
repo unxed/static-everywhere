@@ -1,0 +1,10 @@
+#!/bin/sh
+# zig-c++ — see zig-cc for why this wrapper exists at all.
+set -eu
+
+if ! command -v zig >/dev/null 2>&1; then
+    echo "zig-c++: 'zig' not found on PATH. Install it: https://ziglang.org/download/" >&2
+    exit 127
+fi
+
+exec zig c++ "$@"

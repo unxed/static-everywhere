@@ -1,0 +1,14 @@
+#!/bin/sh
+# zig-cc — CMake needs a single executable for CMAKE_C_COMPILER; "zig cc" is
+# two words and CMake will not accept that. The -target triple and every
+# other flag arrive as ordinary compiler flags via CMAKE_C_FLAGS_INIT in the
+# toolchain files, so this wrapper carries no target-specific knowledge of
+# its own — DESIGN-onebin.md §8.
+set -eu
+
+if ! command -v zig >/dev/null 2>&1; then
+    echo "zig-cc: 'zig' not found on PATH. Install it: https://ziglang.org/download/" >&2
+    exit 127
+fi
+
+exec zig cc "$@"

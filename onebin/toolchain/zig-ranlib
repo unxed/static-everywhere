@@ -1,0 +1,11 @@
+#!/bin/sh
+# zig-ranlib — CMAKE_RANLIB must be a single executable path, same reasoning
+# as zig-ar.
+set -eu
+
+if ! command -v zig >/dev/null 2>&1; then
+    echo "zig-ranlib: 'zig' not found on PATH. Install it: https://ziglang.org/download/" >&2
+    exit 127
+fi
+
+exec zig ranlib "$@"

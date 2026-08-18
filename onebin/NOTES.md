@@ -242,3 +242,29 @@
   which musl simply doesn't have. A small, concrete illustration of
   `STATIC-EVERYWHERE.md`'s musl-vs-glibc argument, observed on this
   project's own tool rather than argued in the abstract.
+- **Task 14's toolchain files needed two corrections to what
+  `DESIGN-onebin.md §8`'s sketch shows, both found by actually building
+  with `zig` (0.13.0) rather than trusting the sketch**:
+  - `zig cc -target x86_64-linux-musl -static-pie` silently ignores
+    `-static-pie` ("argument unused during compilation") and produces a
+    plain static, non-PIE binary instead. The combination that actually
+    produces a `static-pie linked` ELF is `-fPIE -pie -static`. Verified
+    with a standalone `zig cc` invocation before touching CMake at all.
+  - `-Wl,--exclude-libs,ALL` is rejected outright by zig's linker driver —
+    `error: unsupported linker arg: --exclude-libs` — with or without
+    `-fuse-ld=lld`, on every target tried. Since this flag is already
+    documented as a default rather than a hard requirement
+    (`DESIGN-onebin.md §8`, `04-REFERENCE-far2l.md §7.1`), the toolchain
+    files omit it under zig and print a `message(STATUS ...)` explaining
+    why at configure time, rather than either breaking every build or
+    silently pretending the flag was applied. `-Wl,--export-dynamic` and
+    `-Wl,-z,relro/now/noexecstack` all work fine under zig's linker —
+    only `--exclude-libs` doesn't.
+  Both toolchain files were then verified end to end: `cmake` configures
+  and builds a two-file C+C++ smoketest project via each, the resulting
+  binaries run, and — the best available confirmation — `onebin audit`
+  itself reports **PASS Level 1** for both the Profile S and Profile H
+  outputs (a handful of `OB0060` warnings remain from zig's own prebuilt
+  musl/glibc runtime objects' embedded debug paths, which
+  `-ffile-prefix-map` cannot reach since it only affects this project's
+  own compilation units, not zig's precompiled ones).

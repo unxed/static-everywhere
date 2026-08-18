@@ -1,0 +1,11 @@
+#!/bin/sh
+# zig-ar — CMAKE_AR must be a single executable path, set before project();
+# see zig-cc for the same reasoning applied to the archiver.
+set -eu
+
+if ! command -v zig >/dev/null 2>&1; then
+    echo "zig-ar: 'zig' not found on PATH. Install it: https://ziglang.org/download/" >&2
+    exit 127
+fi
+
+exec zig ar "$@"

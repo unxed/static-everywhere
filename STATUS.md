@@ -32,7 +32,8 @@ Roadmap in [DESIGN-onebin.md §10](./DESIGN-onebin.md). Task list in
 | 11 | coverage and lint test | done |
 | 12 | self-audit and documentation | done |
 | 13 | `tools/audit.sh` learns about modules | done |
-| 14 | CMake toolchain files + `zig-*` wrappers | **next** |
+| 14 | CMake toolchain files + `zig-*` wrappers | done |
+| 15 | `tools/build-far2l.sh` + `contrib/far2l/deps.lock` | **next** |
 | 15 | `tools/build-far2l.sh` + `contrib/far2l/deps.lock` | not started |
 | 16 | `contrib/far2l/UPSTREAM.md` | not started |
 | 17 | `tools/build-f4-qt.sh` + `contrib/f4-qt/deps.lock` | not started |
@@ -184,6 +185,21 @@ in `src/main.c` (fixed), and two finding IDs (`OB0004`, `OB0005`)
 declared in the spec's registry but never emitted anywhere — both are now
 implemented for real in `audit/audit.c` rather than exempted. `OB0035`
 remains the one deliberate, allowlisted exception (see `onebin/NOTES.md`).
+
+
+Task 14 is also complete: `onebin/toolchain/onebin-linux-static.cmake`
+(Profile S), `onebin-linux-hybrid.cmake` (Profile H), and the four
+`zig-cc`/`zig-c++`/`zig-ar`/`zig-ranlib` wrapper scripts (all shellcheck-
+clean). Verified against a real `zig 0.13.0`, not just parsed: `cmake`
+configures and builds a two-file C+C++ smoketest via each toolchain file
+in `onebin/toolchain/tests/`, and **`onebin audit` reports PASS Level 1
+for both resulting binaries**. Building for real turned up two corrections
+`DESIGN-onebin.md §8`'s sketch needed: zig silently ignores a bare
+`-static-pie` for musl targets (the working combination is `-fPIE -pie
+-static`), and zig's linker rejects `-Wl,--exclude-libs,ALL` outright —
+omitted under zig with a `message(STATUS ...)` explaining why, since it
+was already documented as a default rather than a hard requirement.
+Full writeup in `onebin/NOTES.md`.
 
 Task 12 is also complete: `onebin/README.md` and `tools/selftest.sh`.
 `make selftest` builds `onebin` itself with Profile S flags (`musl-gcc
