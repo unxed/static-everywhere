@@ -550,6 +550,7 @@ machinery embeds extra host-toolchain paths musl doesn't have).
 | 6 | **Should `contrib/`'s per-project build recipes generalise into a shared, Homebrew-formula-like database** once far2l's and f4-qt's own entries exist? [FUTURE-IDEAS.md §2](./FUTURE-IDEAS.md). | **not a milestone.** Revisit after Tasks 15+ and a third candidate recipe exist |
 | 5 | **Does Level 1 need a runtime gate for GUI applications?** f4-qt's CI proves a static Qt binary can pass every static check and still fail to start. | **yes, provisionally** — 05-REFERENCE-f4-qt.md §7.4. Needs writing into 03-TESTPLAN.md |
 | 4 | **One image per architecture instead of one per OS.** Speculation, not a plan: [FUTURE-IDEAS.md §1](./FUTURE-IDEAS.md). | **not a milestone.** Only §1.11 touches v0.1, and everything in it is free |
+| 7 | **`libwinescape` — raw syscalls from a Windows binary under Wine, bypassing Win32.** A live experiment (not this repository's) already confirms the guest-cooperates premise §1.5 argues by analogy. [FUTURE-IDEAS.md §3](./FUTURE-IDEAS.md). | **not this project's code.** Design and task spec live in `unxed/f4`'s `WINE.md`; tracked here only as a cross-reference |
 
 ## Decisions taken since the documents were first written
 

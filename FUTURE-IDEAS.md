@@ -514,7 +514,136 @@ decision to make yet.
 
 ---
 
-## 3. What else belongs in this file
+## 3. `libwinescape` — the same doctrine, worked from the other side of Wine
+
+**Status: idea recorded, one fact confirmed by a live experiment, no library
+written yet. Full task spec lives in the other repository (§3.5) so it does
+not have to be duplicated or kept in sync by hand.**
+
+§1 asks what happens if *we* carry a small, audited loader instead of asking
+Wine to run arbitrary Windows binaries. This section is the mirror image:
+what happens if a binary that is genuinely, honestly Windows-shaped —
+compiled with a normal Windows toolchain, runs on real Windows with no
+caveats — *also* notices when the thing underneath it happens to be Wine, and
+in that one case reaches past Win32 for the parts of the doctrine's Layer 3
+that Wine already exposes a path to, instead of paying the Win32-to-POSIX
+translation tax on every syscall. Same doctrine — *talk to the host by
+protocol, not by ABI* — applied by a guest that already knows it is a guest,
+rather than by a loader we wrote ourselves.
+
+### 3.1 What's already true, independently of this idea
+
+This project ([unxed/f4](https://github.com/unxed/f4), also the upstream
+behind [05-REFERENCE-f4-qt.md](./05-REFERENCE-f4-qt.md)) already does the
+Layer-3-is-a-protocol thing §1.3 describes, and does it a second way that
+§1.3 doesn't mention yet: its terminal UI library (`vtui`) speaks the X11
+wire protocol directly over a socket, via a pure-Go client
+([`jezek/xgb`](https://github.com/jezek/xgb), no `libX11`), and that code
+already cross-compiles under `GOOS=windows` and is already reachable from a
+Windows build via `--gui=x11` — untested under Wine as of this writing, but
+zero new code away from being tested. That's the same claim §1.3 makes about
+f4-qt's Go binary opening X11/Wayland windows with no client library, from a
+sibling codebase, arrived at independently.
+
+### 3.2 The experiment that's already been run
+
+§1.12 step 2 proposes measuring, empirically, whether "the guest cooperates"
+(§1.5) is really enough to keep a Windows-shaped loader small on Linux. A
+version of that same question — does a cooperating, unprepared guest get a
+real syscall through, with nothing registered, nothing negotiated, no
+`unixlib`-style boundary declared on either side — has an answer now, from
+the opposite direction:
+
+A `GOOS=windows GOARCH=amd64` binary containing one hand-written function —
+a bare `SYSCALL` instruction, `AX=39` (Linux's `getpid`) — run under real Wine
+(tested independently on Wine 9.0 and by the project's own maintainer on
+their machine), returned a value that exactly matched the host's actual PID
+for the `wine64` process, as cross-checked against `ps` on the host. Not a
+crash, not an emulated/ignored instruction, not a value that merely looked
+plausible — the literal PID, confirmed twice, on two different machines.
+
+That is one data point, for one syscall, with no pointer arguments, on one
+architecture, under one Wine version — nowhere near "the API surface is
+bounded and small like §1.5 wants." But it is real, it cost about ten lines
+of assembly and no negotiation with Wine at all, and it is independent
+evidence for exactly the premise §1.5 argues from analogy: **a cooperating
+guest doesn't need Wine's unbounded compatibility surface, because it never
+asked Wine to interpret anything — it went straight to the kernel's own
+protocol**, which is arguably the *most* boring, stable, wire-format-shaped
+interface either project touches. Full writeup, exact bytes, and the caveats
+about what one `getpid()` call does and doesn't prove:
+[unxed/f4, `WINE.md` §5/§11–§12](https://github.com/unxed/f4/blob/main/WINE.md).
+
+### 3.3 Where it agrees with §1, and where the two projects would collide productively
+
+- **Same wall, different reason.** §1.7 calls macOS "the wall" for the
+  from-scratch-loader direction, because of code signing, the hardened
+  runtime, and `%gs`/`x18` already being spoken for. The Wine-side direction
+  hits a *different* wall on the same two platforms: Wine on OpenBSD refuses
+  a raw `SYSCALL` whose entry point isn't inside `libc.so` (`pledge`/
+  `msyscall`), and Wine on Darwin needs the call routed through
+  `libSystem.dylib` for the same reason Go's own runtime stopped doing raw
+  syscalls there. Neither wall is the other's wall, but both projects
+  converge on "Linux and the BSD-family-that-isn't-OpenBSD are fine, macOS
+  is where the trick stops working" from two unrelated codebases and two
+  unrelated mechanisms. That convergence is itself worth something.
+- **Complementary, not competing.** §1 wants to stop needing three builds by
+  carrying a loader. This idea keeps the three builds — the Windows build is
+  a completely ordinary Windows build — and only spends effort on the case
+  where Wine happens to already be present, which is strictly less ambitious
+  and strictly cheaper to abandon if it doesn't pan out: worst case, the
+  Windows binary runs on Windows exactly as it always did, and under Wine it
+  falls back to normal Win32 (this is already how `WINE.md` requires every
+  part of the f4 work to degrade — see its rule "деградация обязательна и
+  молчалива").
+- **`onebin audit`'s bounded-contract idea applies here too**, in miniature.
+  §1.5's insight — a linter that bounds the imported surface is what keeps a
+  loader small — has a direct analogue for a syscall trampoline library:
+  the whole safety argument for `libwinescape` (§3.5) resting on a *small,
+  explicitly enumerated table* of syscalls with numbers taken from ABI
+  documentation, never invented, is the same discipline in a different
+  format (a spec table instead of an ELF/PE import list).
+
+### 3.4 Where it's weaker evidence than §1 wants
+
+Worth being honest about, in the spirit of §1.13: this is not proof that a
+from-scratch PE loader (§1) would have an equally easy time. Wine has spent
+decades making its *existing*, sanctioned code paths (the ones that go
+through `ntdll`/`kernel32`) work; a bare `SYSCALL` from ordinary `.text` that
+Wine's own JIT/exception machinery never expected to see executing a trap
+instruction is arguably an *easier* case for a hypervisor-like layer to get
+right than the full unwinding/exception/TLS story §1.7 worries about for a
+ground-up loader — `getpid()` doesn't touch any of that. Do not read §3.2 as
+"therefore exceptions and TLS are also fine"; it settles nothing about §1.7's
+actual hard parts.
+
+### 3.5 What would settle more of it, and where that work is happening
+
+Not in this repository — the project is a general-purpose syscall trampoline
+library, useful to any Windows-shaped codebase under Wine, not specific to
+static-everywhere's own scope. Recorded here only as a cross-reference, in
+the spirit of this file's own stated purpose — argued in public rather than
+rediscovered in private — with a pointer to where the actual work lives:
+
+- **Design and full task spec:** `WINE.md` §5 (Stage B1b) and §12 (Part D) in
+  [unxed/f4](https://github.com/unxed/f4/blob/main/WINE.md) — calling
+  conventions actually verified (Linux amd64/arm64, FreeBSD amd64's carry-flag
+  error signalling, explicitly *not* assumed for NetBSD/DragonFly/BSD-arm64
+  until probed), the generic-trampoline-per-(OS,arch) architecture, and a
+  two-tier test plan: a portable tier that runs without Wine, and a
+  Wine-required tier that — like everything in this file marked "idea only"
+  — is not meant to run in normal CI, only ahead of a release.
+- **The library itself:** `github.com/unxed/libwinescape`, not yet published.
+  When it exists, add it to this bullet and, if it reaches Level 1-shaped
+  discipline on its own terms (small enumerated syscall surface, audited, no
+  invented ABI facts), it's a candidate for its own row in `CONFORMING.md` —
+  though note it's the wrong *kind* of project for that file (a syscall
+  trampoline library isn't a Profile S/H binary), so that would need its own
+  conversation, not an assumption.
+
+---
+
+## 4. What else belongs in this file
 
 Ideas that are not ready to be proposals, but should not be lost. Open a PR that
 adds one, in the same shape: what it is, why nobody did it, where it breaks, and
