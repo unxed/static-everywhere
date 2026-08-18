@@ -1,5 +1,43 @@
 # STATUS
 
+## Toolchain fix: `onebin-linux-hybrid.cmake` now finds Debian/Ubuntu's multiarch headers automatically
+
+Found by a real user hitting it building `far2l-sdl` with `apt`-installed
+dev packages (`libsdl2-dev` and friends), not in any of this project's
+own sandboxes: `zig-cc` failed with `'SDL2/_real_SDL_config.h' file not
+found`, even though `/usr/include/SDL2/SDL.h` itself was found correctly.
+
+Debian/Ubuntu (and derivatives) split multiarch-aware system headers into
+`/usr/include/<triplet>/` (e.g. `x86_64-linux-gnu`) rather than plain
+`/usr/include`. Their `apt` dev packages routinely install a thin
+`/usr/include/<pkg>/foo.h` wrapper that `#include`s a `_real_foo.h` (or
+equivalent) living **only** under the triplet directory — `SDL2/SDL_config.h`
+does exactly this. `onebin-linux-hybrid.cmake` only ever added plain
+`/usr/include`, so anything relying on this pattern failed. Confirmed via
+`find /usr/include -name _real_SDL_config.h` → only present under
+`/usr/include/x86_64-linux-gnu/SDL2/`.
+
+Fixed in the toolchain file itself, not just documented: `gcc -dumpmachine`
+gives the exact triplet the host's own default compiler was built for;
+the toolchain file now runs this once (via `execute_process`, deliberately
+**not** `find_program` — its result is itself cached per build directory,
+and a toolchain file is evaluated more than once per configure run, so a
+spurious `NOTFOUND` cached from an early evaluation before `PATH` is fully
+visible in that context would otherwise stick for the build directory's
+whole lifetime, which is exactly the bug that shipped in this fix's own
+first draft and was caught by testing it for real rather than trusting it
+on inspection alone) and adds `-isystem /usr/include/<triplet>` alongside
+the existing plain `/usr/include`. Falls back to a no-op on hosts without
+`gcc` (e.g. Alpine) rather than guessing a triplet. Overridable via
+`-DONEBIN_MULTIARCH_DIR=...` if the auto-detected value is ever wrong.
+
+Verified for real: reconfigured `onebin/toolchain/tests/` from scratch,
+confirmed `ONEBIN_MULTIARCH_DIR` resolves to `x86_64-linux-gnu` on this
+sandbox, confirmed the flag reaches both the compile and link command
+lines, rebuilt the smoketest clean, and `onebin audit --profile hybrid
+--level 1 --strict` on the result: PASS, 0 findings — the fix doesn't
+regress anything already working.
+
 ## far2l-sdl dependency rebuild in progress: a real hazard found while rebuilding fontconfig — `DESTDIR` is not optional
 
 Rebuilding the graphics-group dependency chain from scratch (this

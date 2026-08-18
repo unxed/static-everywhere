@@ -31,6 +31,38 @@ set(CMAKE_RANLIB   "${_onebin_toolchain_dir}/zig-ranlib" CACHE FILEPATH "" FORCE
 # specifically — see the link flags below — not every dependency.
 option(ONEBIN_EXPORT_DYNAMIC "This target exports an ABI to its own plugins" OFF)
 
+# Debian/Ubuntu (and derivatives) split multiarch-aware system headers into
+# /usr/include/<triplet>/ (e.g. x86_64-linux-gnu) rather than plain
+# /usr/include — dev packages built on those distros routinely install a
+# thin /usr/include/<pkg>/foo.h wrapper that #includes a "_real_foo.h" (or
+# equivalent) living only under the triplet directory. Found the hard way
+# building far2l against apt's libsdl2-dev: SDL2/SDL_config.h does exactly
+# this, and without the triplet directory on the search path zig-cc fails
+# with "'SDL2/_real_SDL_config.h' file not found" despite the plain
+# /usr/include/SDL2/SDL.h existing and being found first. `gcc -dumpmachine`
+# gives the exact triplet this host's own default compiler was built for;
+# falling back to a literal empty string (a no-op -isystem) rather than
+# guessing a triplet keeps this working (harmlessly) on hosts where gcc
+# isn't installed at all or don't use multiarch (e.g. Alpine).
+set(ONEBIN_MULTIARCH_DIR "" CACHE STRING
+    "Host multiarch triplet dir under /usr/include, e.g. x86_64-linux-gnu — auto-detected via 'gcc -dumpmachine' unless set")
+if(NOT ONEBIN_MULTIARCH_DIR)
+    # No find_program(): its result is itself cached per build directory,
+    # and a toolchain file is evaluated more than once per configure run
+    # (once per language check, at minimum) — a spurious NOTFOUND cached
+    # from an early evaluation, before PATH is fully visible in that
+    # context, would otherwise stick for the rest of that build directory's
+    # lifetime. Calling execute_process directly with a bare "gcc" lets it
+    # search $PATH fresh each time this branch actually runs (only once,
+    # since the result gets cached into ONEBIN_MULTIARCH_DIR itself above).
+    execute_process(COMMAND gcc -dumpmachine
+                     OUTPUT_VARIABLE _onebin_detected_multiarch OUTPUT_STRIP_TRAILING_WHITESPACE
+                     ERROR_QUIET RESULT_VARIABLE _onebin_dumpmachine_rc)
+    if(_onebin_dumpmachine_rc EQUAL 0 AND _onebin_detected_multiarch)
+        set(ONEBIN_MULTIARCH_DIR "${_onebin_detected_multiarch}" CACHE STRING "" FORCE)
+    endif()
+endif()
+
 set(_onebin_flags
     "-target ${ONEBIN_ZIG_TARGET}"
     "-fstack-protector-strong"
@@ -47,6 +79,9 @@ set(_onebin_flags
     # plain `-I/usr/include` does. Harmless when nothing needs it.
     "-isystem /usr/include"
 )
+if(ONEBIN_MULTIARCH_DIR)
+    list(APPEND _onebin_flags "-isystem /usr/include/${ONEBIN_MULTIARCH_DIR}")
+endif()
 string(JOIN " " _onebin_flags_str ${_onebin_flags})
 set(CMAKE_C_FLAGS_INIT   "${_onebin_flags_str}")
 set(CMAKE_CXX_FLAGS_INIT "${_onebin_flags_str}")
