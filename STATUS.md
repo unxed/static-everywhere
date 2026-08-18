@@ -96,24 +96,57 @@ two real findings, not yet fixed:**
 FAIL  Level 1  (2 errors, 3 warnings, 12 infos)
 ```
 
-1. `libz.so.1` (the **host's** dynamic zlib) leaked into this one shared
-   module specifically, despite this project's own static `zlib.a` being
-   built and used correctly everywhere else in this same build (the main
-   `far2l` binary has no such leak). Needs investigation: likely this
-   module's own CMake target doesn't inherit the same explicit
-   `ZLIB_LIBRARY`/`ZLIB_INCLUDE_DIR` cache hints the top-level configure
-   used, and falls back to CMake's own default `FindZLIB` search, which
-   finds the host's.
-2. `OB0036` ("no PT_INTERP in a file audited as Profile H") looks like a
-   genuine **false positive in `onebin` itself**: `PT_INTERP` is
-   exclusively how the kernel locates an interpreter for an *executable*
-   it is about to run directly; a `dlopen`'d shared module never has one,
-   by design, regardless of profile. Needs checking
-   `onebin/src/audit/checks/c_profile.c`'s `OB0036` logic for whether it
-   distinguishes `ET_EXEC`/`ET_DYN`-as-executable from `ET_DYN`-as-shared-
-   module before flagging this.
+**Both resolved, same session, small atomic steps:**
 
-Both are the next concrete steps, not done yet.
+1. **`OB0036` was not a bug — it was the wrong audit command.**
+   `onebin` already has exactly the right tool for this: `--profile
+   module` (`OB_PROFILE_M`), whose entire purpose is auditing a
+   `dlopen`'d shared object, and which correctly does **not** require
+   `PT_INTERP` (`check_profile_m` in `c_profile.c` — it checks the
+   *opposite*, that `PT_INTERP` is *absent*, and emits an informational
+   `OB0038` instead). Re-running with `--profile module` instead of
+   `--profile hybrid` made `OB0036` disappear immediately, as designed.
+   `onebin`'s check logic was correct all along; this session's own
+   first audit invocation used the wrong profile for a plugin artifact.
+2. **`libz.so.1` was real, and it was not the host's zlib leaking in —
+   it was our own.** `zlib`'s CMake build unconditionally produces
+   *both* `libz.a` and `libz.so`/`libz.so.1`/`libz.so.1.3.2` regardless
+   of `-DBUILD_SHARED_LIBS=OFF`, and both ended up installed side by
+   side in `/tmp/deps-prefix/zlib/lib`. The link command for
+   `far2l_sdl.so` was entirely correct (no host `-L` paths at all,
+   confirmed by inspecting `link.txt` directly) — but with both a `.a`
+   and a `.so` present in the *same* `-L` directory, the linker's
+   default preference for the dynamic one over the static one silently
+   won. Fixed by deleting the accidentally-built shared artifacts from
+   `deps-prefix/zlib/lib` (keeping only `libz.a`) and relinking just the
+   `far2l_sdl` target.
+
+**Confirmed, for real, after both fixes:**
+
+```
+== /tmp/build-sdl/install/far2l ==
+  needed:  ld-linux-x86-64.so.2 libc.so.6 libdl.so.2 libm.so.6 libpthread.so.0
+PASS  Level 1  (0 errors, 2 warnings, 0 infos)
+
+== /tmp/build-sdl/install/far2l_sdl.so ==  (audited as --profile module)
+  needed:  libc.so.6 libdl.so.2 libm.so.6 libpthread.so.0
+PASS  Level 1  (0 errors, 3 warnings, 13 infos)
+```
+
+**Both far2l-sdl artifacts now pass Level 1 clean.** The two remaining
+`OB0060` warnings on each are the already-documented false positives on
+far2l's own genuine `/var/tmp` and `/tmp/far2l-*-fragment` *runtime*
+strings (not build paths) — not a defect, not blocking, already recorded
+earlier in this file's history.
+
+far2l-sdl's own build-vs-audit loop is, as of this pass, **complete**:
+configured, built, both real findings chased down and fixed, both
+artifacts independently confirmed clean. What's left for far2l overall:
+`tools/build-far2l.sh` itself has not yet been used for this pass (every
+step so far used ad-hoc manual commands, deliberately, to keep each one
+independently verifiable) — folding this pass's exact flags back into
+the script, and the `far2l_ttyx.broker` artifact for this same build,
+remain open.
 
 ## Housekeeping: two `deps.lock` files had diverged — consolidated to one
 

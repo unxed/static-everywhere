@@ -30,6 +30,17 @@
 # .a with onebin-linux-hybrid.cmake (zig 0.13.0, x86_64-linux-gnu.2.28),
 # and a smoketest program linked against it passes
 # `onebin audit --profile hybrid --level 1 --strict` with 0 findings.
+#
+# DANGER, confirmed: zlib's CMake build unconditionally produces BOTH
+# libz.a AND libz.so/libz.so.1/libz.so.1.3.2 regardless of
+# -DBUILD_SHARED_LIBS=OFF, and `cmake --install` installs both side by
+# side into the same lib/ directory. Any later consumer's `-lz` will
+# then silently link the .so instead of the .a (the linker's default
+# preference), even with a fully correct, host-path-free link command —
+# confirmed the hard way via far2l_sdl.so picking up a spurious
+# DT_NEEDED libz.so.1. After installing zlib, delete
+# libz.so/libz.so.1/libz.so.1.3.2 from the install prefix, keeping only
+# libz.a, before building anything that links against it.
 zlib 1.3.2 bb329a0a2cd0274d05519d61c667c062e06990d72e125ee2dfa8de64f0119d16 https://github.com/madler/zlib/releases/download/v1.3.2/zlib-1.3.2.tar.gz
 
 # bzip2 has no CMakeLists.txt of its own (plain Makefile only) and its
