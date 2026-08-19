@@ -246,6 +246,26 @@ us — five things, all in
 
 Because it already has. Before a single far2l object file was compiled, the exercise had found a linker flag in our own Quick Start that breaks any application with a plugin ABI, and a rule in our own audit spec that would report every one of far2l's plugins as a broken executable. Both are fixed. A reference application that never embarrasses the manifesto isn't doing its job.
 
+### Try it yourself, without touching your host
+
+f4-qt's own upstream build script (`ci/build-portable-qt-linux.sh`) refuses to
+run outside a root, literally-Ubuntu-18.04 container — its way of pinning the
+glibc 2.27 baseline. We use the same trick this whole project is built on
+instead: point Conan at our own `zig cc -target x86_64-linux-gnu.2.27` rather
+than at `gcc-11` on a specific old OS. One script does the rest, entirely
+inside a directory you can delete afterward — no root, no container, nothing
+installed system-wide:
+
+```bash
+curl -LO https://raw.githubusercontent.com/unxed/static-everywhere/main/quickstart-f4-qt.sh
+chmod +x quickstart-f4-qt.sh
+./quickstart-f4-qt.sh
+```
+
+Re-run it later and it finds what it already downloaded, and asks whether to
+update-and-rebuild, rebuild-only, or start over. `rm -rf` the working
+directory it prints at the end and every trace is gone.
+
 ---
 
 ## Conformance levels
