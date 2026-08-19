@@ -1,5 +1,42 @@
 # STATUS
 
+## far2l-sdl exit segfault: reproduced the build, could not reproduce the crash in this sandbox — need a backtrace, not more guessing
+
+Built far2l-sdl for real, per the user's own confirmed-working recipe
+(this session's sandbox had been pointed at the wrong checkout — `v_2.8.0`,
+which has no SDL backend at all — the correct one is the pinned commit,
+`/tmp/far2l-sdl-src` in this sandbox's own history, `65c29da43`).
+`--help` runs and exits 0 cleanly. Tried to reproduce the reported exit
+segfault under `Xvfb` + `xdotool` (closing the window, then `SIGTERM`)
+three times; each time far2l exited 0 with no crash, likely because a
+headless virtual framebuffer with no window manager doesn't exercise the
+same shutdown path a real desktop session does. **Chasing that further
+by fighting Xvfb/window-manager quirks in a sandbox is exactly the kind
+of rabbit hole this correction exists to stop** — noted and stopped
+deliberately rather than continued.
+
+Read `WinPort/src/Backend/SDL/SDLMain.cpp`'s shutdown path instead, to
+have *something* concrete rather than nothing: `WinPortMainBackend`
+constructs `SDLConsoleApp app`, calls `app.Run()` (which internally joins
+`_worker`, the thread running far2l's actual entry point, before
+returning), then lets `app` go out of scope — `~SDLConsoleApp()` calls
+`Destroy()` (`_backend->Detach()`, `_backend.reset()`,
+`SDL_DestroyWindow()`), then `SDL_Quit()` runs after that. Nothing jumped
+out as an obvious use-after-free or double-free on a straight read, but
+a straight read is not a substitute for the actual crash's backtrace, and
+guessing at a fix without one risks exactly the wasted-effort pattern
+this correction is about.
+
+**Needed to actually fix this, fast, next: a backtrace from a real crash.**
+```sh
+ulimit -c unlimited
+./far2l   # reproduce the crash normally, then:
+gdb ./far2l core -ex bt -ex quit   # or: coredumpctl gdb, if using systemd-coredump
+```
+or simpler, if gdb is installed: `gdb -ex run -ex bt -ex quit --args ./far2l`
+and reproduce interactively. Either output, pasted back, turns this from
+a guess into a real fix in one pass.
+
 ## COURSE CORRECTION — read this before touching Task 15 again
 
 The previous session went well past the point of diminishing returns:
