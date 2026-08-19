@@ -1,5 +1,5 @@
 #!/bin/sh
-# onebin/tools/build-f4-qt.sh — build and audit f4-qt (Qt Reference Application).
+# tools/build-f4-qt.sh — build and audit f4-qt (Qt Reference Application).
 # Interface: 05-REFERENCE-f4-qt.md §9.
 # POSIX sh, not bash.
 set -eu
@@ -14,9 +14,9 @@ GALLERY=""
 
 # shellcheck disable=SC1007
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-# shellcheck disable=SC1007
-ONEBIN_ROOT=$(CDPATH= cd -- "${SCRIPT_DIR}/.." && pwd)
-ONEBIN_BIN="${ONEBIN_ROOT}/build/onebin"
+REPO_ROOT=$(CDPATH= cd -- "${SCRIPT_DIR}/.." && pwd)
+ONEBIN_BIN="${REPO_ROOT}/onebin/build/onebin"
+DEPS_LOCK="${REPO_ROOT}/contrib/f4-qt/deps.lock"
 
 usage() {
     cat <<'EOF'
@@ -75,12 +75,20 @@ fi
 
 plan_step() {
     if [ "${PRINT_PLAN}" -eq 1 ]; then
-        printf '%s\n' "$1" | sed "s#${ONEBIN_ROOT}#<repo>/onebin#g"
+        printf '%s\n' "$1" | sed "s#${REPO_ROOT}#<repo>#g"
         return 0
     fi
     printf '+ %s\n' "$1" >&2
     eval "$1"
 }
+
+# 0. Read deps.lock
+while IFS=' ' read -r name ver hash url; do
+    case "$name" in
+        ""|\#*) continue ;;
+        *) plan_step "# Dependency from deps.lock: $name $ver" ;;
+    esac
+done < "$DEPS_LOCK"
 
 # 1. Resolve source
 if [ "${FETCH}" -eq 1 ]; then
@@ -102,28 +110,19 @@ plan_step "mkdir -p ${OUT}"
 
 # 3. Build, Audit, and Smoke Test
 if [ "${CONFIG}" = "linux" ]; then
-    # We do not invent flags, we drive their CI script per §9
     plan_step "cd ${SRC} && ci/build-portable-qt-linux.sh"
 
-    # Harvest artifacts
     plan_step "cp ${SRC}/f4 ${OUT}/f4"
     plan_step "cp ${SRC}/embedded/f4-qt-host.gz ${OUT}/"
 
-    # Audit Go launcher (Profile S, Level 1)
     plan_step "${ONEBIN_BIN} audit --profile static --level 1 --strict ${OUT}/f4"
-
-    # Audit Qt host before embedding (Profile H, Level 1, 2.27 baseline)
-    # The actual path might differ based on their CI script, assuming build-qt/f4-qt-host
     plan_step "${ONEBIN_BIN} audit --profile hybrid --glibc-max 2.27 --level 1 --strict ${SRC}/build-qt/f4-qt-host"
 
-    # Smoke test (05-REFERENCE-f4-qt.md §7.4)
-    # Expected exit 2, grep for component/plugin failure
     plan_step "env QT_QPA_PLATFORM=offscreen QSG_RHI_BACKEND=software ${SRC}/build-qt/f4-qt-host --f4-ext-connect=127.0.0.1:1 > ${OUT}/smoke.log 2>&1 || [ \$? -eq 2 ]"
     plan_step "! grep -q 'QQmlApplicationEngine failed to load component' ${OUT}/smoke.log"
     plan_step "! grep -q 'Could not find the Qt platform plugin' ${OUT}/smoke.log"
 
 elif [ "${CONFIG}" = "windows" ]; then
     plan_step "cd ${SRC} && pwsh ci/build-portable-qt-windows.ps1"
-    # Windows audit backend not implemented in onebin yet, but we call the ci script
     plan_step "cd ${SRC} && pwsh ci/audit-portable-qt-windows.ps1"
 fi

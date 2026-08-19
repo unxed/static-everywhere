@@ -393,6 +393,16 @@ implementations quietly assume one file.
 ---
 
 ## 5. Robustness
+## 4.10 GUI Artifact Runtime Gate (Level 1)
+
+As discovered in `05-REFERENCE-f4-qt.md §7.4`, a static Qt or SDL application can pass every `readelf` or `onebin audit` check and still fail to start (e.g., due to missing QML modules or platform plugins).
+
+**Gate:** For Level 1 conformance, any GUI artifact MUST pass an automated offscreen smoke test.
+1. Run the artifact with `QT_QPA_PLATFORM=offscreen`, SDL's `dummy` driver, or the equivalent headless backend for the toolkit.
+2. Assert that the application starts, reaches a checkpoint (or exits gracefully/disconnects as expected by the architecture), and produces no missing-plugin or component-loading errors in its output.
+3. This must be an automated script in the CI pipeline evaluating standard error and exit codes.
+
+---
 
 ### 5.1 `t_buf.c` — mandatory cases
 
