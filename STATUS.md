@@ -1,5 +1,45 @@
 # STATUS
 
+## far2l-sdl exit segfault: `MALLOC_CHECK_=3` did nothing — rules out heap-metadata corruption, narrows to a stale function-pointer use-after-free
+
+Same binary (no rebuild — the user was explicit that rebuilding takes
+real time and won't happen without a direct instruction to do so), run
+again with `MALLOC_CHECK_=3 ./far2l`: identical plain segfault, no early
+`malloc(): ...` abort. This is a genuinely informative negative result,
+not a dead end: `MALLOC_CHECK_` only catches **heap metadata**
+corruption — a write past a chunk's boundary, a double free, a bad
+chunk-size field. It does **not** catch "a heap pointer whose *contents*
+silently became something else because the chunk was freed and its
+memory reused for unrelated data" — which is exactly what a dangling
+function pointer left behind by an exited thread would look like: the
+pointer value itself was never corrupted, the memory it points at just
+stopped being what it used to be.
+
+This rules out classic buffer-overflow-style heap corruption as the
+cause and narrows the earlier hypothesis (§ below) specifically to: a
+`static` object with a non-trivial destructor, constructed on one of
+far2l-sdl's many short-lived worker threads, registered its destructor
+via `__cxa_atexit` to run at *process* exit — and by the time that
+destructor call actually happens, the memory backing either the object
+or the registration itself has been reused for something else entirely
+(consistent with the crash IP landing inside a malloc arena's
+reserved-but-uncommitted gap, not real code).
+
+**Next step, still no rebuild needed — one more `gdb` session against
+the exact same binary, one command, copy-pasteable:**
+```sh
+gdb -ex run -ex 'frame 1' -ex 'info registers' -ex disassemble -ex 'frame 0' -ex 'info registers' -ex quit --args ./far2l
+```
+This reproduces the same crash and, in the same session, dumps frame
+1's (`__run_exit_handlers`) registers and disassembly — glibc ships
+without source but the machine code itself is on disk, so `disassemble`
+should work even without debug symbols — which shows exactly which
+register held the bad function pointer immediately before the crashing
+call, and frame 0's own registers at the crash point. That's enough to
+tell whether the bad pointer looks like a genuine (if stale) code
+address, a small integer (uninitialized/zeroed memory), or something
+else recognizable, without needing a rebuild or new instrumentation.
+
 ## far2l-sdl exit segfault: real backtrace analyzed — crash IP lands in a malloc-arena PROT_NONE gap, executing garbage as code
 
 Two real backtraces from the user's own reproducible crash (both consistent):
