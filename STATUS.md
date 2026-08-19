@@ -1,5 +1,48 @@
 # STATUS
 
+## far2l-sdl exit segfault: `_exit()` workaround rejected (correctly) — root-causing continues; script to compare the TLS pointer-guard cookie at registration vs. crash time
+
+A prior reply in this session's dialogue proposed skipping
+`__run_exit_handlers` entirely via `_exit()` instead of `return` at the
+end of `WinPortMain`, as a pragmatic way to stop the crash without
+root-causing it. **The user rejected that patch, correctly, and it was
+never committed here** — the reasoning holds up: unlike deprioritizing
+WebDAV/GnuTLS (a scope decision — a feature simply isn't built yet),
+`_exit()` would silently discard every application-level cleanup running
+in a static destructor anywhere in the process, forever, to avoid
+understanding one specific crash. That's a correctness sacrifice on the
+altar of speed, not the kind of "fix minimally" this session's own
+course-correction called for.
+
+**Root-causing continues.** One fact from the two backtraces so far,
+underweighted until now: **the exact same crash address
+(`0x00007fffc97e7550`) appeared in both independent runs.** If the
+`PTR_MANGLE`/`PTR_DEMANGLE` cookie genuinely differed randomly between
+threads (ASLR-influenced, as it normally would if two threads legitimately
+had different per-thread secrets), the resulting demangled garbage should
+differ between separate process invocations too — getting the identical
+address twice argues either that ASLR isn't actually randomizing the
+relevant state in this environment, or that whatever discrepancy exists
+is itself deterministic rather than a one-off race.
+
+**`cookie-check.gdb`** (attached alongside this reply) breaks on every
+`__cxa_atexit` call, logging the calling thread and the live TLS
+pointer-guard cookie (`%fs:0x30`) each time — auto-continuing, so it
+doesn't require manual stepping through however many registrations
+happen — then lets execution run to the actual crash and prints the
+cookie there too, plus frame 1's raw (still-mangled) stored pointer
+alongside the demangled garbage, for direct comparison. If the cookie at
+any `__cxa_atexit` call differs from the cookie at the crash, that is the
+confirmed root cause and points at exactly which registration is the bad
+one (the caller address printed alongside each hit). If every cookie
+matches throughout, that rules out a pointer-guard mismatch entirely and
+redirects the investigation toward the raw stored value being wrong to
+begin with (e.g. genuine memory corruption of the `__exit_funcs` list
+itself, or an ABI mismatch in how the destructor's context pointer
+`entry->d.cxa.arg` is laid out). Either outcome moves this forward
+concretely — no rebuild required, this runs against the exact binary
+already in hand: `gdb -q -x cookie-check.gdb --args ./far2l`.
+
 ## far2l-sdl exit segfault: `MALLOC_CHECK_=3` did nothing — rules out heap-metadata corruption, narrows to a stale function-pointer use-after-free
 
 Same binary (no rebuild — the user was explicit that rebuilding takes
