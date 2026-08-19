@@ -11,12 +11,17 @@ FETCH=0
 PRINT_PLAN=0
 PIN="1a03511a5ad97bbd4ec1400078272373b32e9d2c"
 GALLERY=""
+TOOLCHAIN="host"
+GLIBC_BASELINE="2.27"
 
 # shellcheck disable=SC1007
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+# shellcheck disable=SC1007
 REPO_ROOT=$(CDPATH= cd -- "${SCRIPT_DIR}/.." && pwd)
 ONEBIN_BIN="${REPO_ROOT}/onebin/build/onebin"
 DEPS_LOCK="${REPO_ROOT}/contrib/f4-qt/deps.lock"
+ZIGCC="${REPO_ROOT}/onebin/toolchain/zig-cc"
+ZIGCXX="${REPO_ROOT}/onebin/toolchain/zig-c++"
 
 usage() {
     cat <<'EOF'
@@ -30,6 +35,20 @@ Usage: tools/build-f4-qt.sh --config linux|windows --src DIR --out DIR [OPTIONS]
   --no-fetch              refuse to touch the network (default)
   --print-plan            print every command this invocation would run
   --gallery public|off    resolve the ZoinGallery private submodule issue (§7.8)
+  --toolchain host|zig    which compiler builds the Qt dependency stack (default: host)
+                          host: exactly f4's own ci/build-portable-qt-linux.sh --
+                                requires root inside literally Ubuntu 18.04 (their
+                                own glibc-2.27-pinning method). Kept as an option
+                                for side-by-side verification against upstream's
+                                own claims, not because it's the recommended path.
+                          zig:  this project's own glibc baseline pin
+                                (zig cc -target x86_64-linux-gnu.2.27), the same
+                                technique already used for far2l. No root, no
+                                container, no specific host OS -- Conan already
+                                supports pointing it at an arbitrary compiler
+                                binary (tools.build:compiler_executables), so the
+                                same Conan recipe f4's own maintainers wrote runs
+                                unmodified, just compiled by a different toolchain.
   -h, --help              this message
 EOF
 }
@@ -44,6 +63,7 @@ while [ $# -gt 0 ]; do
         --no-fetch)    FETCH=0; shift ;;
         --print-plan)  PRINT_PLAN=1; shift ;;
         --gallery)     GALLERY=${2:-}; shift 2 ;;
+        --toolchain)   TOOLCHAIN=${2:-}; shift 2 ;;
         -h|--help)     usage; exit 0 ;;
         *)
             echo "error: unknown option '$1'" >&2
@@ -65,6 +85,20 @@ case "${CONFIG}" in
         ;;
 esac
 
+case "${TOOLCHAIN}" in
+    host|zig) ;;
+    *)
+        echo "error: --toolchain must be host or zig (got '${TOOLCHAIN}')" >&2
+        exit 2
+        ;;
+esac
+
+if [ "${TOOLCHAIN}" = "zig" ] && [ "${CONFIG}" = "windows" ]; then
+    echo "error: --toolchain zig is only implemented for --config linux so far." >&2
+    echo "       Windows still needs --toolchain host (pwsh + MSVC)." >&2
+    exit 2
+fi
+
 if [ -z "${GALLERY}" ]; then
     echo "error: ZoinGallery is a private submodule (05-REFERENCE-f4-qt.md §7.8)." >&2
     echo "       You must resolve this by passing either:" >&2
@@ -83,6 +117,7 @@ plan_step() {
 }
 
 # 0. Read deps.lock
+# shellcheck disable=SC2034  # hash/url documented, matched for readability, not used further here
 while IFS=' ' read -r name ver hash url; do
     case "$name" in
         ""|\#*) continue ;;
@@ -109,7 +144,7 @@ fi
 plan_step "mkdir -p ${OUT}"
 
 # 3. Build, Audit, and Smoke Test
-if [ "${CONFIG}" = "linux" ]; then
+if [ "${CONFIG}" = "linux" ] && [ "${TOOLCHAIN}" = "host" ]; then
     plan_step "cd ${SRC} && ci/build-portable-qt-linux.sh"
 
     plan_step "cp ${SRC}/f4 ${OUT}/f4"
@@ -121,6 +156,86 @@ if [ "${CONFIG}" = "linux" ]; then
     plan_step "env QT_QPA_PLATFORM=offscreen QSG_RHI_BACKEND=software ${SRC}/build-qt/f4-qt-host --f4-ext-connect=127.0.0.1:1 > ${OUT}/smoke.log 2>&1 || [ \$? -eq 2 ]"
     plan_step "! grep -q 'QQmlApplicationEngine failed to load component' ${OUT}/smoke.log"
     plan_step "! grep -q 'Could not find the Qt platform plugin' ${OUT}/smoke.log"
+
+elif [ "${CONFIG}" = "linux" ] && [ "${TOOLCHAIN}" = "zig" ]; then
+    # A parallel reimplementation of ci/build-portable-qt-linux.sh's
+    # essential steps, not a call into it — their script hard-refuses to
+    # run outside literally root-in-Ubuntu-18.04, which is exactly the
+    # container dependency this path exists to avoid. Confirmed feasible
+    # in this project's own sandbox before writing this: a minimal
+    # Conan+CMakeToolchain project, compiler_executables pointed at these
+    # same zig-cc/zig-c++ wrappers plus -target x86_64-linux-gnu.2.27 in
+    # tools.build:cflags/cxxflags/exelinkflags, configures, builds, runs,
+    # and onebin audit --profile hybrid --glibc-max 2.27 on the result
+    # comes back PASS Level 1 with "glibc: requires GLIBC_2.16, baseline
+    # 2.27" -- the mechanism itself is proven, not theorized. The full
+    # ~35-package Qt dependency stack has not been built end to end this
+    # way yet -- that is the next real step, not this one.
+    plan_step "mkdir -p ${OUT}/conan-venv"
+    plan_step "command -v uv >/dev/null 2>&1 || { echo 'error: uv not found -- https://astral.sh/uv' >&2; exit 1; }"
+    plan_step "uv venv --python 3.12 ${OUT}/conan-venv"
+    plan_step "uv pip install --python ${OUT}/conan-venv/bin/python 'conan==2.29.1' 'cmake==3.31.6' 'ninja==1.13.0'"
+
+    plan_step "env PATH=\"${OUT}/conan-venv/bin:\$PATH\" conan profile detect --force"
+
+    plan_step "cd ${SRC} && git config --global --add safe.directory \"\$PWD\""
+
+    # Same fontconfig-recipe-URL workaround as upstream's own script
+    # (freedesktop.org rejects some CI IP ranges with HTTP 418) -- kept
+    # verbatim, this has nothing to do with which compiler is used.
+    plan_step "cd ${SRC} && env PATH=\"${OUT}/conan-venv/bin:\$PATH\" conan download fontconfig/2.15.0 --only-recipe --remote=conancenter"
+
+    # Same target_packages list as upstream: every package the target
+    # actually links against gets rebuilt regardless of remote binary
+    # availability, because Conan package IDs don't encode the glibc
+    # baseline this pass exists to pin.
+    plan_step "cd ${SRC} && env PATH=\"${OUT}/conan-venv/bin:\$PATH\" conan install qt/host \
+--build=missing --build='m4/*' \
+--build='brotli/*' --build='bzip2/*' --build='double-conversion/*' --build='elfutils/*' \
+--build='expat/*' --build='fontconfig/*' --build='freetype/*' --build='glib/*' \
+--build='harfbuzz/*' --build='icu/*' --build='jasper/*' --build='lcms/*' --build='libde265/*' \
+--build='libffi/*' --build='libheif/*' --build='libiconv/*' --build='libjpeg-turbo/*' \
+--build='libmount/*' --build='libpng/*' --build='libraw/*' --build='libselinux/*' \
+--build='libtiff/*' --build='libwebp/*' --build='libxml2/*' --build='md4c/*' \
+--build='msgpack-cxx/*' --build='openssl/*' --build='pcre2/*' --build='qt/*' \
+--build='sqlite3/*' --build='wayland/*' --build='xkbcommon/*' --build='xz_utils/*' \
+--build='zlib/*' --build='zstd/*' \
+-s:h build_type=Release -s:h compiler.cppstd=gnu20 \
+-s:b build_type=Release -s:b compiler.cppstd=gnu20 \
+-o:h 'qt/*:shared=False' -o:h 'qt/*:qtwayland=True' -o:h 'qt/*:with_egl=True' \
+-o:h 'xkbcommon/*:with_wayland=True' -o:h 'libraw/*:shared=False' \
+-c 'tools.build:compiler_executables={\"c\":\"${ZIGCC}\",\"cpp\":\"${ZIGCXX}\"}' \
+-c 'tools.build:cflags=[\"-target\",\"x86_64-linux-gnu.${GLIBC_BASELINE}\"]' \
+-c 'tools.build:cxxflags=[\"-target\",\"x86_64-linux-gnu.${GLIBC_BASELINE}\"]' \
+-c 'tools.build:sharedlinkflags=[\"-target\",\"x86_64-linux-gnu.${GLIBC_BASELINE}\"]' \
+-c 'tools.build:exelinkflags=[\"-target\",\"x86_64-linux-gnu.${GLIBC_BASELINE}\",\"-pie\"]' \
+-c tools.system.package_manager:mode=install -c tools.system.package_manager:sudo=False \
+--output-folder=qt/host/build-portable-linux"
+
+    plan_step "cd ${SRC} && bash ci/build-qwindowkit.sh \"\$PWD/qt/host/build-portable-linux\" Release static"
+
+    plan_step "cd ${SRC} && cmake -S qt/host -B qt/host/build-portable-linux -G Ninja \
+-DCMAKE_TOOLCHAIN_FILE=\"\$PWD/qt/host/build-portable-linux/conan_toolchain.cmake\" \
+-DCMAKE_BUILD_TYPE=Release \
+-DCMAKE_PREFIX_PATH=\"\$PWD/build/qwindowkit-install\" \
+-DQWindowKit_DIR=\"\$PWD/build/qwindowkit-install/lib/cmake/QWindowKit\" \
+-DBUILD_TESTING=ON -DUSE_QWK=ON -DF4_PORTABLE_STATIC=ON"
+    plan_step "cd ${SRC} && cmake --build qt/host/build-portable-linux --config Release --parallel \$(nproc)"
+    plan_step "cd ${SRC} && ctest --test-dir qt/host/build-portable-linux -C Release --output-on-failure -R '^(F4|QtShellController|WindowGeometryPersistence)'"
+
+    plan_step "${ONEBIN_BIN} audit --profile hybrid --glibc-max ${GLIBC_BASELINE} --level 1 --strict ${SRC}/qt/host/build-portable-linux/bin/Release/f4-qt-host"
+
+    plan_step "env QT_QPA_PLATFORM=offscreen QSG_RHI_BACKEND=software ${SRC}/qt/host/build-portable-linux/bin/Release/f4-qt-host --f4-ext-connect=127.0.0.1:1 --f4-ext-nonce=ci-smoke > ${OUT}/smoke.log 2>&1 || [ \$? -eq 2 ]"
+    plan_step "! grep -q 'QQmlApplicationEngine failed to load component' ${OUT}/smoke.log"
+    plan_step "! grep -q 'Could not find the Qt platform plugin' ${OUT}/smoke.log"
+
+    plan_step "cd ${SRC} && python ci/package-embedded-qt-host.py qt/host/build-portable-linux/bin/Release/f4-qt-host"
+    plan_step "cd ${SRC} && go test -tags f4_embedded_qt_host -run 'TestMaterializeEmbeddedQtHost|TestGeneratedEmbeddedQtHostPayload' ."
+    plan_step "mkdir -p ${SRC}/dist/f4-linux-amd64"
+    plan_step "cd ${SRC} && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -tags f4_embedded_qt_host -ldflags='-s -w' -o dist/f4-linux-amd64/f4 ."
+
+    plan_step "cp ${SRC}/dist/f4-linux-amd64/f4 ${OUT}/f4"
+    plan_step "${ONEBIN_BIN} audit --profile static --level 1 --strict ${OUT}/f4"
 
 elif [ "${CONFIG}" = "windows" ]; then
     plan_step "cd ${SRC} && pwsh ci/build-portable-qt-windows.ps1"

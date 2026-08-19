@@ -1,5 +1,52 @@
 # STATUS
 
+## f4-qt build: `--toolchain zig` implemented and its core mechanism proven — full Qt build not yet run end to end
+
+The proposal below (container-free build via Conan + our own zig-cc/
+zig-c++, the same substitution already used for far2l) is now
+implemented in `tools/build-f4-qt.sh --toolchain zig`, and — crucially —
+**its core mechanism was proven in this sandbox before being written,
+not left as theory**:
+
+1. A minimal Conan-driven CMake project (`conanfile.txt` +
+   `CMakeToolchain`/`CMakeDeps` generators), with `conan install` pointed
+   at `onebin/toolchain/zig-cc`/`zig-c++` via
+   `tools.build:compiler_executables`, generates a working
+   `conan_toolchain.cmake`. `cmake --preset conan-release` configures
+   cleanly (`-- The CXX compiler identification is Clang 18.1.6` — zig's
+   own Clang frontend, correctly detected) and `cmake --build` produces a
+   real, runnable binary.
+2. Adding `-target x86_64-linux-gnu.2.27` via `tools.build:cflags`/
+   `cxxflags`/`exelinkflags` (Conan's own conf mechanism, the same one
+   f4's own script already uses to pin `gcc-11`) lands the flag correctly
+   in the generated toolchain file, confirmed by grep.
+3. `onebin audit --profile hybrid --glibc-max 2.27 --level 1` on the
+   result: `glibc: requires GLIBC_2.16, baseline 2.27` — **PASS Level 1,
+   0 errors** — the pinning is real and independently verified by our own
+   tool, not just claimed by the build.
+
+`tools/build-f4-qt.sh` now has `--toolchain host|zig`: `host` keeps
+today's exact behavior (wrap f4's own `ci/build-portable-qt-linux.sh`
+wholesale, root + literally Ubuntu 18.04, kept for side-by-side
+verification against upstream's own claims); `zig` is a genuine parallel
+reimplementation of that script's essential steps in POSIX sh — same
+Conan `target_packages` list, same `ci/build-qwindowkit.sh` call (checked
+directly: it hardcodes no compiler of its own, so it's toolchain-agnostic
+and reusable as-is), same `cmake`/`ctest`/audit/smoke-test/packaging/`go
+build` tail — with the root/Ubuntu-18.04 guard removed entirely and the
+compiler substituted. No container, no root, no specific host OS; `uv`
+(one binary) and its venv are both trivially removable afterward.
+
+**Honest scope of what's verified vs. not**: the *mechanism* (Conan +
+zig-cc via `compiler_executables` + glibc pinning via `cflags`, audited
+correctly) is proven, end to end, with a real built-and-run binary. The
+*actual ~35-package Qt dependency stack* has not been built this way in
+this session — that would take substantially longer than this pass
+allowed. `--print-plan` for `--toolchain zig` produces a complete,
+sensible command sequence (verified); actually running it to a finished
+`f4-qt-host` binary is the next real step, not yet done. Recorded
+precisely so this isn't mistaken for more than it is.
+
 ## f4-qt build: currently wraps f4's own Ubuntu-18.04-container CI wholesale — proposal to fix, not yet implemented
 
 Read `tools/build-f4-qt.sh` and, critically, the actual script it shells
