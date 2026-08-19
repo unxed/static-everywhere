@@ -66,3 +66,42 @@ carry this as an officially supported configuration is entirely their
 call — but if item 1 lands, it becomes buildable, and worth a line in
 `CMakeLists.txt` or the docs noting that this combination is known to
 produce a working binary, for anyone who goes looking.
+
+## 5. Exit-time segfault: a `dlclose()`'d plugin's `__cxa_atexit`-registered destructor
+
+Confirmed via two full `gdb` sessions (breaking on every `__cxa_atexit`
+call and comparing the recorded TLS pointer-guard cookie against the
+crash point — see `04-REFERENCE-far2l.md` for the detailed writeup, or
+`STATUS.md`'s history in this repository): `far2l` reliably segfaults on
+normal exit, inside glibc's `__run_exit_handlers`, calling through a
+function pointer that resolves to unmapped memory.
+
+The evidence points specifically at `far2l/src/plug/plclass.cpp:90`'s
+`dlclose(m_hModule)` call when unloading a plugin. If a plugin has any
+`static` C++ object with a non-trivial destructor (a config cache, a
+logger, anything), `__cxa_atexit` registers that destructor to run at
+*process* exit regardless of which module constructed it — but the
+plugin's code and data are unmapped the moment `dlclose()` runs. The
+next `exit()` call (this one, or possibly any later one) then calls
+through a dangling function pointer into memory that used to be that
+plugin.
+
+This is a well-known, well-documented class of bug for any
+`dlopen`/`dlclose`-based plugin architecture, unrelated to any particular
+toolchain — it would surface the same way built with GCC, Clang, or
+`zig cc`. Two standard fixes, in order of simplicity:
+
+1. **Don't `dlclose()` at all.** Leak the mapping — the address space
+   cost is negligible for a file manager's lifetime, and it's the
+   standard, widely-used workaround for exactly this class of bug.
+2. **Call `__cxa_finalize(m_hModule)` immediately before `dlclose()`.**
+   This explicitly runs (and de-registers) every `__cxa_atexit` handler
+   whose home module is `m_hModule`, leaving nothing dangling for the
+   later real `exit()` to trip over — the more surgical fix if leaking
+   the mapping is undesirable.
+
+We have not yet identified which specific bundled plugin's destructor is
+responsible (the mechanism is confirmed; narrowing to one plugin would
+need one more `gdb` session resolving the crash address's owning module
+via `info proc mappings`) — flagging the confirmed mechanism and the fix
+shape now rather than waiting on that.

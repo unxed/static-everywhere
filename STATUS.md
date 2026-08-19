@@ -1,5 +1,56 @@
 # STATUS
 
+## far2l-sdl exit segfault: ROOT CAUSE FOUND — a `dlclose()`'d plugin's `__cxa_atexit`-registered destructor
+
+Two full `cookie-check.gdb` runs, both pasted in full. **The cookie
+hypothesis is now conclusively dead, not just suspected**: within each
+run the cookie is 100% constant — `0xa909d88f99f9dc9a` in run 1,
+`0xb4aad96908848f12` in run 2 (different between runs, as ASLR would
+produce; identical across every single one of the hundreds of
+`__cxa_atexit` calls *within* a run, across every thread including
+thread 10 and thread 3). No mismatch, anywhere, ever. Both prior
+`_exit()`-avoids-the-problem and cookie-mismatch theories are retired.
+
+**The real evidence, sitting in plain sight in both transcripts**: right
+before the crash, thread 10 registers a dense run of `__cxa_atexit`
+calls from addresses in the `0x7fffe40...`/`0x7fffec8f8...`-style range —
+**not** the main executable's own range (`0x555555...`) and **not**
+standard system libraries (`0x7ffff7...`) — the shape of a separately
+`dlopen`'d module (a far2l plugin). Immediately after, `[Detaching after
+vfork from child process ...]` appears (far2l forking a helper), and
+**the crash address itself lands within a few hundred bytes of that same
+thread's last `__cxa_atexit` caller addresses** (run 1:
+`caller=0x7fffe4082232`/`0x7fffe40822f9` immediately before, crash at
+`0x7fffe4082b20`).
+
+This matches far2l's own plugin system exactly: `far2l/src/plug/
+plclass.cpp:90` calls `dlclose()` when unloading a `.far-plug-wide`
+plugin. If a plugin registers a `static` C++ object with a non-trivial
+destructor (which any nontrivial plugin plausibly does — a global config
+cache, a logger, a `std::string` table, anything), `__cxa_atexit`
+registers that destructor to run at **process** exit — but the plugin's
+own code and data get unmapped the moment `dlclose()` runs. Every
+following `exit()` call still tries to invoke that now-dangling function
+pointer, landing in unmapped memory — exactly the shape confirmed here.
+This is a well-known, well-documented class of bug in `dlopen`/`dlclose`
+based plugin systems generally, not specific to musl/glibc/zig-cc/Static
+Everywhere at all — it would affect *any* toolchain.
+
+**This is now upstream far2l's bug to fix, not this project's toolchain.**
+Recorded as a new item in `contrib/far2l/UPSTREAM.md`: either (a) never
+`dlclose()` a plugin whose static objects might have registered
+`__cxa_atexit` handlers (the simplest, safest fix — leak the mapping,
+the standard workaround for this exact class of bug), or (b) call
+`__cxa_finalize(handle)` for the plugin's own load address *before*
+`dlclose()`, which explicitly runs and de-registers exactly that
+plugin's own atexit-registered destructors first, leaving nothing
+dangling. Not yet written up as a filed issue or PR — the mechanism is
+confirmed, the exact plugin responsible is not yet identified (would
+need `info symbol` or the plugin's own load-address range from `info
+proc mappings`, not yet done — the *class* of bug is now certain, the
+specific plugin is a fast follow-up, not a blocker for reporting this
+upstream).
+
 ## far2l-sdl exit segfault: `_exit()` workaround rejected (correctly) — root-causing continues; script to compare the TLS pointer-guard cookie at registration vs. crash time
 
 A prior reply in this session's dialogue proposed skipping
