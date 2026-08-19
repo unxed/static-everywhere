@@ -369,6 +369,54 @@ mbedtls 3.6.6 8fb65fae8dcae5840f793c0a334860a411f884cc537ea290ce1c52bb64ca007a h
 # section at mbedTLS instead of GnuTLS/libgcrypt, are the next steps.
 libssh 0.12.2 49560f677d96e3706a904ac2de1116e25f3680937d51e5c92198fcba4a1c1e9f https://www.libssh.org/files/0.12/libssh-0.12.2.tar.xz
 
+# libnfs 6.0.2 (LGPL-2.1 -- library code; protocol definition files are
+# BSD, per upstream's own COPYING). NetRocks-NFS.broker's only real
+# dependency: far2l's own cmake/modules/FindLibNfs.cmake finds it via
+# find_library/find_path, no other options exposed. Note the exact cache
+# variable names it uses -- singular, unlike FindLibSSH.cmake's plural
+# LIBSSH_LIBRARIES/LIBSSH_INCLUDE_DIRS early-exit trick:
+# -DLIBNFS_LIBRARY=<libnfs.a> -DLIBNFS_INCLUDE_DIR=<include dir>
+# (confirmed the hard way -- pre-seeding the plural forms first, matching
+# the libssh pattern, silently left LIBNFS_INCLUDE_DIR/LIBNFS_LIBRARY
+# NOTFOUND in CMakeCache.txt and NetRocks-NFS never got added; the two
+# Find modules just aren't written the same way).
+#
+# Built static via onebin-linux-hybrid.cmake: -DBUILD_SHARED_LIBS=OFF
+# -DENABLE_TESTS=OFF -DENABLE_DOCUMENTATION=OFF -DENABLE_UTILS=OFF
+# -DENABLE_EXAMPLES=OFF -DENABLE_MULTITHREADING=OFF. libnfs's own
+# CMakeLists.txt optionally probes for GSSAPI (Kerberos) and GnuTLS
+# (ktls) via plain, non-REQUIRED find_package() calls that degrade
+# gracefully if absent -- passed
+# -DCMAKE_DISABLE_FIND_PACKAGE_GSSAPI=TRUE
+# -DCMAKE_DISABLE_FIND_PACKAGE_GnuTLS=TRUE to force both off regardless
+# of what's on the build host, matching this project's minimal-footprint
+# choices elsewhere (WITH_GSSAPI=OFF for libssh above). Plain NFSv3/v4
+# client, no crypto, no Kerberos.
+#
+# A real libnfs header quirk found while writing the smoketest, not a
+# toolchain bug: nfsc/libnfs.h uses `size_t` throughout but never
+# includes <stddef.h> itself -- any consumer must include it (or
+# something that pulls it in) first. Confirmed this is libnfs's own gap
+# by reading the header directly, not assumed.
+#
+# Verified: a smoketest creates a real nfs_context, parses a real
+# `nfs://` URL via `nfs_parse_url_full()`, and passes `onebin audit
+# --profile hybrid --level 1 --strict` clean (`needed: libc.so.6
+# libpthread.so.0`). No live NFS server exists in this project's build
+# sandbox (`/proc/fs/nfsd` absent, `nfs` missing from
+# `/proc/filesystems` -- containers don't carry a loadable NFS kernel
+# module) -- unlike libssh's loopback-`sshd` test above, a full
+# client<->server round trip wasn't possible here; documented as a real
+# limit, not glossed over.
+#
+# NetRocks-NFS.broker itself (far2l's actual target, not just the
+# smoketest) built from the pinned v_2.8.0 tag against this pin:
+# `-- libnfs found -> enjoy NFS support in NetRocks`. `onebin audit
+# --profile hybrid --level 1`: needed: libc.so.6 libdl.so.2
+# libpthread.so.0, 0 errors -- the same already-documented OB0060
+# /var/tmp warning as every other NetRocks broker, not a new finding.
+libnfs 6.0.2 4e5459cc3e0242447879004e9ad28286d4d27daa42cbdcde423248fad911e747 https://github.com/sahlberg/libnfs/archive/refs/tags/libnfs-6.0.2.tar.gz
+
 # --- far2l itself -------------------------------------------------------
 # CRITICAL CORRECTION to 04-REFERENCE-far2l.md §6.3 and this project's own
 # prior assumption: the SDL GUI backend (WinPort/src/Backend/SDL,

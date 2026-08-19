@@ -1,5 +1,58 @@
 # STATUS
 
+## `libnfs` pinned and `NetRocks-NFS.broker` builds clean; real finding for the last group-4 dependency: `neon`/WebDAV needs GnuTLS, not mbedTLS
+
+Continuation of the same Task 15 group 4 effort. `mbedtls`+`libssh` (previous
+two entries below) covered SFTP/SCP; this one covers NFS and identifies what
+WebDAV actually needs.
+
+`libnfs 6.0.2` (LGPL-2.1, no mandatory third-party dependency) pinned in
+`contrib/far2l/deps.lock`, built static via `onebin-linux-hybrid.cmake`
+with `-DCMAKE_DISABLE_FIND_PACKAGE_GSSAPI=TRUE
+-DCMAKE_DISABLE_FIND_PACKAGE_GnuTLS=TRUE` (both are optional, non-`REQUIRED`
+probes in libnfs's own CMakeLists.txt that degrade gracefully — forced off
+regardless of build-host state, same reasoning as `WITH_GSSAPI=OFF` for
+libssh). A smoketest creating a real `nfs_context` and parsing a real
+`nfs://` URL passed `onebin audit --profile hybrid --level 1 --strict`
+clean (`needed: libc.so.6 libpthread.so.0`). Found a real header quirk
+while writing it: `nfsc/libnfs.h` uses `size_t` throughout without
+including `<stddef.h>` itself — confirmed by reading the header, not
+assumed.
+
+**Confirmed by building the actual `NetRocks-NFS.broker` target, not just
+the smoketest.** far2l's `cmake/modules/FindLibNfs.cmake` uses *singular*
+cache variable names (`LIBNFS_LIBRARY`/`LIBNFS_INCLUDE_DIR`) — unlike
+`FindLibSSH.cmake`'s plural early-exit trick used for the SFTP pin. Pre-
+seeding the plural forms first (by analogy with libssh) silently left
+`NetRocks-NFS` unconfigured; caught by checking `CMakeCache.txt` directly
+rather than assuming the two Find modules share a convention. With the
+right names: `-- libnfs found -> enjoy NFS support in NetRocks`. Built
+from the pinned `v_2.8.0` tag, same flags as the `NetRocks-SFTP.broker`
+pass. `onebin audit --profile hybrid --level 1`: `needed: libc.so.6
+libdl.so.2 libpthread.so.0`, **0 errors** — the same already-documented
+`OB0060` `/var/tmp` warning as every other NetRocks broker, not new.
+
+**Real limit, documented rather than glossed over:** unlike libssh's
+loopback-`sshd` round trip, no live NFS server exists in this build
+sandbox — `/proc/fs/nfsd` is absent and `nfs` doesn't appear in
+`/proc/filesystems` (no loadable kernel NFS module inside a container).
+Verification stops at context creation + URL parsing + clean link + the
+real far2l target building — not a full client<->server exchange.
+
+**The real finding for the last group-4 dependency, `neon` (WebDAV):**
+checked upstream's own build docs directly — neon only supports OpenSSL
+or GnuTLS for HTTPS, no mbedTLS backend exists at all. Since OpenSSL
+stays excluded for the `04-REFERENCE-far2l.md` §7.7 licence reason,
+**GnuTLS becomes the necessary choice for this one dependency**,
+reversing this project's own earlier bias against it (mbedTLS was
+strictly better for libssh — see the two entries below). GnuTLS pulls in
+`nettle`+`gmp`+`libtasn1`+`p11-kit`, a materially heavier chain than
+anything pinned so far. Not started this pass — the next real step for
+Task 15 group 4.
+
+`04-REFERENCE-far2l.md` updated: §5's libnfs/neon rows, and a new §6.2.3
+with the full writeup.
+
 ## `NetRocks-SFTP.broker` itself now builds and audits clean against the mbedTLS/libssh pins -- not just a standalone smoketest
 
 Continuation of the same pass. The previous entry below verified

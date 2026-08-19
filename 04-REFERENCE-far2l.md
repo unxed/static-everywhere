@@ -388,8 +388,8 @@ files. **Everything under it is an audit target** — see §9.
 | libssh | NetRocks SFTP/SCP | ✅ static, confirmed by an actual build (§6.2.2 below) — libssh 0.12.2 against **mbedTLS** (this project's chosen backend, not GnuTLS/libgcrypt — see §6.2.2 for why), OpenSSL never discoverable. |
 | OpenSSL | NetRocks FTPS, S3 | ⚠️ only needed for FTPS in NetRocks-FTP and AWS S3 in NetRocks-AWS; disabled in reference build to ensure GPLv2 licence compatibility. |
 | libsmbclient (Samba) | NetRocks SMB | ❌ practically unbundleable: huge, `dlopen`s its own modules, drags Kerberos. **Disable it** — NetRocks degrades gracefully. |
-| libnfs | NetRocks NFS | ✅ static, small. |
-| neon | NetRocks WebDAV | ✅ static. |
+| libnfs | NetRocks NFS | ✅ static, confirmed by an actual build (§6.2.3 below) — LGPL-2.1, no crypto, GSSAPI/GnuTLS both forced off. |
+| neon | NetRocks WebDAV | ⚠️ static, but **only supports OpenSSL or GnuTLS for HTTPS** — no mbedTLS option exists upstream. Since OpenSSL stays excluded (§7.7), this is the one place in this document where GnuTLS is the *necessary* choice, not an avoided one. Not yet built — see §6.2.3. |
 | aws-sdk-cpp | NetRocks S3 | ❌ enormous C++ SDK. Leave it out. |
 | libarchive | multiarc | ✅ static; configure it down to the formats you want. |
 | libunrar / bundled UnRAR | RAR in multiarc | ⚠️ licence, see §7.7. |
@@ -519,6 +519,62 @@ cmake -DCMAKE_TOOLCHAIN_FILE=<repo>/onebin/toolchain/onebin-linux-hybrid.cmake \
 > verified with before `tools/build-far2l.sh` existed — folding it into
 > that script once it exists is still open. `libnfs` and `neon` (WebDAV),
 > the rest of Task 15 group 4 per `STATUS.md`, remain unpinned.
+
+### 6.2.3 `NetRocks-NFS.broker` — libnfs, no crypto backend needed; and the `neon`/GnuTLS finding for WebDAV, next
+
+[#623-netrocks-nfsbroker--libnfs-no-crypto-backend-needed-and-the-neongnutls-finding-for-webdav-next](#623-netrocks-nfsbroker--libnfs-no-crypto-backend-needed-and-the-neongnutls-finding-for-webdav-next)
+
+> `libnfs 6.0.2` is pinned in `contrib/far2l/deps.lock` — plain NFSv3/v4
+> client code, LGPL-2.1, no mandatory third-party dependency at all.
+> Its own `CMakeLists.txt` optionally probes for GSSAPI (Kerberos) and
+> GnuTLS (kTLS) via plain, non-`REQUIRED` `find_package()` calls that
+> degrade gracefully when absent; both were forced off explicitly
+> (`-DCMAKE_DISABLE_FIND_PACKAGE_GSSAPI=TRUE
+> -DCMAKE_DISABLE_FIND_PACKAGE_GnuTLS=TRUE`) so the result never depends
+> on what happens to be on the build host, the same reasoning as
+> `WITH_GSSAPI=OFF` for libssh above.
+>
+> A real header quirk found while writing the smoketest, not a toolchain
+> bug: `nfsc/libnfs.h` uses `size_t` throughout but never includes
+> `<stddef.h>` itself — any consumer must pull that in first. Confirmed
+> by reading the header, not assumed.
+>
+> **Confirmed by an actual build of the real target.** far2l's
+> `cmake/modules/FindLibNfs.cmake` uses the *singular* cache variable
+> names `LIBNFS_LIBRARY`/`LIBNFS_INCLUDE_DIR` — unlike
+> `FindLibSSH.cmake`'s plural `LIBSSH_LIBRARIES`/`LIBSSH_INCLUDE_DIRS`
+> early-exit trick used in §6.2.2. Pre-seeding the plural forms first,
+> by analogy with libssh, silently left the singular ones `NOTFOUND` in
+> `CMakeCache.txt` and `NetRocks-NFS` never got added — the two Find
+> modules simply aren't written the same way, confirmed by reading both
+> rather than assuming a shared convention. With the correct variable
+> names, CMake's own log says `-- libnfs found -> enjoy NFS support in
+> NetRocks`. Built `NetRocks-NFS.broker` from the pinned `v_2.8.0` tag,
+> same flags as §6.2.2's `NetRocks-SFTP.broker` pass. `onebin audit
+> --profile hybrid --level 1`: `needed: libc.so.6 libdl.so.2
+> libpthread.so.0` — **0 errors**, the same already-documented `OB0060`
+> `/var/tmp` warning as every other NetRocks broker, not a new finding.
+>
+> A live client<->server round trip wasn't attempted, unlike libssh's
+> loopback-`sshd` test in §6.2.2 — this project's build sandbox has no
+> loadable NFS kernel module (`/proc/fs/nfsd` absent, `nfs` missing from
+> `/proc/filesystems`, as expected inside a container) and no userspace
+> NFS server was set up either. Verification here stops at "creates a
+> real `nfs_context`, parses a real `nfs://` URL, links clean, audits
+> clean, and the real far2l target builds" — a real gap versus §6.2.2,
+> not glossed over.
+>
+> **The real finding for `neon`/WebDAV, not yet acted on:** neon (the
+> remaining, last dependency in Task 15 group 4) only supports OpenSSL
+> or GnuTLS for HTTPS — checked upstream's own `README`/`configure`
+> options directly, no mbedTLS backend exists. Since OpenSSL stays
+> excluded for the licence reason in §7.7, **this is the one dependency
+> in this whole document where GnuTLS becomes the necessary choice, not
+> an avoided one** — reversing this project's own earlier bias against
+> it for libssh (§6.2.2, where mbedTLS was strictly better on every
+> axis). GnuTLS itself pulls in `nettle`+`gmp`+`libtasn1`+`p11-kit` (and
+> `libunistring` depending on how it's configured), a materially heavier
+> chain than anything else pinned so far — not started this pass.
 
 ### 6.3 `far2l-sdl` — Profile H, Level 1 — **the headline demo**
 
