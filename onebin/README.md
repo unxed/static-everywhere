@@ -11,6 +11,19 @@ parses it by hand, bounds-checked at every step — see
 [`../01-SPEC-audit.md`](../01-SPEC-audit.md) for the full specification
 this implements.
 
+## Prerequisites (Ubuntu / Debian)
+
+```sh
+# Basic toolchain and test suite requirements:
+sudo apt update && sudo apt install -y \
+    build-essential shellcheck musl-tools cmake ninja-build git pkg-config m4 gawk
+
+# Required for far2l X11 broker (far2l_ttyx.broker):
+sudo apt install -y libx11-dev libxi-dev libxext-dev libice-dev libsm-dev
+
+# Optional host dev packages for testing Profile H builds dynamically:
+sudo apt install -y libsdl2-dev libfreetype-dev libharfbuzz-dev libfontconfig1-dev \
+                    libuchardet-dev libssl-dev libexpat1-dev zlib1g-dev
 ## Build
 
 ```sh
