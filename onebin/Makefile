@@ -29,7 +29,7 @@ TEST_SRC = tests/test_main.c tests/t_skeleton.c tests/t_buf.c tests/t_ver.c \
            tests/report_fixtures.c tests/t_checks_needed.c tests/t_checks_profile.c \
            tests/t_checks_glibc.c tests/t_checks_rpath.c tests/t_checks_harden.c \
            tests/t_checks_hygiene.c tests/t_checks_host.c tests/t_checks_meta.c \
-           tests/t_audit.c tests/t_cli.c tests/t_lint.c tests/t_far2l_plan.c $(LIB_SRC)
+           tests/t_audit.c tests/t_cli.c tests/t_lint.c tests/t_far2l_plan.c tests/t_f4_qt_plan.c $(LIB_SRC)
 
 all: build/onebin
 
@@ -109,18 +109,17 @@ far2l-plan:
 	else \
 		echo "--no-fetch clean-error check: exit non-zero, as required"; \
 	fi
-	f4-qt-plan:
-		@echo "--- f4-qt linux plan ---"
-		@if [ -f ./tools/build-f4-qt.sh ]; then SCRIPT="./tools/build-f4-qt.sh"; else SCRIPT="../tools/build-f4-qt.sh"; fi; \
-		sh "$$SCRIPT" --config linux --gallery off --print-plan > /dev/null || exit 1; \
-		echo "f4-qt-plan: plan generation succeeded"; \
+	f4-qt-plan: ; @echo "--- f4-qt linux plan ---" && \
+		if [ -f ./tools/build-f4-qt.sh ]; then SCRIPT="./tools/build-f4-qt.sh"; else SCRIPT="../tools/build-f4-qt.sh"; fi && \
+		sh "$$SCRIPT" --config linux --gallery off --print-plan > /dev/null && \
+		echo "f4-qt-plan: plan generation succeeded" && \
 		if command -v shellcheck >/dev/null 2>&1; then \
 			shellcheck "$$SCRIPT" && echo "shellcheck: clean"; \
 		else \
 			echo "SKIP: shellcheck not installed"; \
-		fi; \
+		fi && \
 		if sh "$$SCRIPT" --config linux --print-plan >/dev/null 2>&1; then \
-			echo "FAIL: build-f4-qt.sh without --gallery must exit non-zero"; exit 1; \
+			echo "FAIL: build-f4-qt.sh without --gallery must exit non-zero" && exit 1; \
 		else \
 			echo "gallery-guard check: exit non-zero, as required"; \
 		fi
