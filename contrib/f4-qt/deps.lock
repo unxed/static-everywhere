@@ -1,0 +1,18 @@
+# contrib/f4-qt/deps.lock — pinned third-party dependencies for f4-qt.
+# Hashes are left as '-' because the agent compiling this lockfile had no
+# internet access to compute and verify them locally (00-AGENT-TASK.md rule 1).
+# URLs are also omitted for Conan-managed packages, since Conan handles fetching.
+qt 6.11.1 - -
+msgpack-cxx 7.0.0 - -
+libtiff 4.7.0 - -
+libraw 0.21.3 - -
+libpng 1.6.45 - -
+libwebp 1.6.0 - -
+libheif 1.20.1 - -
+libjpeg-turbo 3.0.2 - -
+jasper 4.2.0 - -
+qwindowkit main - -
+conan 2.29.1 - -
+cmake 3.31.6 - -
+ninja 1.13.0 - -
+go 1.26.0 - -

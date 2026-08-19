@@ -309,3 +309,7 @@
     explicitly carries the OpenSSL Linking Exception at the bottom. Static
     linking of OpenSSL 3.x is therefore fully compliant with far2l's license
     terms without requiring third-party TLS drop-in shims or stub generation.
+  - **f4-qt dependencies**: The `contrib/f4-qt/deps.lock` file pins dependencies
+    like Qt, Conan, CMake, Ninja, Go, and various codecs with a `-` for their
+    SHA256 hashes. This is because the agent compiling the lockfile lacks network
+    access to compute the hashes locally (per 00-AGENT-TASK.md rule 1).
