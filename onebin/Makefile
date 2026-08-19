@@ -109,6 +109,20 @@ far2l-plan:
 	else \
 		echo "--no-fetch clean-error check: exit non-zero, as required"; \
 	fi
+	f4-qt-plan:
+		@echo "--- f4-qt linux plan ---"
+		@sh ../tools/build-f4-qt.sh --config linux --gallery off --print-plan > /dev/null || sh ./tools/build-f4-qt.sh --config linux --gallery off --print-plan > /dev/null || exit 1
+		@echo "f4-qt-plan: plan generation succeeded"
+		@if command -v shellcheck >/dev/null 2>&1; then \
+			(shellcheck ../tools/build-f4-qt.sh 2>/dev/null || shellcheck tools/build-f4-qt.sh 2>/dev/null) && echo "shellcheck: clean"; \
+		else \
+			echo "SKIP: shellcheck not installed"; \
+		fi
+		@if (sh ../tools/build-f4-qt.sh --config linux --print-plan >/dev/null 2>&1 || sh ./tools/build-f4-qt.sh --config linux --print-plan >/dev/null 2>&1); then \
+			echo "FAIL: build-f4-qt.sh without --gallery must exit non-zero"; exit 1; \
+		else \
+			echo "gallery-guard check: exit non-zero, as required"; \
+		fi
 
 install: build/onebin
 	mkdir -p $(DESTDIR)$(PREFIX)/bin
@@ -117,4 +131,4 @@ install: build/onebin
 clean:
 	rm -rf build
 
-.PHONY: all test test-asan test-ubsan fuzz coverage golden selftest lint far2l-plan install clean
+.PHONY: all test test-asan test-ubsan fuzz coverage golden selftest lint far2l-plan f4-qt-plan install clean
