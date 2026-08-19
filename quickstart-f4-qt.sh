@@ -84,6 +84,47 @@ for tool in git curl tar make cc; do
     fi
 done
 
+# Conan's own "system" recipes (egl/system, opengl/system, xorg/system,
+# xkeyboard-config/system -- the ABI-stable, host-provided libraries this
+# project's own doctrine already treats specially, not things it vendors)
+# check for these dev headers via apt and, unlike everything else this
+# script does, genuinely need them present on the host -- found by a real
+# user's first run. Checking up front and failing fast with the exact
+# one-time install command is much kinder than discovering this an hour
+# into a Qt subbuild. Only checked on Debian/Ubuntu (dpkg-based) hosts;
+# skipped elsewhere with a note, since this project has no way to name
+# the right package names for every distribution.
+if [ "${TOOLCHAIN_CHECK:-1}" = "1" ] && command -v dpkg >/dev/null 2>&1; then
+    APT_X11_PACKAGES="xorg-dev libx11-xcb-dev uuid-dev libegl1-mesa-dev libgl1-mesa-dev xkb-data libxcb-cursor-dev libxcb-dri3-dev libxcb-dri2-0-dev libxcb-present-dev libxcb-composite0-dev libxcb-ewmh-dev libxcb-res0-dev libxcb-glx0-dev libxcb-render0-dev libxcb-render-util0-dev libxcb-xkb-dev libxcb-icccm4-dev libxcb-image0-dev libxcb-keysyms1-dev libxcb-randr0-dev libxcb-shape0-dev libxcb-sync-dev libxcb-xfixes0-dev libxcb-xinerama0-dev"
+    MISSING=""
+    for pkg in $APT_X11_PACKAGES; do
+        dpkg -s "$pkg" >/dev/null 2>&1 || MISSING="$MISSING $pkg"
+    done
+    if [ -n "$MISSING" ]; then
+        cat >&2 <<EOF
+
+error: missing host X11/EGL/OpenGL dev headers Qt's build needs.
+       These are ordinary, ABI-stable desktop packages this project's own
+       doctrine expects the host to provide (not something it vendors)
+       -- Conan's own "system" package recipes check for them and would
+       otherwise fail an hour into the Qt build with a much less useful
+       error. Install them once, mark them auto-installed so a single
+       'apt autoremove' cleans everything up afterward, then re-run this
+       script:
+
+  sudo apt install --no-install-recommends -y$MISSING
+  sudo apt-mark auto$MISSING
+
+       ...then re-run this script. When you're done with f4-qt and want
+       these gone again:
+
+  sudo apt autoremove --purge -y
+
+EOF
+        exit 1
+    fi
+fi
+
 # --------------------------------------------------------- zig, per-user
 
 ZIGDIR="$WORKDIR/zig-linux-x86_64-${ZIG_VERSION}"
