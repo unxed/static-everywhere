@@ -111,8 +111,8 @@ ONEBIN_BIN="${ONEBIN_ROOT}/build/onebin"
 deps_for_config() {
     case "$1" in
         tiny) ;; # none: every optional subsystem that would need one is off
-        tty|wx) printf '%s\n' libssh libnfs mbedtls zlib ;;
-        sdl) printf '%s\n' libssh libnfs mbedtls zlib sdl2 freetype harfbuzz fontconfig expat uchardet ;;
+        tty|wx) printf '%s\n' libssh libnfs mbedtls zlib openssl neon ;;
+        sdl) printf '%s\n' libssh libnfs mbedtls zlib openssl neon sdl2 freetype harfbuzz fontconfig expat uchardet ;;
     esac
 }
 
@@ -132,7 +132,11 @@ netrocks_crypto_args() {
         "-DLIBSSH_LIBRARIES='${DEPS_PREFIX}/libssh/lib/libssh.a;${DEPS_PREFIX}/mbedtls/lib/libmbedtls.a;${DEPS_PREFIX}/mbedtls/lib/libmbedx509.a;${DEPS_PREFIX}/mbedtls/lib/libmbedcrypto.a;${DEPS_PREFIX}/zlib/lib/libz.a'" \
         "-DLIBSSH_INCLUDE_DIRS=${DEPS_PREFIX}/libssh/include" \
         "-DLIBNFS_LIBRARY=${DEPS_PREFIX}/libnfs/lib/libnfs.a" \
-        "-DLIBNFS_INCLUDE_DIR=${DEPS_PREFIX}/libnfs/include"
+        "-DLIBNFS_INCLUDE_DIR=${DEPS_PREFIX}/libnfs/include" \
+        "-DOPENSSL_ROOT_DIR=${DEPS_PREFIX}/openssl" \
+        "-DOPENSSL_USE_STATIC_LIBS=TRUE" \
+        "-DNEON_LIBRARY=${DEPS_PREFIX}/neon/lib/libneon.a" \
+        "-DNEON_INCLUDE_DIR=${DEPS_PREFIX}/neon/include/neon"
 }
 
 # cmake -D... arguments for this configuration, copied verbatim from
@@ -156,7 +160,7 @@ cmake_config_args() {
                 "-DCMAKE_TOOLCHAIN_FILE=${TOOLCHAIN_DIR}/onebin-linux-hybrid.cmake" \
                 "-DCMAKE_BUILD_TYPE=Release" \
                 "-DUSEWX=no" "-DUSESDL=no" "-DPYTHON=no" "-DUNRAR=no" "-DICU_MODE=prebuilt" \
-                "-DNR_OPENSSL=no" "-DNR_AWS=no" "-DCMAKE_DISABLE_FIND_PACKAGE_OpenSSL=TRUE" \
+                "-DNR_AWS=no" \
                 "-DCOLORER=no" "-DMULTIARC=no" "-DUSEUCD=no"
             netrocks_crypto_args
             # COLORER/MULTIARC/USEUCD=no: libxml2/libarchive/uchardet
@@ -174,7 +178,7 @@ cmake_config_args() {
                 "-DCMAKE_TOOLCHAIN_FILE=${TOOLCHAIN_DIR}/onebin-linux-hybrid.cmake" \
                 "-DCMAKE_BUILD_TYPE=Release" \
                 "-DUSEWX=no" "-DUSESDL=YES" "-DPYTHON=no" "-DUNRAR=no" "-DICU_MODE=prebuilt" \
-                "-DNR_OPENSSL=no" "-DNR_AWS=no" "-DCMAKE_DISABLE_FIND_PACKAGE_OpenSSL=TRUE" \
+                "-DNR_AWS=no" \
                 "-DCOLORER=no" "-DMULTIARC=no" "-DUSEUCD=no"
             netrocks_crypto_args
             # Same reasoning as tty above, plus: USESDL=YES only exists on
@@ -187,7 +191,7 @@ cmake_config_args() {
                 "-DCMAKE_TOOLCHAIN_FILE=${TOOLCHAIN_DIR}/onebin-linux-hybrid.cmake" \
                 "-DCMAKE_BUILD_TYPE=Release" \
                 "-DUSEWX=yes" "-DUSESDL=no" \
-                "-DNR_OPENSSL=no" "-DNR_AWS=no" "-DCMAKE_DISABLE_FIND_PACKAGE_OpenSSL=TRUE" \
+                "-DNR_AWS=no" \
                 "-DCOLORER=no" "-DMULTIARC=no" "-DUSEUCD=no"
             netrocks_crypto_args
             ;;

@@ -1,13 +1,15 @@
 # STATUS
 
-## NetRocks OpenSSL Licensing: RESOLVED — Upstream already includes OpenSSL Exception
+## NetRocks OpenSSL & WebDAV: RESOLVED — Built with OpenSSL 3.0 & neon
 
 Inspection of far2l's actual `LICENSE.txt` revealed that upstream explicitly
 included the standard **OpenSSL Linking Exception** grant at the bottom of the
-file. Statically linking OpenSSL (e.g. OpenSSL 3.0 LTS) into far2l and NetRocks
-is therefore completely legal under far2l's terms, with zero workarounds, zero
-source patches, and zero stub libraries required. OpenSSL 3.0.15 is pinned in
-`contrib/far2l/deps.lock`.
+file. Statically linking OpenSSL (OpenSSL 3.0.15) into far2l and NetRocks
+is therefore completely legal under far2l's terms.
+
+Wiring is completed: `openssl 3.0.15` and `neon 0.34.0` are pinned in
+`contrib/far2l/deps.lock`, and `tools/build-far2l.sh` passes their static paths
+to CMake, enabling NetRocks-FTP (with FTPS) and NetRocks-WEBDAV out of the box.
 ## far2l-sdl exit segfault: FIXED via `-Wl,-z,nodelete`
 
 The issue identified below is entirely bypassed at the toolchain level.
