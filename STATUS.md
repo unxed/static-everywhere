@@ -1,5 +1,37 @@
 # STATUS
 
+## f4-qt `--toolchain zig`: real first user run found a real gap — Conan's "system" packages need root to auto-install; fixed with `mode=check`
+
+A user ran `quickstart-f4-qt.sh` for real, non-root, no container — and
+hit a genuine wall past what this project's own sandbox testing had
+reached: Conan's `egl/system`, `opengl/system`, `xorg/system`, and
+`xkeyboard-config/system` recipes each call `apt-get`/`apt.install_
+substitutes()` to install dev headers (e.g. `libegl1-mesa-dev` as a
+substitute for `libegl-dev`) when they detect them missing — and without
+root, that fails with a buried, unhelpful `Permission denied` deep
+inside a Qt subbuild's log, not a clear top-level error.
+
+This is not a container-vs-zig problem — it's a `tools.system.
+package_manager` configuration one, present regardless of compiler.
+`tools/build-f4-qt.sh` had `mode=install`, copied from f4's own script
+(which never hits this because their own build runs as genuine root
+inside their Ubuntu 18.04 container). Changed to `mode=check`: Conan
+still checks for the same packages, but reports exactly what's missing
+and how to install it instead of attempting to install anything itself.
+
+Worth noting explicitly: `egl/system`/`opengl/system`/`xorg/system` are,
+by name, precisely the ABI-stable, host-provided libraries this
+project's own doctrine (Profile H's host contract) already treats as
+"the host provides these, don't vendor them" — Conan's own package
+naming convention independently agrees with our own Layer 3 distinction.
+The fix asks the user to `apt install` a handful of small, ordinary
+desktop dev-header packages once, themselves, with their own `sudo` —
+not something this project tries to do on their behalf, consistent with
+"no root, no mess" the whole quickstart script exists to honor.
+
+`tools/build-f4-qt.sh --help`'s `--toolchain zig` section now documents
+this explicitly, so it's not a surprise on a first real run.
+
 ## f4-qt build: `--toolchain zig` implemented and its core mechanism proven — full Qt build not yet run end to end
 
 The proposal below (container-free build via Conan + our own zig-cc/

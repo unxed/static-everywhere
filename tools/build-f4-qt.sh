@@ -49,6 +49,20 @@ Usage: tools/build-f4-qt.sh --config linux|windows --src DIR --out DIR [OPTIONS]
                                 binary (tools.build:compiler_executables), so the
                                 same Conan recipe f4's own maintainers wrote runs
                                 unmodified, just compiled by a different toolchain.
+                                One real gap, found running this for real: a few
+                                of Conan's own "system" packages (egl/system,
+                                opengl/system, xorg/system, xkeyboard-config/
+                                system -- these are the ABI-stable, host-provided
+                                libraries this project's own doctrine already
+                                treats specially, not things we vendor) check for
+                                dev headers via apt and need root to auto-install
+                                them. Rather than fail deep in a Qt subbuild with
+                                a permission error, this path uses Conan's
+                                tools.system.package_manager:mode=check, which
+                                lists exactly what's missing instead of trying to
+                                install it -- install those with your own `sudo
+                                apt install ...` once (they're small, common
+                                desktop dev headers), then re-run.
   -h, --help              this message
 EOF
 }
@@ -209,7 +223,7 @@ elif [ "${CONFIG}" = "linux" ] && [ "${TOOLCHAIN}" = "zig" ]; then
 -c 'tools.build:cxxflags=[\"-target\",\"x86_64-linux-gnu.${GLIBC_BASELINE}\"]' \
 -c 'tools.build:sharedlinkflags=[\"-target\",\"x86_64-linux-gnu.${GLIBC_BASELINE}\"]' \
 -c 'tools.build:exelinkflags=[\"-target\",\"x86_64-linux-gnu.${GLIBC_BASELINE}\",\"-pie\"]' \
--c tools.system.package_manager:mode=install -c tools.system.package_manager:sudo=False \
+-c tools.system.package_manager:mode=check \
 --output-folder=qt/host/build-portable-linux"
 
     plan_step "cd ${SRC} && bash ci/build-qwindowkit.sh \"\$PWD/qt/host/build-portable-linux\" Release static"
