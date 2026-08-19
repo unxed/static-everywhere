@@ -1,14 +1,13 @@
 # STATUS
 
-## NetRocks OpenSSL vs GPLv2 Licensing Bypass
+## NetRocks OpenSSL Licensing: RESOLVED — Upstream already includes OpenSSL Exception
 
-OpenSSL 3.x (Apache-2.0) is license-incompatible with statically linking into far2l (GPLv2).
-Three elegant architectural bypasses have been identified to restore FTPS/AWS S3 support without modifying far2l's source code:
-1. **Legal**: Request an OpenSSL Exception from upstream.
-2. **Static Drop-in**: Use WolfSSL (GPLv2) with `--enable-opensslextra`, symlinking it to masquerade as OpenSSL for CMake.
-3. **Dynamic Stubs**: Use `implib-so` to generate a static stub that `dlopen`s the host's `libssl.so` at runtime, legally sidestepping the GPL via the System Library Exception.
-
-Waiting on a decision for which path to implement in `tools/build-far2l.sh`.
+Inspection of far2l's actual `LICENSE.txt` revealed that upstream explicitly
+included the standard **OpenSSL Linking Exception** grant at the bottom of the
+file. Statically linking OpenSSL (e.g. OpenSSL 3.0 LTS) into far2l and NetRocks
+is therefore completely legal under far2l's terms, with zero workarounds, zero
+source patches, and zero stub libraries required. OpenSSL 3.0.15 is pinned in
+`contrib/far2l/deps.lock`.
 ## far2l-sdl exit segfault: FIXED via `-Wl,-z,nodelete`
 
 The issue identified below is entirely bypassed at the toolchain level.

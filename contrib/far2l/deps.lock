@@ -289,6 +289,10 @@ sdl2 2.32.10 5f5993c530f084535c65a6879e9b26ad441169b3e25d789d83287040a9ca5165 ht
 uchardet 0.0.8 e97a60cfc00a1c147a674b097bb1422abd9fa78a2d9ce3f3fdcc2e78a34ac5f0 https://www.freedesktop.org/software/uchardet/releases/uchardet-0.0.8.tar.xz
 
 # --- network, the hard remainder (NetRocks-SFTP.broker) ------------------
+# OpenSSL 3.0 LTS: enabled for FTPS and AWS S3 in NetRocks. Statically
+# linking OpenSSL is explicitly permitted by far2l's LICENSE.txt via its
+# included OpenSSL Linking Exception grant.
+openssl 3.0.15 23c666d0edf20f14249b3d8f0368acaee9ab585b09e1de82107c66e1f3ec9533 https://github.com/openssl/openssl/releases/download/openssl-3.0.15/openssl-3.0.15.tar.gz
 # Task 15 group 4, per STATUS.md's confirmed order. NetRocks-SHELL/-FISHPLUS
 # (group 2) needed nothing from this file -- see 04-REFERENCE-far2l.md
 # §6.2.1. This group is what NetRocks-SFTP.broker (SFTP/SCP) actually

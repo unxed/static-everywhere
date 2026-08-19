@@ -305,8 +305,7 @@
     process exit. Adding `-Wl,-z,nodelete` to the Profile H linker flags instructs
     the dynamic loader to keep the module mapped even after `dlclose()`, resolving
     the exit crash without requiring source-level patches.
-  - **OpenSSL + GPLv2 bypass**: NetRocks requires OpenSSL for FTPS/AWS, but OpenSSL 3.x (Apache-2.0) cannot be statically linked with GPLv2 code. Three architectural bypasses were identified to avoid rewriting NetRocks:
-    1. *Legal*: Request the standard GPL OpenSSL Exception from upstream.
-    2. *Static Drop-in*: Use `WolfSSL` (GPLv2) with `--enable-opensslextra` and symlink headers/libs to masquerade as OpenSSL for CMake.
-    3. *Dynamic Stub*: Generate a static stub (via `implib-so`) that calls `dlopen("libssl.so")` at runtime, shifting the dependency to the host OS and qualifying for the GPL System Library Exception.
-    (Pending user decision on which to implement in the reference build).
+  - **OpenSSL + far2l licensing resolved**: far2l's upstream `LICENSE.txt`
+    explicitly carries the OpenSSL Linking Exception at the bottom. Static
+    linking of OpenSSL 3.x is therefore fully compliant with far2l's license
+    terms without requiring third-party TLS drop-in shims or stub generation.
