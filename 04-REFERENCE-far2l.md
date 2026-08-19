@@ -701,9 +701,11 @@ far2l is **GPLv2** (v2 only, as far as its `LICENSE.txt` states). Three
 consequences:
 
 - **OpenSSL 3.x is Apache-2.0**, which is *not* GPLv2-compatible, and static
-  linking gives you no "system library" exception. Either build NetRocks without
-  OpenSSL, or use a GPL-compatible TLS stack, or don't redistribute that
-  configuration. Our reference builds take the first option.
+  linking gives you no "system library" exception. To regain FTPS and AWS S3
+  without rewriting NetRocks or violating GPLv2, use one of these bypasses:
+  1. **The Legal Bypass**: Ask upstream to add the standard "OpenSSL Exception" to `LICENSE.txt`. Zero code changes.
+  2. **The Drop-in Bypass (WolfSSL)**: Compile `wolfssl` (GPLv2) with `-DWOLFSSL_OPENSSLEXTRA=ON`. Symlink its output to `libssl.a`/`libcrypto.a` and its headers to `include/openssl`. CMake's `FindOpenSSL` accepts it seamlessly, and the result is 100% GPLv2-compliant static code.
+  3. **The Runtime Stub (implib-so)**: Generate an assembly stub that statically links into your app but calls `dlopen("libssl.so")` at runtime. Because it dynamically links the *host's* OpenSSL, it qualifies for the GPL "System Library Exception", solving the license conflict while pushing crypto updates to the OS.
 - **The bundled UnRAR sources are under the UnRAR licence**, which is not free
   software and is not GPL-compatible. Our builds pass `-DUNRAR=no`; RAR is then
   handled by libarchive where it can be.
