@@ -109,20 +109,22 @@ far2l-plan:
 	else \
 		echo "--no-fetch clean-error check: exit non-zero, as required"; \
 	fi
-	f4-qt-plan: ; @echo "--- f4-qt linux plan ---" && \
-		if [ -f ./tools/build-f4-qt.sh ]; then SCRIPT="./tools/build-f4-qt.sh"; else SCRIPT="../tools/build-f4-qt.sh"; fi && \
-		sh "$$SCRIPT" --config linux --gallery off --print-plan > /dev/null && \
-		echo "f4-qt-plan: plan generation succeeded" && \
-		if command -v shellcheck >/dev/null 2>&1; then \
-			shellcheck "$$SCRIPT" && echo "shellcheck: clean"; \
-		else \
-			echo "SKIP: shellcheck not installed"; \
-		fi && \
-		if sh "$$SCRIPT" --config linux --print-plan >/dev/null 2>&1; then \
-			echo "FAIL: build-f4-qt.sh without --gallery must exit non-zero" && exit 1; \
-		else \
-			echo "gallery-guard check: exit non-zero, as required"; \
-		fi
+
+f4-qt-plan:
+	@echo "--- f4-qt linux plan ---"
+	@if [ -f ./tools/build-f4-qt.sh ]; then SCRIPT="./tools/build-f4-qt.sh"; else SCRIPT="../tools/build-f4-qt.sh"; fi; \
+	sh "$$SCRIPT" --config linux --gallery off --print-plan > /dev/null || exit 1; \
+	echo "f4-qt-plan: plan generation succeeded"; \
+	if command -v shellcheck >/dev/null 2>&1; then \
+		shellcheck "$$SCRIPT" && echo "shellcheck: clean"; \
+	else \
+		echo "SKIP: shellcheck not installed"; \
+	fi; \
+	if sh "$$SCRIPT" --config linux --print-plan >/dev/null 2>&1; then \
+		echo "FAIL: build-f4-qt.sh without --gallery must exit non-zero"; exit 1; \
+	else \
+		echo "gallery-guard check: exit non-zero, as required"; \
+	fi
 
 install: build/onebin
 	mkdir -p $(DESTDIR)$(PREFIX)/bin
