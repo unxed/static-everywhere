@@ -298,3 +298,10 @@
     libgcrypt), without referencing OpenSSL headers in NetRocks source code.
     `NetRocks-SHELL.broker` uses the external `ssh` executable via PTY. Disabling
     OpenSSL only removes `NetRocks-AWS` (S3) and FTPS support in `NetRocks-FTP`.
+  - **`-Wl,-z,nodelete` in Profile H toolchain**: dynamically loaded modules (like
+    `far2l_sdl.so` and plugins) that statically link C++ dependencies register static
+    destructors via `__cxa_atexit`. Calling `dlclose()` unmaps module code while
+    leaving handler pointers in glibc's `__exit_funcs` list, causing a segfault on
+    process exit. Adding `-Wl,-z,nodelete` to the Profile H linker flags instructs
+    the dynamic loader to keep the module mapped even after `dlclose()`, resolving
+    the exit crash without requiring source-level patches.
