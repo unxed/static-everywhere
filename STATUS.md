@@ -1,5 +1,49 @@
 # STATUS
 
+## COURSE CORRECTION — read this before touching Task 15 again
+
+The previous session went well past the point of diminishing returns:
+building GnuTLS/nettle/gmp from source for WebDAV, chasing a suspected
+Clang codegen bug via disassembly, for a protocol NetRocks-SHELL/FISHPLUS
+already cover. **That kind of depth is explicitly out of bounds until the
+two items below are done.** This is not a suggestion, it's the priority
+order for every session from here on:
+
+1. **`far2l-sdl` segfaults on exit. Fix that first, minimally.**
+2. **Build the f4-qt wrapper and get a working artifact to the user.**
+
+Nothing else — no rare-protocol chasing, no rebuilding a dependency's
+dependency's dependency from source, no toolchain archaeology for its own
+sake — until both of those are real. If a build step needs a library the
+host's package manager already has, use the host's, dynamically, the way
+Profile H is supposed to work. Don't vendor and rebuild it statically
+"to be safe" unless something concrete actually requires that.
+
+**The user's own build, done by hand, already works better than where the
+previous session's from-source rabbit hole was headed** — network,
+archives, and editor syntax highlighting all functional, using the host's
+own dev packages via a `-isystem` include-path fix rather than rebuilding
+anything from source:
+
+```sh
+cmake -S /tmp/far2l -B . \
+  -DCMAKE_TOOLCHAIN_FILE="$REPO/toolchain/onebin-linux-hybrid.cmake" \
+  -DCMAKE_BUILD_TYPE=Release -DICU_MODE=prebuilt \
+  -DUSEWX=no -DUSESDL=YES -DPYTHON=no -DUNRAR=no \
+  -DNR_OPENSSL=no -DNR_AWS=no -DCMAKE_DISABLE_FIND_PACKAGE_OpenSSL=TRUE \
+  -DCMAKE_C_FLAGS="-isystem /usr/include/x86_64-linux-gnu" \
+  -DCMAKE_CXX_FLAGS="-isystem /usr/include/x86_64-linux-gnu" \
+  -DCMAKE_INSTALL_PREFIX=./install
+```
+
+Note what's *absent*: no `-DNETROCKS=no`, no `-DMULTIARC=no`, no
+`-DCOLORER=no` — those stay at far2l's own defaults (yes) and link
+against whatever the host's `apt`-installed dev packages provide,
+dynamically. This is Profile H working as designed, not a compromise.
+The one known, confirmed-real problem with this exact build: **`far2l`
+(the SDL config) segfaults on exit.** That is today's actual bug, not a
+`gnutls` build.
+
 ## WebDAV/GnuTLS deprioritized -- disproportionate effort for a low-value target; NetRocks-SHELL/FISHPLUS already cover network transfer
 
 Attempted the GnuTLS chain (`gmp` → `nettle` → ...) needed for `neon`/WebDAV.
