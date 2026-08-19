@@ -1,5 +1,73 @@
 # STATUS
 
+## f4-qt build: currently wraps f4's own Ubuntu-18.04-container CI wholesale — proposal to fix, not yet implemented
+
+Read `tools/build-f4-qt.sh` and, critically, the actual script it shells
+out to (`ci/build-portable-qt-linux.sh` in f4's own repo, pinned commit).
+**Found a real architectural inconsistency with how this project treats
+far2l.** f4's script refuses to run at all unless it's literally root
+inside literally Ubuntu 18.04:
+
+```sh
+if [[ "$(id -u)" != 0 ]]; then
+    echo "error: run this baseline builder as root inside Ubuntu 18.04" >&2
+    exit 2
+fi
+if ! grep -q 'Ubuntu 18.04' /etc/os-release; then
+    echo "error: glibc 2.27 contract requires the Ubuntu 18.04 build container" >&2
+    exit 2
+fi
+```
+
+`tools/build-f4-qt.sh` currently just invokes this wholesale and audits
+the result afterward with `onebin` — meaning **on any host that isn't
+literally an Ubuntu 18.04 machine (in practice: a container), this
+project's own f4-qt build path is unusable without exactly the kind of
+container tooling the manifesto exists to avoid needing.** That's not a
+cosmetic gap; it directly contradicts what this project is for.
+
+For far2l, we never wrapped far2l's own CI as a black box — we injected
+`onebin-linux-hybrid.cmake` (`zig cc -target x86_64-linux-gnu.2.28`)
+directly into far2l's own `CMakeLists.txt`, letting any modern host pin
+an old glibc baseline via a toolchain flag rather than by literally
+running the old OS. f4-qt's build never got the same treatment.
+
+**Proposed fix, not yet implemented or tested end to end**: Conan (the
+package manager f4's script uses to build its ~35-package Qt dependency
+stack) already supports pointing it at an arbitrary compiler binary —
+the script itself does exactly this for `gcc-11`:
+```sh
+-c 'tools.build:compiler_executables={"c":"gcc-11","cpp":"g++-11"}'
+```
+Point this at `onebin/toolchain/zig-cc`/`zig-c++` (`-target
+x86_64-linux-gnu.2.27`, matching f4-qt's own pinned baseline) instead,
+and drop the root/Ubuntu-18.04 guard entirely. Conan/CMake/Qt's own build
+shouldn't need to know or care that the compiler is a zig wrapper rather
+than a genuine `gcc-11` binary — this is exactly the same substitution
+already proven to work for far2l's whole dependency chain. No container,
+no root, no specific host OS; `zig` (one downloadable binary) and
+`uv`/Conan (a Python venv) are both trivially removable afterward.
+
+**Not proposing a from-scratch, Homebrew-style reimplementation of Qt's
+build recipe** — that is a different, much larger project than this
+one's scope. The right level of intervention here matches everywhere else
+in this project: swap the *toolchain*, keep the *recipe* (Conan does
+exactly what it already does, fetching/building the same ~35 packages the
+same way f4's own maintainers chose) exactly as-is.
+
+**Worth offering as an explicit choice, not a replacement**: a
+`--toolchain host|zig` flag on `tools/build-f4-qt.sh` — `host` keeps
+today's behaviour (trust f4's own CI exactly, for side-by-side
+verification against upstream's own claims) and `zig` is the new,
+container-free path this project's own doctrine actually calls for.
+Neither makes the other redundant.
+
+**Not yet done**: actually wiring a Conan profile through zig and
+confirming Qt's own build system (CMake, but with Qt's substantial own
+configure-time compiler probing) tolerates a `zig cc` compiler binary
+end to end — this is a real, unverified next step, not a proven result.
+Recording the proposal now so it isn't lost, not claiming it works yet.
+
 ## NetRocks OpenSSL & WebDAV: RESOLVED — Built with OpenSSL 3.0 & neon
 
 Inspection of far2l's actual `LICENSE.txt` revealed that upstream explicitly
