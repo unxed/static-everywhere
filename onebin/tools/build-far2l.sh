@@ -100,12 +100,39 @@ ONEBIN_BIN="${ONEBIN_ROOT}/build/onebin"
 # Third-party dependencies each configuration actually needs, per
 # contrib/far2l/deps.lock's own header comment (which explains the "why"
 # for each row below in full).
+#
+# CORRECTED against deps.lock's actual current pins (STATUS.md): `neon`
+# and `libxml2` are NOT pinned yet (neon needs GnuTLS, deliberately
+# deferred -- see STATUS.md "WebDAV/GnuTLS deprioritized"), so COLORER
+# and WebDAV stay off below, same as before. `libssh`/`libnfs` ARE now
+# pinned and proven against real NetRocks-SFTP.broker/NetRocks-NFS.broker
+# builds (04-REFERENCE-far2l.md SS6.2.2/SS6.2.3) -- `mbedtls`/`zlib` are
+# their transitive static link dependencies and must travel with them.
 deps_for_config() {
     case "$1" in
         tiny) ;; # none: every optional subsystem that would need one is off
-        tty|wx) printf '%s\n' libssh libnfs neon libarchive libxml2 libuchardet ;;
-        sdl) printf '%s\n' libssh libnfs neon libarchive libxml2 libuchardet sdl2 freetype harfbuzz fontconfig ;;
+        tty|wx) printf '%s\n' libssh libnfs mbedtls zlib ;;
+        sdl) printf '%s\n' libssh libnfs mbedtls zlib sdl2 freetype harfbuzz fontconfig expat uchardet ;;
     esac
+}
+
+# far2l's own cmake/modules/FindLibSSH.cmake and FindLibNfs.cmake are
+# hand-written find_library/find_path modules with no transitive-
+# dependency info of their own, and (confirmed by reading both, not
+# assumed) they don't even share a cache-variable naming convention:
+# FindLibSSH.cmake exits early if the PLURAL LIBSSH_LIBRARIES/
+# LIBSSH_INCLUDE_DIRS are already set, letting one variable carry
+# libssh's whole static link chain (libssh.a + its own mbedTLS/zlib
+# static deps); FindLibNfs.cmake instead searches on the SINGULAR
+# LIBNFS_LIBRARY/LIBNFS_INCLUDE_DIR. Pre-seeding the wrong pair for
+# either module leaves it silently NOTFOUND. 04-REFERENCE-far2l.md
+# SS6.2.2/SS6.2.3.
+netrocks_crypto_args() {
+    printf '%s\n' \
+        "-DLIBSSH_LIBRARIES='${DEPS_PREFIX}/libssh/lib/libssh.a;${DEPS_PREFIX}/mbedtls/lib/libmbedtls.a;${DEPS_PREFIX}/mbedtls/lib/libmbedx509.a;${DEPS_PREFIX}/mbedtls/lib/libmbedcrypto.a;${DEPS_PREFIX}/zlib/lib/libz.a'" \
+        "-DLIBSSH_INCLUDE_DIRS=${DEPS_PREFIX}/libssh/include" \
+        "-DLIBNFS_LIBRARY=${DEPS_PREFIX}/libnfs/lib/libnfs.a" \
+        "-DLIBNFS_INCLUDE_DIR=${DEPS_PREFIX}/libnfs/include"
 }
 
 # cmake -D... arguments for this configuration, copied verbatim from
@@ -129,7 +156,18 @@ cmake_config_args() {
                 "-DCMAKE_TOOLCHAIN_FILE=${TOOLCHAIN_DIR}/onebin-linux-hybrid.cmake" \
                 "-DCMAKE_BUILD_TYPE=Release" \
                 "-DUSEWX=no" "-DUSESDL=no" "-DPYTHON=no" "-DUNRAR=no" "-DICU_MODE=prebuilt" \
-                "-DNR_OPENSSL=no" "-DNR_AWS=no" "-DCMAKE_DISABLE_FIND_PACKAGE_OpenSSL=TRUE"
+                "-DNR_OPENSSL=no" "-DNR_AWS=no" "-DCMAKE_DISABLE_FIND_PACKAGE_OpenSSL=TRUE" \
+                "-DCOLORER=no" "-DMULTIARC=no" "-DUSEUCD=no"
+            netrocks_crypto_args
+            # COLORER/MULTIARC/USEUCD=no: libxml2/libarchive/uchardet
+            # aren't wired into this script's deps yet (libarchive IS
+            # pinned in deps.lock but hasn't been proven through a real
+            # far2l MULTIARC build; libxml2/uchardet for Colorer/charset-
+            # detect aren't pinned at all). NETROCKS stays at its far2l
+            # default (yes): libssh+libnfs above give it real SFTP/SCP/
+            # NFS support, and NetRocks-SHELL/FISHPLUS need nothing at
+            # all (04-REFERENCE-far2l.md SS6.2.1) so the plugin already
+            # has working network transfer regardless.
             ;;
         sdl)
             printf '%s\n' \
@@ -137,25 +175,21 @@ cmake_config_args() {
                 "-DCMAKE_BUILD_TYPE=Release" \
                 "-DUSEWX=no" "-DUSESDL=YES" "-DPYTHON=no" "-DUNRAR=no" "-DICU_MODE=prebuilt" \
                 "-DNR_OPENSSL=no" "-DNR_AWS=no" "-DCMAKE_DISABLE_FIND_PACKAGE_OpenSSL=TRUE" \
-                "-DNETROCKS=no" "-DMULTIARC=no" "-DCOLORER=no"
-            # NETROCKS/MULTIARC/COLORER=no above is TEMPORARY, scoped to
-            # this pass's verified build (graphics group only: FreeType/
-            # HarfBuzz/Fontconfig/SDL2/uchardet, real onebin audit PASS
-            # for far2l/far2l_sdl.so/far2l_ttyx.broker — see STATUS.md).
-            # deps.lock's own stated policy is to leave these at their
-            # far2l defaults (yes) for sdl; turning them back on needs
-            # libssh/libarchive/libxml2 (already pinned+built standalone
-            # in the archives group) verified against a REAL far2l
-            # NETROCKS/MULTIARC/COLORER build, which hasn't happened yet
-            # — a distinct, not-yet-done follow-up, not a design decision
-            # to keep them off.
+                "-DCOLORER=no" "-DMULTIARC=no" "-DUSEUCD=no"
+            netrocks_crypto_args
+            # Same reasoning as tty above, plus: USESDL=YES only exists on
+            # far2l's unstable master (04-REFERENCE-far2l.md SS6.3) -- pass
+            # --tag <the pinned preview commit> explicitly when building
+            # this config against --src, this script does not default it.
             ;;
         wx)
             printf '%s\n' \
                 "-DCMAKE_TOOLCHAIN_FILE=${TOOLCHAIN_DIR}/onebin-linux-hybrid.cmake" \
                 "-DCMAKE_BUILD_TYPE=Release" \
                 "-DUSEWX=yes" "-DUSESDL=no" \
-                "-DNR_OPENSSL=no" "-DNR_AWS=no" "-DCMAKE_DISABLE_FIND_PACKAGE_OpenSSL=TRUE"
+                "-DNR_OPENSSL=no" "-DNR_AWS=no" "-DCMAKE_DISABLE_FIND_PACKAGE_OpenSSL=TRUE" \
+                "-DCOLORER=no" "-DMULTIARC=no" "-DUSEUCD=no"
+            netrocks_crypto_args
             ;;
     esac
 }
