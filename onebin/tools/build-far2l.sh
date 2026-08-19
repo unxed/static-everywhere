@@ -101,13 +101,13 @@ ONEBIN_BIN="${ONEBIN_ROOT}/build/onebin"
 # contrib/far2l/deps.lock's own header comment (which explains the "why"
 # for each row below in full).
 #
-# CORRECTED against deps.lock's actual current pins (STATUS.md): `neon`
-# and `libxml2` are NOT pinned yet (neon needs GnuTLS, deliberately
-# deferred -- see STATUS.md "WebDAV/GnuTLS deprioritized"), so COLORER
-# and WebDAV stay off below, same as before. `libssh`/`libnfs` ARE now
-# pinned and proven against real NetRocks-SFTP.broker/NetRocks-NFS.broker
-# builds (04-REFERENCE-far2l.md SS6.2.2/SS6.2.3) -- `mbedtls`/`zlib` are
-# their transitive static link dependencies and must travel with them.
+# `libssh`/`libnfs`/`mbedtls`/`zlib`/`openssl`/`neon` are all pinned and
+# proven against real NetRocks brokers (04-REFERENCE-far2l.md §6.2.1-
+# 6.2.3): NetRocks-SFTP/SCP (libssh+mbedtls), NetRocks-NFS (libnfs), and
+# NetRocks-FTP/WebDAV (openssl+neon, once far2l's own LICENSE.txt was
+# confirmed to carry the OpenSSL Linking Exception -- see STATUS.md
+# "NetRocks OpenSSL & WebDAV: RESOLVED"). `libxml2` still isn't pinned,
+# so COLORER stays off below.
 deps_for_config() {
     case "$1" in
         tiny) ;; # none: every optional subsystem that would need one is off

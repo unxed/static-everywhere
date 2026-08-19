@@ -1398,7 +1398,7 @@ Roadmap in [DESIGN-onebin.md §10](./DESIGN-onebin.md). Task list in
 | 12 | self-audit and documentation | done |
 | 13 | `tools/audit.sh` learns about modules | done |
 | 14 | CMake toolchain files + `zig-*` wrappers | done |
-| 15 | `tools/build-far2l.sh` + `contrib/far2l/deps.lock` | **in progress** |
+| 15 | `tools/build-far2l.sh` + `contrib/far2l/deps.lock` | **done** — archives+graphics+network groups all wired (openssl/neon/mbedtls/libssh/libnfs), stale in-script comment fixed |
 | 16 | `contrib/far2l/UPSTREAM.md` | done |
 | 17 | `tools/build-f4-qt.sh` + `contrib/f4-qt/deps.lock` | **done** |
 | 18 | Level 1 runtime gate for GUI artifacts (03-TESTPLAN.md) | **done** |
