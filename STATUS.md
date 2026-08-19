@@ -1,5 +1,61 @@
 # STATUS
 
+## far2l-sdl exit segfault: real backtrace analyzed — crash IP lands in a malloc-arena PROT_NONE gap, executing garbage as code
+
+Two real backtraces from the user's own reproducible crash (both consistent):
+
+```
+Thread 1 "far2l" received signal SIGSEGV, Segmentation fault.
+0x00007fffc97e7550 in ?? ()
+#0  0x00007fffc97e7550 in ?? ()
+#1  __run_exit_handlers (status=0, run_list_atexit=true, run_dtors=true) at ./stdlib/exit.c:108
+#2  __GI_exit (status=<optimized out>) at ./stdlib/exit.c:138
+#3  __libc_start_call_main (main=0x5555557d2df0, ...) at ../sysdeps/nptl/libc_start_call_main.h:74
+#4  __libc_start_main_impl (...) at ../csu/libc-start.c:360
+#5  _start ()
+```
+
+**The decisive new fact: `info proc mappings` at the crash point shows
+`0x00007fffc97e7550` falling inside a `---p` (`PROT_NONE`, zero
+permissions) region** — specifically the large reserved-but-uncommitted
+gap between `0x7fffc41c2000` and `0x7fffc8000000`, one of several
+identical `rw-p` (~132 KiB) + `---p` (~64 MiB) pairs scattered through
+the address space. **This is the textbook shape of a glibc per-thread
+malloc arena**: a small committed region followed by a large reserved,
+inaccessible one, one pair per thread that has ever called `malloc`.
+
+Putting the two facts together: **`__run_exit_handlers` is trying to
+*call* an address that is not code at all — it's sitting in the
+unmapped, reserved portion of a thread's malloc arena.** This is not "a
+bug in some destructor's logic"; it's a corrupted or stale function
+pointer in glibc's own `atexit`/`__cxa_atexit` registration list,
+almost certainly written by (or pointing into memory that used to
+belong to) one of the many short-lived worker threads
+`far2l`/`far2l_sdl.so` create and destroy during a session — visible in
+both gdb transcripts as a churn of `[New Thread ...]` /
+`[Thread ... exited]` pairs right before the crash. A `static` (not
+`thread_local`) object with a non-trivial destructor, first constructed
+on a worker thread, registers its destructor via `__cxa_atexit` to run
+at **process** exit regardless of which thread constructed it — if
+anything about that registration or the object's storage becomes
+invalid once the constructing thread is gone, this is exactly the
+resulting crash shape.
+
+**Fast, zero-rebuild next diagnostic, not a rebuild or a deep-dive:**
+run once more with glibc's built-in heap-corruption checker, which
+aborts *at the moment* of corruption with a diagnostic, rather than
+segfaulting later during exit:
+```sh
+MALLOC_CHECK_=3 ./far2l
+```
+If that changes the failure to an early, loud `malloc(): ...` abort
+(likely with a partial backtrace pointing at the actual corrupting
+write), that confirms heap corruption and gives a real location to fix.
+If it doesn't fire and the same exit-time segfault still happens, that
+argues more specifically for a stale/thread-local `atexit` registration
+race rather than a stray heap write, which narrows where to look next
+without guessing further.
+
 ## far2l-sdl exit segfault: reproduced the build, could not reproduce the crash in this sandbox — need a backtrace, not more guessing
 
 Built far2l-sdl for real, per the user's own confirmed-working recipe
