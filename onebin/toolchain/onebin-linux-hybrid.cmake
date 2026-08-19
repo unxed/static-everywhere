@@ -90,7 +90,7 @@ set(_onebin_link_flags
     "-static-libgcc"
     "-static-libstdc++"
     "-Wl,--gc-sections"   # zig cc identifies as Clang — see the static file's note
-    "-Wl,-z,relro" "-Wl,-z,now" "-Wl,-z,noexecstack"
+    "-Wl,-z,relro" "-Wl,-z,now" "-Wl,-z,noexecstack" "-Wl,-z,nodelete"
     # Empirically required (found while building a static-zlib smoketest):
     # zig's bundled glibc CRT startup objects (crti/crtn/start-*.S, etc.)
     # ship with DWARF debug info that embeds *zig's own* build-tree paths

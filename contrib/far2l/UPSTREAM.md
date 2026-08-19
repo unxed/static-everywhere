@@ -100,8 +100,9 @@ toolchain — it would surface the same way built with GCC, Clang, or
    later real `exit()` to trip over — the more surgical fix if leaking
    the mapping is undesirable.
 
-We have not yet identified which specific bundled plugin's destructor is
-responsible (the mechanism is confirmed; narrowing to one plugin would
-need one more `gdb` session resolving the crash address's owning module
-via `info proc mappings`) — flagging the confirmed mechanism and the fix
-shape now rather than waiting on that.
+We have implemented the first fix implicitly for our reference builds by
+adding `-Wl,-z,nodelete` to `onebin-linux-hybrid.cmake` and our Meson
+native file. This prevents the dynamic linker from ever unmapping the plugins,
+keeping their destructors valid at exit. No patch to `far2l` source code
+is required to achieve this, but upstream might still want to adopt one
+of the fixes for downstream packagers who do not use `-z nodelete`.

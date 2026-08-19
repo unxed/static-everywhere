@@ -1,5 +1,20 @@
 # STATUS
 
+## far2l-sdl exit segfault: FIXED via `-Wl,-z,nodelete`
+
+The issue identified below is entirely bypassed at the toolchain level.
+Instead of patching far2l to remove `dlclose()` or call `__cxa_finalize()`,
+we added `-Wl,-z,nodelete` to the linker flags in `onebin-linux-hybrid.cmake`
+and the Meson native file. This standard flag instructs the dynamic linker
+(`ld.so`) to keep the loaded object mapped in memory for the lifetime of
+the process, effectively making `dlclose()` a no-op for memory management.
+
+As a result, any statically linked C++ destructors registered via `__cxa_atexit`
+(e.g., from Fontconfig, HarfBuzz, or SDL2 inside `far2l_sdl.so`) will have
+valid mapped code to execute when `exit()` is called. This perfectly
+matches the "Static Everywhere" philosophy: heavily statically-linked plugins
+are inherently unsafe to unmap, and `-z nodelete` guarantees their safety
+with zero source-code patches.
 ## far2l-sdl exit segfault: ROOT CAUSE FOUND — a `dlclose()`'d plugin's `__cxa_atexit`-registered destructor
 
 Two full `cookie-check.gdb` runs, both pasted in full. **The cookie

@@ -134,6 +134,19 @@ TEST(harden_bindnow_via_df1_now) {
 
     ob_report_free(&r); unload(&l); eg_free(o);
 }
+TEST(harden_bindnow_with_nodelete_does_not_interfere) {
+    eg *o = eg_new(64, EG_LE, EM_X86_64, ET_DYN);
+    /* DF_1_NODELETE is what -z nodelete emits */
+    eg_set_flags(o, 0, DF_1_NOW | DF_1_NODELETE);
+    eg_set_gnu_relro(o, 1);
+    eg_set_gnu_stack(o, 1, 0);
+    loaded l; load(o, &l);
+    ob_report r; run(&l, OB_PROFILE_S, &r);
+
+    ASSERT_FALSE(has_id(&r, "OB0051"));
+
+    ob_report_free(&r); unload(&l); eg_free(o);
+}
 
 /* --------------------------------------------------------------------- #7 */
 
