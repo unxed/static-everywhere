@@ -1,5 +1,50 @@
 # STATUS
 
+## f4-qt CI: real progress to 49/55 packages, then a genuinely more serious problem found — the cache save was silently never happening
+
+Real CI progress: got through 49 of 55 packages (past `openssl`, the fix
+worked) before `elfutils` failed at the most basic possible check —
+`configure: error: C compiler cannot create executables`, with zero
+diagnostic detail in the terminal log (autotools hides this specific
+check's real output, only writing it to `config.log`, which this
+project's CI had never captured). `elfutils` is the one package in this
+whole chain whose `configure` script gets *regenerated* via `autoreconf`
+(with a patch applied to `configure.ac` first) rather than shipped
+pre-built the way every other autotools package here is — a real,
+concrete difference worth investigating once `config.log` is actually in
+hand, not yet diagnosed further without it.
+
+**A second, more serious problem found while getting that log**: asked
+for the full job log rather than just the tail, and it showed something
+worse than a missing `config.log` — **the Conan/ccache cache was never
+actually saved for this run.** No `Post Run actions/cache@v4` appears
+anywhere in the log after the build failed. This means all 49 packages
+this run had already built, ICU included, were silently discarded —
+the next attempt would have started completely from zero again, exactly
+the kind of loss this project spent real effort avoiding earlier in the
+sandbox. The combined `actions/cache@v4` action's implicit post-step
+save apparently does not reliably fire on a failed job in this setup.
+
+**Fixed properly, not patched around**: split the single `actions/
+cache@v4` step into `actions/cache/restore@v4` (start of job) and an
+explicit `actions/cache/save@v4` step with `if: always()` (end of job,
+right after the build step) — the documented, reliable pattern for
+guaranteeing a cache save regardless of how the job ends. Verified the
+underlying idea works as intended for the *other* new addition too:
+tested the exact `find -newer ... -exec cp` logic used to collect fresh
+`config.log`/`CMakeError.log`/`CMakeOutput.log` files locally, with one
+genuinely fresh file and one deliberately stale one (timestamped
+"yesterday") — confirmed the stale file is correctly excluded so a
+restored cache's untouched logs from unrelated earlier packages don't
+drown out the one that actually matters from the failing run. Both new
+steps (`Collect diagnostic logs on failure`, `Upload diagnostic logs on
+failure`) only run `if: failure()`, uploaded as a separate artifact from
+the normal build output.
+
+Not yet re-run against real CI — the next concrete step, and this time
+a failure should actually preserve both the build cache *and* a usable
+`config.log` for whatever breaks next.
+
 ## f4-qt: LGPLv3 §4d resolved (README note, no new mechanism needed) + `openssl` `-pie`/`-shared` link conflict fixed
 
 Two closed items from the same conversation, while the `libjpeg-turbo`

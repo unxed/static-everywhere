@@ -76,8 +76,9 @@ jobs:
           ccache --set-config base_dir="$HOME/.conan2/p/b"
           ccache --set-config max_size=5G
 
-      - name: Cache Conan downloads and ccache storage
-        uses: actions/cache@v4
+      - name: Restore Conan downloads and ccache storage
+        id: cache-restore
+        uses: actions/cache/restore@v4
         with:
           path: |
             ~/.conan2/p
@@ -85,6 +86,9 @@ jobs:
           key: f4-qt-zig-conan-ccache-${{ hashFiles('tools/build-f4-qt.sh') }}
           restore-keys: |
             f4-qt-zig-conan-ccache-
+
+      - name: Mark job start (for diagnostic-log freshness filtering)
+        run: touch /tmp/job-start-marker
 
       - name: Clone f4
         run: |
@@ -108,6 +112,51 @@ jobs:
       - name: ccache stats
         if: always()
         run: ccache -s
+
+      - name: Save Conan downloads and ccache storage
+        # Explicit save step, not the implicit post-step of a combined
+        # actions/cache@v4 -- found the hard way that the combined
+        # action's automatic save silently did not run on a failed job
+        # (no "Post Run actions/cache@v4" anywhere in that job's log at
+        # all), discarding every package this run had already built
+        # (49 of 55, ICU included) and forcing the next attempt to start
+        # completely from zero. if: always() plus a genuinely separate
+        # save step is the documented, reliable way to guarantee this
+        # actually happens regardless of how the job ends.
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            ~/.conan2/p
+            ~/.cache/ccache
+          key: ${{ steps.cache-restore.outputs.cache-primary-key }}
+
+      - name: Collect diagnostic logs on failure
+        # config.log (autotools) and CMakeError.log/CMakeOutput.log
+        # (CMake) are where the *real* reason a configure step failed
+        # actually lives -- terminal output alone hid it for the
+        # elfutils failure this step exists because of ("checking
+        # whether the C compiler works... no" with zero diagnostic
+        # detail printed). Filtered by mtime against the job-start
+        # marker so a restored cache's untouched, unrelated logs from
+        # packages built in a *previous* run don't drown out the ones
+        # that actually matter from *this* run.
+        if: failure()
+        run: |
+          mkdir -p /tmp/diagnostic-logs
+          find ~/.conan2/p/b -newer /tmp/job-start-marker \
+            \( -name 'config.log' -o -name 'CMakeError.log' -o -name 'CMakeOutput.log' \) \
+            -exec sh -c 'mkdir -p "/tmp/diagnostic-logs/$(dirname "${1#$HOME/.conan2/p/b/}")" && cp "$1" "/tmp/diagnostic-logs/${1#$HOME/.conan2/p/b/}"' _ {} \;
+          find /tmp/diagnostic-logs -type f
+
+      - name: Upload diagnostic logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: f4-qt-zig-build-diagnostic-logs
+          path: /tmp/diagnostic-logs
+          if-no-files-found: warn
+          retention-days: 14
 
       - name: Upload build log and binary
         if: always()
