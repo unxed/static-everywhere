@@ -1,0 +1,121 @@
+name: f4-qt (zig toolchain, no container)
+
+# Builds f4-qt via tools/build-f4-qt.sh --toolchain zig -- the
+# container-free path (05-REFERENCE-f4-qt.md, STATUS.md). Manual trigger
+# only: this is a genuinely heavy build (Qt + ~35 Conan packages from
+# source), not something to run on every push. GitHub-hosted runners give
+# this the one thing a short-lived sandbox session can't: several hours
+# of uninterrupted wall-clock time in a single job, which matters because
+# Conan does not resume an interrupted package build -- any interruption
+# restarts that package's build() from a fresh folder, discarding all
+# prior compilation progress (found and documented while trying this in
+# a time-boxed sandbox; see STATUS.md).
+#
+# Caches both the Conan package cache and ccache's storage across runs,
+# so a re-run (e.g. after a recipe or toolchain tweak) doesn't repay the
+# full ~35-package cost from zero.
+
+on:
+  workflow_dispatch:
+    inputs:
+      f4_pin:
+        description: 'f4 commit to build (default: the pin tools/build-f4-qt.sh already carries)'
+        required: false
+        default: ''
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 300
+
+    steps:
+      - name: Checkout static-everywhere
+        uses: actions/checkout@v4
+
+      - name: Install host X11/EGL/OpenGL dev headers
+        # The same list quickstart-f4-qt.sh's own preflight check looks
+        # for -- these are ordinary, ABI-stable desktop packages this
+        # project's own doctrine expects the host to provide, not
+        # something it vendors. See STATUS.md for how this list was
+        # derived (found by running the build for real, not guessed).
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y \
+            xorg-dev libx11-xcb-dev uuid-dev libegl1-mesa-dev libgl1-mesa-dev \
+            xkb-data libxcb-util-dev libxcb-util0-dev libxcb-cursor-dev \
+            libxcb-dri3-dev libxcb-dri2-0-dev libxcb-present-dev \
+            libxcb-composite0-dev libxcb-ewmh-dev libxcb-res0-dev \
+            libxcb-glx0-dev libxcb-render0-dev libxcb-render-util0-dev \
+            libxcb-xkb-dev libxcb-icccm4-dev libxcb-image0-dev \
+            libxcb-keysyms1-dev libxcb-randr0-dev libxcb-shape0-dev \
+            libxcb-sync-dev libxcb-xfixes0-dev libxcb-xinerama0-dev \
+            ccache
+
+      - name: Build onebin
+        run: make -C onebin
+
+      - name: Download zig 0.13.0
+        run: |
+          curl -LO https://ziglang.org/download/0.13.0/zig-linux-x86_64-0.13.0.tar.xz
+          tar xf zig-linux-x86_64-0.13.0.tar.xz
+          echo "$PWD/zig-linux-x86_64-0.13.0" >> "$GITHUB_PATH"
+
+      - name: Install uv
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Configure ccache
+        # See quickstart-f4-qt.sh for why base_dir/sloppiness matter even
+        # here: Conan still gives each package's build() call a
+        # differently-named folder on every invocation, so ccache needs
+        # to be told to see past that to get any benefit at all,
+        # including across separate CI runs via the cache step below.
+        run: |
+          ccache --set-config sloppiness=file_macro,time_macros,include_file_mtime,include_file_ctime,pch_defines
+          ccache --set-config base_dir="$HOME/.conan2/p/b"
+          ccache --set-config max_size=5G
+
+      - name: Cache Conan downloads and ccache storage
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.conan2/p
+            ~/.cache/ccache
+          key: f4-qt-zig-conan-ccache-${{ hashFiles('tools/build-f4-qt.sh') }}
+          restore-keys: |
+            f4-qt-zig-conan-ccache-
+
+      - name: Clone f4
+        run: |
+          PIN="${{ inputs.f4_pin }}"
+          if [ -z "$PIN" ]; then
+            PIN=$(grep -m1 '^PIN=' tools/build-f4-qt.sh | sed -E 's/^PIN="([^"]+)"/\1/')
+          fi
+          git clone https://github.com/Zoinen/f4 f4-src
+          git -C f4-src checkout "$PIN"
+
+      - name: Build f4-qt (--toolchain zig)
+        run: |
+          ./tools/build-f4-qt.sh \
+            --config linux \
+            --toolchain zig \
+            --gallery off \
+            --src "$PWD/f4-src" \
+            --out "$PWD/out/f4-qt" \
+            --no-fetch
+
+      - name: ccache stats
+        if: always()
+        run: ccache -s
+
+      - name: Upload build log and binary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: f4-qt-zig-build
+          path: |
+            out/f4-qt/f4
+            out/f4-qt/smoke.log
+          if-no-files-found: warn
+          retention-days: 14

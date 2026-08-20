@@ -1,5 +1,46 @@
 # STATUS
 
+## f4-qt `--toolchain zig`: real end-to-end build progress in a sandbox, blocked by a genuine sandbox-only limit — GitHub Actions workflow added to finish it properly
+
+Ran `quickstart-f4-qt.sh --toolchain zig` for real, resuming across many
+sandbox tool-call windows (each capped at a few minutes of wall-clock
+time). Real, confirmed progress: `libxcb-util-dev`/`libxcb-util0-dev`
+were a second, previously-unnoticed gap in the preflight package list
+(fixed); `uv venv` needed `--clear` to survive a resumed run after any
+partial failure (fixed); ccache, wired in via Conan's
+`tools.cmake.cmaketoolchain:extra_variables` conf, took the cache hit
+rate from ~4% to over 90% once `base_dir`/`sloppiness` were configured
+correctly for Conan's ever-changing per-attempt build folder names
+(fixed, and now set automatically by `quickstart-f4-qt.sh` itself, not
+left as an ad-hoc sandbox tweak).
+
+**Genuine limit found, not a bug in the recipe**: Conan does not resume
+an interrupted package build — any interruption discards the entire
+in-progress build folder and restarts that package's `build()` from
+scratch, including a full from-scratch `./configure` for autotools-based
+dependencies like ICU. Confirmed directly by manually `cd`-ing into an
+interrupted ICU build folder and running `make` there without going
+through Conan at all: it correctly resumed (225 → 450 → 499 object files,
+completing the whole library) — proving the *code* and *toolchain* are
+fine — but Conan's own next `conan install` call ignored that
+manually-completed build entirely and started a brand-new folder from
+zero, because Conan's `package()` step (which finalizes a build into its
+package cache) never ran for that orphaned folder. This is a genuine
+constraint of a short-lived, timeout-bounded sandbox session — not
+something fixable in the recipe or the toolchain.
+
+**Fix: run it somewhere without that constraint.** Added
+`.github/workflows/f4-qt-zig-build.yml`, a manually-triggered
+(`workflow_dispatch`) GitHub Actions job building f4-qt via the same
+`--toolchain zig` path, on `ubuntu-24.04` with a 300-minute timeout — far
+beyond what any interrupted-package-restart cost could exhaust in one
+uninterrupted run. Caches both `~/.conan2/p` and `~/.cache/ccache` across
+runs (via `actions/cache@v4`) so a later re-run (after a recipe or
+toolchain tweak) doesn't repay the full ~35-package cost from zero
+either. Not yet triggered or verified — this is the next concrete step,
+and the right place to actually finish this build, not a further sandbox
+session.
+
 ## f4-qt `--toolchain zig`: real first user run found a real gap — Conan's "system" packages need root to auto-install; fixed with `mode=check`
 
 A user ran `quickstart-f4-qt.sh` for real, non-root, no container — and
