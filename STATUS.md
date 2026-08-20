@@ -1,5 +1,52 @@
 # STATUS
 
+## f4-qt `--toolchain zig` real CI run: got through 9/54 packages (incl. ICU fully) before hitting a real, upstream zig bug — `libmount` build fails
+
+First real `f4-qt-zig-build.yml` run on GitHub Actions: 9 minutes of
+uninterrupted wall-clock time got through `bzip2`, `icu` (fully — the
+package that repeatedly defeated this project's own sandbox time limit),
+`libde265`, `libffi`, and a handful more, confirming the core mechanism
+holds up at real scale, not just on a toy example. Progress stopped at
+package 10 of 54 (`libmount`, part of `util-linux`), with a real,
+reproducible build failure — not a flake, not a config mistake on our
+side.
+
+**Root cause identified precisely: this is [ziglang/zig#22765](
+https://github.com/ziglang/zig/issues/22765), a known, open upstream zig
+bug, reproduced independently by someone else against the exact same
+source (`util-linux`'s `include/fileutils.h`, `close_range`).** zig's
+bundled headers for `-target x86_64-linux-gnu.X.Y` always describe the
+*newest* glibc's API surface (`close_range`/`statx` declared
+unconditionally as `extern`), regardless of which older glibc baseline
+`-target` pins for *linking*. Packages that do their own
+`configure`-time availability detection and provide a `static inline`
+fallback when a symbol isn't linkable at the pinned baseline (exactly
+what `util-linux`'s `fileutils.h` does for `close_range`/`statx`) collide
+with zig's own unconditional header declaration: "static declaration of
+'close_range' follows non-static declaration." Confirmed via direct web
+search, not guessed — the linked issue reproduces the identical error
+against the identical source file.
+
+**Not a fast fix on our side.** Three real options, none attempted yet:
+1. Wait for zig's own fix (issue is open, "contributor friendly" tagged,
+   not yet resolved as of this check).
+2. Force `util-linux`'s own `configure`-detected `HAVE_CLOSE_RANGE`/
+   `HAVE_STATX` macros to `1` via a package-scoped Conan conf
+   (`-c "libmount/*:tools.build:cflags=[...]"`), suppressing its own
+   fallback and trusting zig's header declaration alone — risks a *link*
+   failure instead if the 2.27 baseline genuinely lacks the symbol and
+   `libmount`'s code actually calls it (not yet checked).
+3. Disable whatever Qt/Conan option pulls `libmount` in at all, if it
+   isn't strictly required for f4-qt's own build (not yet checked whether
+   this is feasible without losing needed functionality).
+
+`ccache` stats from this run: only 4/118 hits (3.4%) — expected and
+harmless, this was a cold cache (first-ever run, nothing to reuse yet);
+subsequent runs should benefit from the `actions/cache@v4` step. Also
+noted: this run's `--out` path collision meant no artifact was produced
+(expected, since the build never reached completion) — nothing to fix
+there.
+
 ## f4-qt `--toolchain zig`: real end-to-end build progress in a sandbox, blocked by a genuine sandbox-only limit — GitHub Actions workflow added to finish it properly
 
 Ran `quickstart-f4-qt.sh --toolchain zig` for real, resuming across many
