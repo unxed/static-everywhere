@@ -1,5 +1,49 @@
 # STATUS
 
+## f4-qt `elfutils` build fixed: the diagnostic-log pipeline worked on the first real failure it was built for
+
+The `config.log` capture added specifically for this class of failure
+paid off immediately: got the real `elfutils` failure from the actual
+`config.log`, not a guess. `zig cc`'s own compiler invocation is right
+there in the log:
+
+```
+error: unsupported linker arg: -rpath-link
+```
+
+Conan's `AutotoolsDeps` generator adds one `-Wl,-rpath-link,<dep-lib-dir>`
+per dependency (a linker hint for resolving *shared*-library dependencies
+transitively) regardless of whether those dependencies are actually built
+shared or static — this project only ever builds Profile H/S dependencies
+statically, so the hint is meaningless here even when present, but `zig
+cc`'s linker driver rejects it outright rather than silently accepting
+and ignoring it as a no-op the way a full gcc/clang would.
+
+Fixed in `onebin/toolchain/zig-cc` and `zig-c++` themselves — the same
+wrapper scripts already filter one other Conan/Meson-generated flag
+mismatch (the fontconfig `-E`/`-c` fix) — rather than fighting Conan's
+generator. Filters every `-Wl,-rpath-link,*` argument (there's one per
+dependency, confirmed four in elfutils' own failing command line: zlib,
+bzip2, xz_utils, zstd) before exec'ing the real `zig cc`/`zig c++`.
+Tested the filtering logic directly against a reconstructed version of
+the real failing argument list before committing — confirmed both
+`-Wl,-rpath-link,...` tokens get dropped and every other argument passes
+through unchanged.
+
+Also checked one other thing surfaced by the same diagnostic-log
+collection, and it turned out to be a false alarm worth naming as such:
+a `config.log` for `libmount` was also collected, which looked alarming
+at a glance (that package should be excluded entirely via `glib/*:
+with_mount=False`) — but its content is plain host `gcc` probing
+(`-V`, `-qversion`, `minix/config.h`), the completely normal, *expected*
+compiler-vendor-detection noise every autotools `configure` produces
+(most of those probes are supposed to fail). Not zig-cc, not a build
+failure, not related to this project's own toolchain at all — almost
+certainly a native build-time helper tool compiled with the host's own
+compiler as part of some other package's build. Not chased further.
+
+Not yet re-run against real CI — the next concrete step.
+
 ## f4-qt CI: real progress to 49/55 packages, then a genuinely more serious problem found — the cache save was silently never happening
 
 Real CI progress: got through 49 of 55 packages (past `openssl`, the fix

@@ -7,4 +7,17 @@ if ! command -v zig >/dev/null 2>&1; then
     exit 127
 fi
 
+# See zig-cc for why: Conan's AutotoolsDeps generator adds one
+# -Wl,-rpath-link,<dep-lib-dir> per dependency regardless of whether it's
+# built shared or static; this project only ever builds dependencies
+# statically, so the hint is meaningless, but zig's linker driver rejects
+# it outright rather than ignoring it the way a full gcc/clang would.
+# shellcheck disable=SC2046
+set -- $(for _onebin_arg in "$@"; do
+    case "$_onebin_arg" in
+        -Wl,-rpath-link,*) ;;
+        *) printf '%s\n' "$_onebin_arg" ;;
+    esac
+done)
+
 exec zig c++ "$@"

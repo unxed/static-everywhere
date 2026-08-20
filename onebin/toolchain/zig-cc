@@ -37,4 +37,25 @@ if [ "$has_e" = 1 ]; then
     done)
 fi
 
+# Found building elfutils via autotools: Conan's AutotoolsDeps generator
+# adds one -Wl,-rpath-link,<dep-lib-dir> per dependency (a linker hint
+# for resolving *shared*-library dependencies transitively at link
+# time), regardless of whether those dependencies are actually built
+# shared or static -- this whole project only ever builds Profile
+# H/S dependencies statically, so the hint is meaningless here even when
+# present, but zig cc's own linker driver rejects it outright
+# ("error: unsupported linker arg: -rpath-link") where a full gcc/clang
+# would just accept and ignore it as a no-op for static-only links.
+# Confirmed directly from elfutils' own config.log, not guessed: the
+# exact failing compiler invocation is right there. Filter these out
+# rather than fight Conan's generator -- there can be more than one
+# (one per dependency), so filter every occurrence, not just the first.
+# shellcheck disable=SC2046
+set -- $(for _onebin_arg in "$@"; do
+    case "$_onebin_arg" in
+        -Wl,-rpath-link,*) ;;
+        *) printf '%s\n' "$_onebin_arg" ;;
+    esac
+done)
+
 exec zig cc "$@"
