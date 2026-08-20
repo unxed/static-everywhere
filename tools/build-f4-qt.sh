@@ -187,7 +187,7 @@ elif [ "${CONFIG}" = "linux" ] && [ "${TOOLCHAIN}" = "zig" ]; then
     # way yet -- that is the next real step, not this one.
     plan_step "mkdir -p ${OUT}/conan-venv"
     plan_step "command -v uv >/dev/null 2>&1 || { echo 'error: uv not found -- https://astral.sh/uv' >&2; exit 1; }"
-    plan_step "uv venv --python 3.12 ${OUT}/conan-venv"
+    plan_step "uv venv --python 3.12 --clear ${OUT}/conan-venv"
     plan_step "uv pip install --python ${OUT}/conan-venv/bin/python 'conan==2.29.1' 'cmake==3.31.6' 'ninja==1.13.0'"
 
     plan_step "env PATH=\"${OUT}/conan-venv/bin:\$PATH\" conan profile detect --force"
