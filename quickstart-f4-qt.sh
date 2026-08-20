@@ -95,7 +95,7 @@ done
 # skipped elsewhere with a note, since this project has no way to name
 # the right package names for every distribution.
 if [ "${TOOLCHAIN_CHECK:-1}" = "1" ] && command -v dpkg >/dev/null 2>&1; then
-    APT_X11_PACKAGES="xorg-dev libx11-xcb-dev uuid-dev libegl1-mesa-dev libgl1-mesa-dev xkb-data libxcb-cursor-dev libxcb-dri3-dev libxcb-dri2-0-dev libxcb-present-dev libxcb-composite0-dev libxcb-ewmh-dev libxcb-res0-dev libxcb-glx0-dev libxcb-render0-dev libxcb-render-util0-dev libxcb-xkb-dev libxcb-icccm4-dev libxcb-image0-dev libxcb-keysyms1-dev libxcb-randr0-dev libxcb-shape0-dev libxcb-sync-dev libxcb-xfixes0-dev libxcb-xinerama0-dev"
+    APT_X11_PACKAGES="xorg-dev libx11-xcb-dev uuid-dev libegl1-mesa-dev libgl1-mesa-dev xkb-data libxcb-util-dev libxcb-util0-dev libxcb-cursor-dev libxcb-dri3-dev libxcb-dri2-0-dev libxcb-present-dev libxcb-composite0-dev libxcb-ewmh-dev libxcb-res0-dev libxcb-glx0-dev libxcb-render0-dev libxcb-render-util0-dev libxcb-xkb-dev libxcb-icccm4-dev libxcb-image0-dev libxcb-keysyms1-dev libxcb-randr0-dev libxcb-shape0-dev libxcb-sync-dev libxcb-xfixes0-dev libxcb-xinerama0-dev"
     MISSING=""
     for pkg in $APT_X11_PACKAGES; do
         dpkg -s "$pkg" >/dev/null 2>&1 || MISSING="$MISSING $pkg"
