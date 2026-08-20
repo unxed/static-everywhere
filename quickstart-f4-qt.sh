@@ -145,6 +145,27 @@ if ! command -v uv >/dev/null 2>&1; then
 fi
 export PATH="$HOME/.local/bin:$PATH"
 
+# --------------------------------------------------------------- ccache
+
+# Conan does not tolerate an interrupted package build being resumed --
+# each time the build process is interrupted mid-package (a real timeout,
+# a killed terminal, anything), Conan starts that package over from a
+# brand-new, randomly-named build folder, discarding all prior
+# compilation progress (confirmed directly while developing this script:
+# repeated interrupted attempts at building ICU produced a different
+# build-folder hash every time). ccache makes repeated recompilation of
+# the same source cheap regardless -- but only if it's told to ignore the
+# ever-changing build-folder path component in its cache key, which none
+# of ccache's defaults do on their own. `base_dir` + a handful of
+# `sloppiness` flags fix this; set once, persists in ccache's own config
+# file across every future run of this script.
+if command -v ccache >/dev/null 2>&1; then
+    ccache --set-config sloppiness=file_macro,time_macros,include_file_mtime,include_file_ctime,pch_defines
+    ccache --set-config "base_dir=$HOME/.conan2/p/b"
+else
+    log "ccache not found -- installing it is optional but strongly recommended: an interrupted rebuild (e.g. this script being re-run after a partial failure) will otherwise recompile everything from zero. Install with your host's package manager (e.g. 'apt install ccache') and re-run."
+fi
+
 # ------------------------------------------------- static-everywhere repo
 
 if [ ! -d static-everywhere ]; then
