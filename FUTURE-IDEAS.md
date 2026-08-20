@@ -800,6 +800,20 @@ exactly why it's a more useful test of the doctrine than a simpler GTK
 app would be. Not attempted yet; recorded here so the shape of the
 problem isn't rediscovered from scratch whenever it is.
 
+**Konsole (KDE's terminal) was also proposed** — after everything else
+in this file and after Task 17/18's own remaining work, since this
+project already has one Qt reference application (f4-qt) actively being
+built. Personal motivation stated plainly: wanting a portable, current
+build of a tool the person already uses and has sent upstream patches
+to. Worth naming the contrast with GNOME Terminal explicitly: Konsole is
+Qt-based (KDE), not GTK — meaning it sits much closer to f4-qt's own
+Profile H setup (same toolkit family, likely much of the same Conan/zig
+groundwork reusable) than to GNOME Terminal's genuinely different GTK
+stack. If both ever get built, comparing what carried over from f4-qt to
+Konsole versus what had to be rebuilt from scratch for GNOME Terminal
+would itself be informative about how toolkit-specific vs. how general
+this project's Profile H approach actually is.
+
 ---
 
 ## 4. What else belongs in this file
