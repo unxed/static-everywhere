@@ -222,6 +222,7 @@ elif [ "${CONFIG}" = "linux" ] && [ "${TOOLCHAIN}" = "zig" ]; then
 -c 'tools.cmake.cmaketoolchain:extra_variables={\"CMAKE_C_COMPILER_LAUNCHER\":\"ccache\",\"CMAKE_CXX_COMPILER_LAUNCHER\":\"ccache\"}' \
 -c 'tools.build:cflags=[\"-target\",\"x86_64-linux-gnu.${GLIBC_BASELINE}\"]' \
 -c 'tools.build:cxxflags=[\"-target\",\"x86_64-linux-gnu.${GLIBC_BASELINE}\"]' \
+-c 'libmount*:tools.build:cflags=[\"-DHAVE_CLOSE_RANGE=1\"]' \
 -c 'tools.build:sharedlinkflags=[\"-target\",\"x86_64-linux-gnu.${GLIBC_BASELINE}\"]' \
 -c 'tools.build:exelinkflags=[\"-target\",\"x86_64-linux-gnu.${GLIBC_BASELINE}\",\"-pie\"]' \
 -c tools.system.package_manager:mode=check \

@@ -1,5 +1,59 @@
 # STATUS
 
+## f4-qt `--toolchain zig`: `close_range` fix confirmed safe by real exhaustive grep; `statx` fix reverted -- confirmed it would have risked a link failure
+
+Cloned `util-linux/util-linux` at the exact failing tag (`v2.39.2`) and
+ran a real, exhaustive `grep -rn "close_range(\|statx("` across the
+whole `libblkid/` and `libmount/` trees -- not a sample, the actual
+source the failing CI build uses. Results:
+
+**`close_range()`: zero real call sites anywhere in either directory.**
+The only call in the whole codebase is inside `lib/fileutils.c`'s
+`#ifdef TEST_PROGRAM_FILEUTILS` block -- a standalone test-harness
+`main()`, not compiled as part of the library. `libblkid`/`libmount`'s
+own internal fd-closing helper (`ul_close_all_fds`) already uses a
+portable `/proc/self/fd`-based approach instead. **Forcing
+`-DHAVE_CLOSE_RANGE=1`, scoped to the `libmount*` package via Conan's
+package-pattern conf, is confirmed safe** -- it suppresses
+`fileutils.h`'s conflicting `static inline` declaration (the actual
+compile error) with zero risk of an unresolved symbol at link time,
+since nothing calls the real function. Kept in
+`tools/build-f4-qt.sh`.
+
+**`statx()`: two real call sites exist** -- `libmount/src/utils.c:119`
+and `libmount/src/hook_mount.c:301`. Checked whether the earlier
+`-DHAVE_STATX=1` idea (already reverted, never merged past a local
+sandbox edit) would have been safe the same way `close_range`'s fix is,
+and it would **not** have been: both call sites are gated by
+`HAVE_STRUCT_STATX`/`HAVE_STRUCT_STATX_STX_MNT_ID` (whether the
+*kernel-header-provided struct type* is available — independent of
+glibc, essentially always true), **not** by `HAVE_STATX` (the function
+declaration flag) — so forcing `HAVE_STATX=1` would not have
+prevented these calls from compiling; it would only have made them
+resolve to zig's `extern` declaration instead of `fileutils.h`'s own
+safe raw-syscall (`syscall(SYS_statx, ...)`) fallback. Confirmed via
+search that glibc's own `statx()` **library wrapper was added in glibc
+2.28** — one version *after* this project's 2.27 baseline — meaning
+that extern symbol genuinely isn't linkable at our pinned baseline.
+Forcing `HAVE_STATX=1` would very likely have traded today's clear
+compile error for a much less obvious "undefined reference to statx"
+link error at the very end of a multi-hour CI run. **Not applied.**
+
+**Real next step for `statx`, not yet implemented**: a precise 3-line
+source patch — rename `fileutils.h`'s shim (and only the shim) to
+something like `ul_fallback_statx`, and update the two call sites
+(`utils.c:119`, `hook_mount.c:301`) to call it by that name instead of
+the bare `statx` that collides with zig's header. This keeps the safe
+raw-syscall implementation in actual use at both call sites while
+resolving the compile-time redeclaration conflict — unlike a blanket
+`-D` rename (which would rename zig's header declaration by the same
+textual substitution and reproduce the identical conflict under a new
+name, confirmed by reasoning through how `-D` macro substitution
+actually applies across a whole translation unit). Would need a Conan
+source patch mechanism (e.g. a `contrib/f4-qt/patches/` file, matching
+the pattern this project already uses in `contrib/far2l/patches/`) —
+not yet written.
+
 ## f4-qt `--toolchain zig` real CI run: got through 9/54 packages (incl. ICU fully) before hitting a real, upstream zig bug — `libmount` build fails
 
 First real `f4-qt-zig-build.yml` run on GitHub Actions: 9 minutes of
