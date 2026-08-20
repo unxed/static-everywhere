@@ -1,5 +1,23 @@
 # STATUS
 
+## f4-qt `--toolchain zig`: found a real disable path instead of a patch — `glib/*:with_mount=False` removes `libmount` from the graph entirely
+
+Better than either forcing risky macros or writing a source patch for
+the zig/`statx` collision (previous entry): read `glib`'s actual
+ConanCenter recipe source directly (`recipes/glib/all/conanfile.py`).
+`glib` gates its own `libmount` dependency behind a `with_mount` option
+— used only for `gio`'s Unix mount-point monitoring
+(`GUnixMountMonitor`), a GNOME/GIO-specific feature f4-qt's own Qt-based
+code never touches. Set `-o:h 'glib/*:with_mount=False'` in
+`tools/build-f4-qt.sh`'s zig-toolchain Conan invocation — this removes
+`libmount` from the dependency graph entirely, sidestepping
+`ziglang/zig#22765` rather than fighting it. The confirmed-safe
+`-DHAVE_CLOSE_RANGE=1` scoped fix from the previous entry is left in
+place as harmless defense in depth, in case some other package in the
+54-package graph still needs `libmount` for a different reason.
+
+Not yet re-run against real CI — the next concrete step.
+
 ## f4-qt `--toolchain zig`: `close_range` fix confirmed safe by real exhaustive grep; `statx` fix reverted -- confirmed it would have risked a link failure
 
 Cloned `util-linux/util-linux` at the exact failing tag (`v2.39.2`) and

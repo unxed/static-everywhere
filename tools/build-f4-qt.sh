@@ -185,6 +185,25 @@ elif [ "${CONFIG}" = "linux" ] && [ "${TOOLCHAIN}" = "zig" ]; then
     # 2.27" -- the mechanism itself is proven, not theorized. The full
     # ~35-package Qt dependency stack has not been built end to end this
     # way yet -- that is the next real step, not this one.
+    #
+    # glib/*:with_mount=False (in the conan install invocation below)
+    # sidesteps a real, confirmed-open upstream zig bug
+    # (ziglang/zig#22765) instead of patching around it: zig's bundled
+    # headers unconditionally declare close_range()/statx() as extern
+    # regardless of the pinned -target glibc version, colliding with
+    # util-linux/libmount's own configure-detected static-inline
+    # fallbacks for those same functions ("static declaration ... follows
+    # non-static declaration"). glib's own ConanCenter recipe gates its
+    # libmount dependency behind exactly this option (used only for
+    # gio's Unix mount-point monitoring, which f4-qt's own Qt-based code
+    # never touches) -- confirmed by reading glib's actual recipe
+    # source, not guessed. Disabling it removes libmount from the
+    # dependency graph entirely, sidestepping the zig bug rather than
+    # fighting it. (STATUS.md also records a scoped, verified-safe
+    # -DHAVE_CLOSE_RANGE=1 fix kept below as defense in depth, and why an
+    # equivalent -DHAVE_STATX=1 was tried and reverted as unsafe -- moot
+    # now that libmount shouldn't be pulled in at all, but harmless to
+    # leave in case some other package's option matrix still needs it.)
     plan_step "mkdir -p ${OUT}/conan-venv"
     plan_step "command -v uv >/dev/null 2>&1 || { echo 'error: uv not found -- https://astral.sh/uv' >&2; exit 1; }"
     plan_step "uv venv --python 3.12 --clear ${OUT}/conan-venv"
@@ -217,6 +236,7 @@ elif [ "${CONFIG}" = "linux" ] && [ "${TOOLCHAIN}" = "zig" ]; then
 -s:h build_type=Release -s:h compiler.cppstd=gnu20 \
 -s:b build_type=Release -s:b compiler.cppstd=gnu20 \
 -o:h 'qt/*:shared=False' -o:h 'qt/*:qtwayland=True' -o:h 'qt/*:with_egl=True' \
+-o:h 'glib/*:with_mount=False' \
 -o:h 'xkbcommon/*:with_wayland=True' -o:h 'libraw/*:shared=False' \
 -c 'tools.build:compiler_executables={\"c\":\"${ZIGCC}\",\"cpp\":\"${ZIGCXX}\"}' \
 -c 'tools.cmake.cmaketoolchain:extra_variables={\"CMAKE_C_COMPILER_LAUNCHER\":\"ccache\",\"CMAKE_CXX_COMPILER_LAUNCHER\":\"ccache\"}' \
