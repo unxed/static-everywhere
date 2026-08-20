@@ -234,6 +234,17 @@ elif [ "${CONFIG}" = "linux" ] && [ "${TOOLCHAIN}" = "zig" ]; then
     # cost is the standalone `openssl` CLI tool inside this dependency
     # losing PIE hardening -- f4-qt only needs libssl.a/libcrypto.a from
     # this package, not that CLI tool, so this is a low-stakes trade.
+    #
+    # elfutils*:tools.build:exelinkflags -- the identical conflict, this
+    # time inside elfutils' own configure probe for __thread support
+    # (`checking for __thread support`), confirmed directly in the real
+    # config.log this project's own diagnostic-log-on-failure step
+    # collected: the probe's own compile command has both -shared and
+    # this project's global exelinkflags' -pie on the same invocation
+    # ("error: dynamic libraries cannot be position independent
+    # executables"). Same fix, same reasoning: f4-qt only needs
+    # elfutils' library output (libdw/libelf), not its `eu-*` CLI tools,
+    # so losing PIE on those is an equally low-stakes trade.
     plan_step "mkdir -p ${OUT}/conan-venv"
     plan_step "command -v uv >/dev/null 2>&1 || { echo 'error: uv not found -- https://astral.sh/uv' >&2; exit 1; }"
     plan_step "uv venv --python 3.12 --clear ${OUT}/conan-venv"
@@ -276,6 +287,7 @@ elif [ "${CONFIG}" = "linux" ] && [ "${TOOLCHAIN}" = "zig" ]; then
 -c 'tools.build:sharedlinkflags=[\"-target\",\"x86_64-linux-gnu.${GLIBC_BASELINE}\"]' \
 -c 'tools.build:exelinkflags=[\"-target\",\"x86_64-linux-gnu.${GLIBC_BASELINE}\",\"-pie\"]' \
 -c 'openssl*:tools.build:exelinkflags=[\"-target\",\"x86_64-linux-gnu.${GLIBC_BASELINE}\"]' \
+-c 'elfutils*:tools.build:exelinkflags=[\"-target\",\"x86_64-linux-gnu.${GLIBC_BASELINE}\"]' \
 -c tools.system.package_manager:mode=check \
 --output-folder=qt/host/build-portable-linux"
 

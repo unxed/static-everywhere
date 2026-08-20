@@ -1,5 +1,46 @@
 # STATUS
 
+## f4-qt CI: real progress confirmed, two things worth naming — cache-save race (benign) and `elfutils`' `-pie`/`-shared` conflict (same class as `openssl`, now fixed)
+
+Next real CI run: got past `libmount`/`openssl` and 12 further packages
+(pcre2, jasper, lcms, libtiff, freetype, libselinux, wayland, libraw,
+...) before `elfutils` again — but at a *later* check than before,
+confirming the `-rpath-link` fix from the previous entry actually
+worked. `elfutils` now fails at `checking for __thread support`, not the
+earlier `checking whether the C compiler works`.
+
+**The "Cache save failed" warning shown in the run's Annotations panel
+is not a repeat of the earlier "save never happens" bug** — checked the
+full log specifically for this: `Run actions/cache/save@v4` did fire,
+reached the actual `tar --posix -cf cache.tzst` archiving step, and
+only then failed with `Unable to reserve cache with key ..., another
+job may be creating this cache` — a real but benign race: two runs
+sharing the identical cache key (built from `tools/build-f4-qt.sh`'s
+hash, unchanged between these two attempts) tried to save
+concurrently, and the loser gets this exact message. Almost certainly
+from re-triggering the workflow before the previous run's save had
+finished. Not fixing this specifically — adding `run_id` to the key
+would eliminate the race but also eliminate the actual point of the
+fix (letting a retry pick up a previous attempt's progress); the honest
+answer here is "don't trigger two runs of this workflow at once,"
+not a code change.
+
+**`elfutils`'s new failure, from the real `config.log` this project's
+diagnostic-log-on-failure step correctly collected**: the exact same
+`-pie`/`-shared` conflict already diagnosed and fixed for `openssl`,
+this time inside `elfutils`' own `configure` probe for `__thread`
+support — the probe's own compile command has both `-shared` and this
+project's global `exelinkflags`' `-pie` on the same invocation
+("error: dynamic libraries cannot be position independent
+executables"), confirmed directly in the collected log, not guessed.
+Same fix applied, same reasoning: added `elfutils*:tools.build:
+exelinkflags` dropping `-pie` for this package (matching the existing
+`openssl*` override) — f4-qt only needs `elfutils`' library output
+(`libdw`/`libelf`), not its `eu-*` CLI tools, so losing PIE hardening on
+those specifically is an equally low-stakes trade.
+
+Not yet re-run against real CI — the next concrete step.
+
 ## f4-qt `elfutils` build fixed: the diagnostic-log pipeline worked on the first real failure it was built for
 
 The `config.log` capture added specifically for this class of failure
