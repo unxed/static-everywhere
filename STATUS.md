@@ -1,5 +1,43 @@
 # STATUS
 
+## f4-qt `--toolchain zig`: got past `libmount`, 32/55 packages including `libheif` fully — new failure `libjpeg-turbo`, `CMAKE_SIZEOF_VOID_P` empty
+
+Real CI progress with the `glib/*:with_mount=False` fix applied: got
+through package 32 of 55 (`libheif` built fully) before hitting a new,
+different, and more foundational issue.
+
+`libjpeg-turbo`'s `CMakeLists.txt:96` does
+`math(EXPR ... "${CMAKE_SIZEOF_VOID_P} * 8")` to compute the target
+bit-width. `CMAKE_SIZEOF_VOID_P` is normally populated by CMake's own
+"Detecting C/CXX compiler ABI info" step, introspecting a small compiled
+test binary — and that step has been silently *failing* with `zig-cc`
+for every single package in this build so far ("Detecting C compiler ABI
+info - failed", visible in every configure log throughout this whole
+run) without consequence, because nothing else in the chain reads the
+resulting variable. `libjpeg-turbo` is the first package that does, and
+an empty value breaks the `math()` call outright
+(`math cannot parse the expression: " * 8"`), which is also why the log
+shows the bizarre "ERROR-bit build (i386)" — the whole bit-width/arch
+selection logic downstream of that broken expression goes wrong too.
+
+**Fixed the one thing we actually know for certain**: this build only
+ever targets one architecture (x86_64), so forcing
+`CMAKE_SIZEOF_VOID_P=8` globally (added to the same
+`tools.cmake.cmaketoolchain:extra_variables` conf already used for
+`ccache`) carries no risk of being wrong for some other configuration —
+unlike the `statx` situation, there's no second case this could quietly
+break. Not scoped to `libjpeg-turbo` specifically, since any later
+package in the 55-package chain could plausibly hit the identical gap.
+
+**Worth watching, not yet investigated**: *why* zig-cc's ABI detection
+fails for CMake in the first place is still unknown — this fix
+sidesteps the one concrete symptom it caused, not the underlying cause.
+If a different package later depends on some *other* variable that same
+broken detection step is supposed to populate, this same shape of
+failure could recur under a different name. Not chasing that root cause
+now, consistent with fixing what actually broke rather than the
+class of thing that might break.
+
 ## f4-qt `--toolchain zig`: found a real disable path instead of a patch — `glib/*:with_mount=False` removes `libmount` from the graph entirely
 
 Better than either forcing risky macros or writing a source patch for

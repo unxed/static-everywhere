@@ -204,6 +204,21 @@ elif [ "${CONFIG}" = "linux" ] && [ "${TOOLCHAIN}" = "zig" ]; then
     # equivalent -DHAVE_STATX=1 was tried and reverted as unsafe -- moot
     # now that libmount shouldn't be pulled in at all, but harmless to
     # leave in case some other package's option matrix still needs it.)
+    #
+    # CMAKE_SIZEOF_VOID_P=8: CMake's own "Detecting C/CXX compiler ABI
+    # info" step -- which normally populates this variable by
+    # introspecting a small compiled test program -- fails with zig-cc
+    # ("Detecting C compiler ABI info - failed", visible in every
+    # package's configure log throughout this whole build, harmless
+    # everywhere else since nothing else reads the variable). libjpeg-
+    # turbo's own CMakeLists.txt is the first package in this chain that
+    # actually computes a bit-width from it (`math(EXPR ... "${CMAKE_
+    # SIZEOF_VOID_P} * 8")`), and an empty value breaks that expression
+    # outright ("math cannot parse the expression: \" * 8\""). Since this
+    # whole build only ever targets one architecture (x86_64), forcing
+    # the one genuinely correct value here carries no ambiguity --
+    # unlike the statx situation earlier, there's no second architecture
+    # this could quietly be wrong for.
     plan_step "mkdir -p ${OUT}/conan-venv"
     plan_step "command -v uv >/dev/null 2>&1 || { echo 'error: uv not found -- https://astral.sh/uv' >&2; exit 1; }"
     plan_step "uv venv --python 3.12 --clear ${OUT}/conan-venv"
@@ -239,7 +254,7 @@ elif [ "${CONFIG}" = "linux" ] && [ "${TOOLCHAIN}" = "zig" ]; then
 -o:h 'glib/*:with_mount=False' \
 -o:h 'xkbcommon/*:with_wayland=True' -o:h 'libraw/*:shared=False' \
 -c 'tools.build:compiler_executables={\"c\":\"${ZIGCC}\",\"cpp\":\"${ZIGCXX}\"}' \
--c 'tools.cmake.cmaketoolchain:extra_variables={\"CMAKE_C_COMPILER_LAUNCHER\":\"ccache\",\"CMAKE_CXX_COMPILER_LAUNCHER\":\"ccache\"}' \
+-c 'tools.cmake.cmaketoolchain:extra_variables={\"CMAKE_C_COMPILER_LAUNCHER\":\"ccache\",\"CMAKE_CXX_COMPILER_LAUNCHER\":\"ccache\",\"CMAKE_SIZEOF_VOID_P\":\"8\"}' \
 -c 'tools.build:cflags=[\"-target\",\"x86_64-linux-gnu.${GLIBC_BASELINE}\"]' \
 -c 'tools.build:cxxflags=[\"-target\",\"x86_64-linux-gnu.${GLIBC_BASELINE}\"]' \
 -c 'libmount*:tools.build:cflags=[\"-DHAVE_CLOSE_RANGE=1\"]' \
