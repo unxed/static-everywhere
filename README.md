@@ -266,6 +266,33 @@ Re-run it later and it finds what it already downloaded, and asks whether to
 update-and-rebuild, rebuild-only, or start over. `rm -rf` the working
 directory it prints at the end and every trace is gone.
 
+### A licensing note on static Qt: LGPLv3 §4d, and why this is the actual mechanism, not a workaround
+
+f4 is BSD-3; f4-qt, forked from it, carries the same license. Qt's own
+open-source license is LGPLv3 (some modules GPL — check which ones f4-qt
+actually links before assuming otherwise). This matters specifically
+because `tools/build-f4-qt.sh --toolchain zig` asks Conan for a
+**statically** linked Qt (`qt/*:shared=False`), and LGPLv3 §4d has a real,
+specific requirement for exactly that case: convey the means for someone
+to relink the Combined Work against a modified version of Qt, "in the
+manner specified by section 6 of the GNU GPL for conveying Corresponding
+Source." That referenced GPLv3 §6 explicitly permits conveying object code
+together with a pointer to source held elsewhere (a written offer, or
+network access "with equivalent access... alongside") — not bundling
+everything into one archive or hosting it on one server, which is how
+essentially every GPL/LGPL project on GitHub already satisfies this in
+practice.
+
+This project already has both halves of that mechanism, just not labeled
+as such until now: `quickstart-f4-qt.sh` **is** the relink instructions
+(a real, working, reproducible build recipe — not documentation gesturing
+at one), and this repository plus the exact `f4` commit pinned in
+`tools/build-f4-qt.sh` **is** the Corresponding Application Code and
+Qt's own Minimal Corresponding Source, both already public. Anyone
+distributing a statically-linked f4-qt binary built this way satisfies
+LGPLv3 §4d(0) by pointing at these two things — this note is that
+pointer, not a new obligation.
+
 ---
 
 ## Conformance levels

@@ -1,5 +1,51 @@
 # STATUS
 
+## f4-qt: LGPLv3 §4d resolved (README note, no new mechanism needed) + `openssl` `-pie`/`-shared` link conflict fixed
+
+Two closed items from the same conversation, while the `libjpeg-turbo`
+fix's CI run was in flight:
+
+**Licensing.** Raised as a real concern: does statically linking Qt
+(LGPLv3) into f4-qt (BSD-3) via `--toolchain zig` create an obligation
+this project wasn't meeting? Checked properly rather than assumed: f4/
+f4-qt is BSD-3 (confirmed), so the earlier OpenSSL/GPLv2 compatibility
+question that mattered for far2l doesn't apply here at all — BSD-3 and
+Apache-2.0 (OpenSSL ≥3.0) combine without any issue. Qt's own LGPLv3 §4d
+*does* apply, though, specifically because this build asks for a
+statically-linked Qt. Verified the exact license text (not memory): §4d
+requires the means to relink against a modified Qt "in the manner
+specified by section 6 of the GNU GPL for conveying Corresponding
+Source" — and GPLv3 §6 explicitly permits conveying object code
+alongside a *pointer* to source held elsewhere (a written offer, or
+network access with equivalent access alongside), not physical bundling
+into one archive or one server. This is the standard way virtually
+every GPL/LGPL project on GitHub already satisfies this. This project
+already has both required pieces: `quickstart-f4-qt.sh` *is* the relink
+instructions, and this repo + the pinned `f4` commit *is* the
+Corresponding Application Code + Qt's own public source. Added a README
+section naming these two things as the compliance mechanism explicitly,
+rather than building anything new (a `$ORIGIN`-relative dynamic-Qt
+bundle was floated first and correctly rejected as solving a problem
+that didn't need solving).
+
+**`openssl` build fix.** The `-pie`/`-shared` link conflict from the
+previous CI run (`error: dynamic libraries cannot be position
+independent executables`) traced to OpenSSL's own Configure-generated
+Makefile not respecting Conan's exe-vs-shared linker flag split the way
+CMake-based packages do — it reuses one LDFLAGS for both the `openssl`
+CLI executable and its provider `.so` modules, so the global
+`exelinkflags`' own `-pie` collided with those `.so` links (confirmed
+directly in the failing build's own command line — `-pie` and `-shared`
+both present on the same invocation). Fixed with a package-scoped
+override, `openssl*:tools.build:exelinkflags` matching `sharedlinkflags`
+(drops `-pie`) for this package only. Cost: the standalone `openssl` CLI
+tool inside this dependency loses PIE hardening — f4-qt only needs
+`libssl.a`/`libcrypto.a` from this package, not that CLI tool, so this
+is a low-stakes trade, not a compromise on anything the final binary
+itself needs.
+
+Not yet re-run against real CI — the next concrete step.
+
 ## f4-qt `--toolchain zig`: got past `libmount`, 32/55 packages including `libheif` fully — new failure `libjpeg-turbo`, `CMAKE_SIZEOF_VOID_P` empty
 
 Real CI progress with the `glib/*:with_mount=False` fix applied: got

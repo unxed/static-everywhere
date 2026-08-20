@@ -219,6 +219,21 @@ elif [ "${CONFIG}" = "linux" ] && [ "${TOOLCHAIN}" = "zig" ]; then
     # the one genuinely correct value here carries no ambiguity --
     # unlike the statx situation earlier, there's no second architecture
     # this could quietly be wrong for.
+    #
+    # openssl*:tools.build:exelinkflags (dropping -pie for openssl only):
+    # OpenSSL's own Configure-generated Makefile doesn't respect Conan's
+    # exe-vs-shared linker flag split the way CMake-based packages do --
+    # it reuses the same LDFLAGS for both the `openssl` CLI executable
+    # and its provider modules (legacy.so etc, genuine shared objects,
+    # not executables). The global exelinkflags' own -pie collided with
+    # those .so links ("error: dynamic libraries cannot be position
+    # independent executables"), confirmed directly in the failing
+    # build's own command line -- -pie and -shared both present on the
+    # same linker invocation. This package-scoped override matches
+    # sharedlinkflags (drops -pie) for openssl specifically; the only
+    # cost is the standalone `openssl` CLI tool inside this dependency
+    # losing PIE hardening -- f4-qt only needs libssl.a/libcrypto.a from
+    # this package, not that CLI tool, so this is a low-stakes trade.
     plan_step "mkdir -p ${OUT}/conan-venv"
     plan_step "command -v uv >/dev/null 2>&1 || { echo 'error: uv not found -- https://astral.sh/uv' >&2; exit 1; }"
     plan_step "uv venv --python 3.12 --clear ${OUT}/conan-venv"
@@ -260,6 +275,7 @@ elif [ "${CONFIG}" = "linux" ] && [ "${TOOLCHAIN}" = "zig" ]; then
 -c 'libmount*:tools.build:cflags=[\"-DHAVE_CLOSE_RANGE=1\"]' \
 -c 'tools.build:sharedlinkflags=[\"-target\",\"x86_64-linux-gnu.${GLIBC_BASELINE}\"]' \
 -c 'tools.build:exelinkflags=[\"-target\",\"x86_64-linux-gnu.${GLIBC_BASELINE}\",\"-pie\"]' \
+-c 'openssl*:tools.build:exelinkflags=[\"-target\",\"x86_64-linux-gnu.${GLIBC_BASELINE}\"]' \
 -c tools.system.package_manager:mode=check \
 --output-folder=qt/host/build-portable-linux"
 
