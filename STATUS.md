@@ -38,6 +38,30 @@ failure could recur under a different name. Not chasing that root cause
 now, consistent with fixing what actually broke rather than the
 class of thing that might break.
 
+Recorded what's actually known about the mechanism, in case someone
+picks this up later: CMake's ABI-detection step compiles a tiny probe
+(`CMakeCCompilerABI.c`) containing a preprocessor-embedded marker string
+(`"INFO:sizeof_dummy[XXXX]"`, `XXXX` = the real `sizeof(void*)`), then
+**does not run the resulting binary** — it greps that marker directly out
+of the compiled object file, which is what lets this work even when
+cross-compiling. This is a different, later step than "Check for working
+C compiler," which *does* pass. Three plausible, unconfirmed causes for
+why the grep fails specifically with `zig-cc`: (1) `zig cc` is a Clang
+wrapper known to occasionally emit its own diagnostic lines (about its
+build cache, target resolution) ahead of normal compiler output, which
+could throw off a parser written against vanilla GCC/Clang output; (2)
+`zig cc` uses its own linker (`lld`) and CRT, so the marker string could
+end up in a different ELF section layout than CMake's regex expects; (3)
+unrelated to (1)/(2) — possibly a different symptom of the same class of
+bug as `ziglang/zig#22765` (the header-versioning issue found earlier),
+this time surfacing in the compile/link step of CMake's own probe rather
+than in header content. Cheap next step if this needs a real answer
+later: CMake writes the full failed-probe output to
+`CMakeFiles/CMakeError.log` inside the build directory on this exact
+failure path — ephemeral on a CI runner unless explicitly saved as an
+artifact, not done here since the symptom is already fixed and this
+isn't blocking anything right now.
+
 ## f4-qt `--toolchain zig`: found a real disable path instead of a patch — `glib/*:with_mount=False` removes `libmount` from the graph entirely
 
 Better than either forcing risky macros or writing a source patch for
