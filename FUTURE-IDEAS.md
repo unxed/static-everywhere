@@ -723,6 +723,85 @@ found. Left open rather than assumed away.
 
 ---
 
+## 3.6 GTK's ABI stability as a fourth Layer-3 case, and GNOME Terminal as the test that would prove or disprove it
+
+Raised in conversation while the first real f4-qt CI build was running.
+Recorded here rather than assumed, because it's genuinely untested
+against this project's own doctrine, the same way the X11/EGL/GL Layer-3
+carve-out only became real once `libmount`/`libblkid` forced the
+question during the f4-qt build.
+
+**The claim worth testing: GTK belongs in Layer 3 (host-provided, not
+vendored) the same way X11/EGL/GL already do, and for a stronger
+reason** — GNOME has an explicit, long-standing, publicly documented ABI
+stability policy within a major version: GTK3 stayed ABI-compatible from
+3.0 (2011) through the end of the 3.24 series; GTK4 (2020) restarted the
+major-version counter but committed to the same guarantee for its own
+4.x series. A binary linked against GTK 4.0 should run unmodified
+against whatever 4.x a host happens to have — this is closer to a
+guarantee than this project's own glibc-baseline pinning is, since GNOME
+states it as policy rather than something inferred from symbol
+versioning conventions.
+
+**What "depends on GTK" should actually mean here is narrower than "depends on
+GNOME"**: GTK4 + GLib/GObject/GIO + Pango + Cairo + GdkPixbuf — the
+toolkit itself, not the desktop environment. These are commonly present
+on hosts that don't run GNOME at all, because some *other* GTK
+application already pulled them in (Firefox historically, GIMP, any
+number of utilities). None of gnome-shell, mutter, Nautilus, the dconf
+daemon, or the rest of a GNOME session is required just to run one GTK4
+binary.
+
+**A real, unsolved wrinkle: there's no clean way to prompt a graphical
+"please install GTK" dialog when GTK itself is what's missing.** A
+missing SONAME fails at the dynamic linker stage, before `main()` is
+ever reached — the failure is a stderr line
+(`error while loading shared libraries: libgtk-4.so.1: cannot open
+shared object file`), not something the binary itself can intercept and
+turn into a dialog box, since the toolkit needed to *draw* that dialog
+is the exact thing that's absent. The realistic answer is a small
+wrapper script — not the binary — that checks for the SONAME first
+(`ldconfig -p` or a minimal `dlopen` probe that itself needs no GTK) and
+either execs the real binary or prints a plain, actionable message (the
+right `apt`/`dnf`/`pacman` package name, so far as it can guess the
+host's family). The same shape as `quickstart-f4-qt.sh`'s existing
+X11/EGL dev-header preflight check, just moved from build time to first
+run.
+
+**GNOME Terminal specifically was proposed as a third reference
+application** — small, and the person who raised it has sent it
+upstream PRs before, so it's genuinely familiar territory, not a random
+pick. It's a more honest test than a toy GTK app would be, because it
+almost certainly needs more than "GTK is present":
+
+- **VTE** (`libvte`), the terminal-emulation widget — GNOME's own
+  library, much less universally pre-installed than GTK proper. A
+  vendoring candidate, not a Layer-3 one.
+- **libadwaita**, GNOME's adaptive-UI widget library, likely used by
+  GNOME Terminal's current UI — same category as VTE: probably vendored,
+  not assumed present.
+- **A D-Bus session bus.** GNOME Terminal has historically run as a
+  D-Bus-activated factory service (`org.gnome.Terminal`) rather than a
+  plain one-process-per-window model — new windows get created via bus
+  activation, not a fresh `exec`. This is Layer 3 in the strict sense
+  (nothing to vendor, it's a *running service* the host must already
+  provide), but a different flavor of Layer 3 than a shared library —
+  worth naming as its own category if this actually gets attempted.
+- **GSettings/dconf** for preferences (profiles, colors, fonts,
+  keybindings) — also host-provided, also not a library problem: it
+  needs compiled schema files installed at a well-known system path,
+  closer in spirit to a runtime service dependency than a linked
+  library.
+
+None of this is disqualifying — it just means GNOME Terminal would
+exercise Layer 3 in more than one shape (a stable-ABI toolkit *and* a
+running D-Bus service *and* a schema-based settings store), which is
+exactly why it's a more useful test of the doctrine than a simpler GTK
+app would be. Not attempted yet; recorded here so the shape of the
+problem isn't rediscovered from scratch whenever it is.
+
+---
+
 ## 4. What else belongs in this file
 
 Ideas that are not ready to be proposals, but should not be lost. Open a PR that
