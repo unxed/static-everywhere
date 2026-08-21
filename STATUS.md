@@ -1,5 +1,111 @@
 # STATUS
 
+<!-- ------------------------------------------------------------------ -->
+## ⟶ RESUME HERE — current state, for a session starting with no context
+
+Everything below this section is a reverse-chronological log (newest
+first). Read *this* section first; consult the log below only for the
+detail behind a specific claim.
+
+### Where the work is
+
+Task in flight: **`f4-qt` built with the zig toolchain, no container**,
+driven by GitHub Actions. Everything else in the repo (the `onebin`
+auditor, the far2l reference build) is done and green — `make test` in
+`onebin/` is **272 passed, 0 failed, 3 skipped** and has been unchanged
+for this entire stretch of work.
+
+- Workflow: `.github/workflows/f4-qt-zig-build.yml`, name **"f4-qt (zig
+  toolchain, no container)"**, `workflow_dispatch` only (Actions tab →
+  Run workflow). One run ≈ 15–25 min to reach the current failure point.
+- Build recipe: `tools/build-f4-qt.sh` (`--toolchain zig`). `--print-plan`
+  prints every command without running any of them; use it to inspect
+  changes cheaply.
+- Compiler wrappers: `onebin/toolchain/zig-cc`, `zig-c++`.
+
+### The one thing currently blocking
+
+**`xkbcommon/1.5.0` fails to build.** It is a **Meson** package (the only
+one in the chain that isn't Autotools or CMake):
+
+```
+libxkbcommon-x11.a.p/src_x11_keymap.c.o
+../src/src/x11/x11-priv.h:27:10: fatal error: 'xcb/xkb.h' file not found
+```
+
+Established facts — do **not** re-verify these, they cost real CI cycles:
+
+- `libxcb-xkb-dev` genuinely provides `/usr/include/xcb/xkb.h`
+  (`dpkg-query -L`), and it **is** already in the workflow's `apt-get
+  install` list.
+- `pkg-config --exists xcb-xkb` succeeds against a real installed
+  `libxcb-xkb-dev`; the `.pc` file is present and registered.
+- Prefixing `PKG_CONFIG_PATH` with the system multiarch pkgconfig dirs
+  on the `conan install` invocation **did not fix it** (the fix is still
+  in place and harmless; it is just not the cause). The suspicion — not
+  confirmed — is that Meson builds its own environment for its internal
+  pkg-config lookups and doesn't inherit that variable the way
+  CMake/Autotools-driven builds do.
+
+### Next concrete step
+
+1. Trigger the workflow. Download **`f4-qt-zig-build-diagnostic-logs`**
+   (Actions → the run → *Artifacts*, at the bottom of the run summary
+   page — easy to scroll past).
+2. Read `02-failing-build-folders/**/meson-logs/meson-log.txt`. Meson
+   records exactly what its `xcb-xkb` dependency lookup did and saw.
+   That file is the missing evidence; **fix from it, do not guess.**
+3. One option deliberately **not** tried yet, worth weighing once the
+   log is in hand: turning xkbcommon's X11 support off entirely, the way
+   `glib/*:with_elf=False` and `harfbuzz/*:with_glib=False` sidestepped
+   earlier problems. That depends on whether Qt's `xcb` platform plugin
+   needs `libxkbcommon-x11` — unverified, so check before relying on it.
+
+**The diagnostics were just rebuilt and have never run against a real
+failure.** If the artifact comes back wrong or empty, that is the first
+thing to fix, and the design intent is described in the top log entry.
+
+### Dead ends — already resolved, do not reopen
+
+- **`elfutils` / duplicate `crc32` / `__libelf_crc32`.** A long chase
+  (source-patching Conan hook, three rejected linker-flag spellings).
+  Now **moot**: `glib/*:with_elf=False` and `harfbuzz/*:with_glib=False`
+  removed `glib`/`elfutils` from the dependency graph. The hook still
+  exists and is harmless.
+- **`-pie` vs `-shared` conflicts** (openssl, elfutils). Fixed
+  unconditionally inside `zig-cc`/`zig-c++`: they drop `-pie` whenever
+  `-shared` is present. Package-scoped Conan conf did *not* reliably
+  reach every build system's early configure probes — that is why the
+  fix lives in the wrapper.
+- **`-Wl,-rpath-link`** rejected by zig's driver — filtered in the
+  wrappers.
+- **Guessing at linker-flag spellings** (`--allow-multiple-definition`,
+  `-z muldefs`): both rejected by `zig cc`'s own narrow allowlist. Each
+  attempt costs a full CI cycle. Don't.
+- **Guessing at diagnostic log filenames.** Three rounds wasted. The
+  collector now derives the failing folder from Conan's own `Build
+  folder` line and selects files by *content type*, not by name.
+
+### Open question, asked upstream, no answer yet
+
+Why does upstream `f4`'s own `ci/build-portable-qt-linux.sh` force-build
+`glib` at all? Qt's own Conan recipe defaults `with_glib=False`, and
+this project never enables it. Best evidence found: `harfbuzz` defaults
+`with_glib=True`, and harfbuzz is unavoidable (Qt Gui text shaping) —
+hence `harfbuzz/*:with_glib=False`. Not confirmed against a live `conan
+graph info`. The answer may make some current options unnecessary; none
+of them are harmful if it doesn't.
+
+### Working conventions in force
+
+Patches are delivered as `git format-patch` output and must apply with
+`git am` to a **genuinely fresh clone** of `origin/main` — verify that
+before handing anything over (the sandbox remote has gone stale
+mid-session before, and a failed `git am` on a fresh clone is what
+caught it). `make test` after every change. Don't touch `filelist.md`.
+
+<!-- ------------------------------------------------------------------ -->
+
 ## f4-qt CI diagnostics: rebuilt around Conan's own "Build folder" line instead of filename guessing — small artifact, nothing missed
 
 Three rounds of filename-allowlist patching (`LastTest.log`, then
