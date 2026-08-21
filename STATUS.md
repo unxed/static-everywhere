@@ -1,5 +1,42 @@
 # STATUS
 
+## f4-qt: found the real, well-evidenced answer for "who needs glib" while waiting on upstream — `harfbuzz`'s own `with_glib=True` default
+
+Traced this properly instead of waiting idle for the upstream reply.
+Cloned the actual pinned `f4` commit and grepped every CMakeLists.txt
+directly: zero references to `glib` or `harfbuzz` anywhere in the
+project's own code — it only requests Qt6's `Core Gui Qml Quick
+QuickControls2 Network Svg` components. So `glib` is unambiguously
+transitive, coming from somewhere inside Qt's own dependency graph, not
+from f4-qt itself.
+
+Found the real answer, not another guess: multiple independent real
+users' Conan dependency-graph dumps (`conan-center-index` issues #9794,
+#19632, #20383, #27705 -- all unrelated projects, unrelated to this
+one) consistently show `glib` appearing in *every* Qt build's graph
+specifically alongside `harfbuzz`. ConanCenter's own published
+`harfbuzz` recipe page confirms why: **`with_glib=True` is harfbuzz's
+own default**, on every platform. `harfbuzz` itself is unavoidable --
+Qt's `Gui` module needs it for text shaping, no way around that -- but
+harfbuzz's glib integration (`hb-glib.h`, GLib-type conversion helpers)
+is a convenience layer for GLib-based *callers* of harfbuzz, not
+something Qt's own direct C-API usage of harfbuzz depends on.
+
+Added `harfbuzz/*:with_glib=False` alongside (not instead of) the
+existing `glib/*:with_elf=False` and the `crc32` hook -- this is a
+well-evidenced, likely-complete answer, but not verified against a live
+`conan graph info` resolution (not available in this sandbox), so kept
+as defense in depth rather than assumed sufficient to remove the other
+fixes. If this genuinely eliminates `glib` from the graph, the
+`elfutils`/`crc32`/`__libelf_crc32` chase from the last few entries
+becomes moot entirely -- the next real CI run will show which.
+
+Still waiting on the upstream maintainer's own answer to the same
+question; this doesn't replace that, just gets there faster if the
+evidence checks out.
+
+Not yet re-run against real CI — the next concrete step.
+
 ## f4-qt: session paused, waiting on an upstream question — `glib/*:with_elf=False` applied, whether `glib` is needed at all is open
 
 The `elfutils`/`crc32` hook (previous entries) is confirmed working end

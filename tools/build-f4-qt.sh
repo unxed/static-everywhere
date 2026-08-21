@@ -237,6 +237,27 @@ elif [ "${CONFIG}" = "linux" ] && [ "${TOOLCHAIN}" = "zig" ]; then
     # of that answer (harmless no-op if glib turns out unnecessary,
     # useful if it stays) -- not blocking on the answer to keep it.
     #
+    # harfbuzz/*:with_glib=False -- traced the actual "who requires
+    # glib" question further while waiting on that upstream reply, and
+    # found a real, well-evidenced answer, not another guess: multiple
+    # independent real users' Conan dependency-graph dumps
+    # (conan-center-index issues #9794, #19632, #20383, #27705, all
+    # unrelated to this project) show glib appearing in *every* Qt
+    # build's graph specifically alongside harfbuzz -- and ConanCenter's
+    # own harfbuzz recipe page confirms with_glib=True as harfbuzz's
+    # own default, on every platform. f4-qt's own CMakeLists.txt
+    # (checked directly against the pinned commit) never touches glib
+    # or harfbuzz itself, only Qt6's Core/Gui/Qml/Quick/QuickControls2/
+    # Network/Svg components -- harfbuzz comes in unavoidably via Qt's
+    # own text-shaping needs (Gui module), but harfbuzz's glib
+    # integration (hb-glib.h, GLib-type conversion helpers) is a
+    # convenience layer for GLib-based *callers* of harfbuzz, not
+    # something Qt's own C-API usage of harfbuzz depends on. Likely the
+    # real, complete answer -- not verified with a live `conan graph
+    # info` resolution, since that isn't available in this sandbox, so
+    # kept alongside (not instead of) the with_elf=False/crc32-hook
+    # fixes as defense in depth rather than assumed sufficient alone.
+    #
     # CMAKE_SIZEOF_VOID_P=8: CMake's own "Detecting C/CXX compiler ABI
     # info" step -- which normally populates this variable by
     # introspecting a small compiled test program -- fails with zig-cc
@@ -415,6 +436,7 @@ HOOKEOF"
 -o:h 'qt/*:shared=False' -o:h 'qt/*:qtwayland=True' -o:h 'qt/*:with_egl=True' \
 -o:h 'glib/*:with_mount=False' \
 -o:h 'glib/*:with_elf=False' \
+-o:h 'harfbuzz/*:with_glib=False' \
 -o:h 'xkbcommon/*:with_wayland=True' -o:h 'libraw/*:shared=False' \
 -c 'tools.build:compiler_executables={\"c\":\"${ZIGCC}\",\"cpp\":\"${ZIGCXX}\"}' \
 -c 'tools.cmake.cmaketoolchain:extra_variables={\"CMAKE_C_COMPILER_LAUNCHER\":\"ccache\",\"CMAKE_CXX_COMPILER_LAUNCHER\":\"ccache\",\"CMAKE_SIZEOF_VOID_P\":\"8\"}' \
