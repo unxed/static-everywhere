@@ -1,5 +1,62 @@
 # STATUS
 
+## f4-qt CI diagnostics: stopped guessing individual log filenames one at a time — full file listing + broad extension-based capture
+
+Real, fair complaint: after the `LastTest.log` miss and then the
+`meson-log.txt` miss (both fixed by adding one more exact name to the
+list — each round cost a real ~20-minute CI cycle to even discover
+which name was missing), a hardcoded allowlist of exact filenames was
+never going to keep up with every build system this project's ~35
+packages happen to use (Autotools, CMake in at least two log-format
+generations, Meson, Ninja, whatever comes next).
+
+Replaced the whole approach instead of adding a fifth name to the
+list. Two changes, both unconditional now (not gated on guessing
+right):
+
+1. **A full recursive file listing**, captured first and always
+   (`conan-cache-file-listing.txt` / `f4-src-file-listing.txt`) — just
+   paths, no content, cheap. This is the direct fix for the actual
+   complaint: stop guessing which exact name a given build system uses
+   and just show what's genuinely there. The next unfamiliar build
+   system's log, whatever it's called, is now visible on the first try
+   instead of requiring another CI round to even learn its name.
+
+2. **Content capture broadened from an exact-name allowlist to
+   extension/naming-convention matching**: `*.log`, `*.yaml` (CMake's
+   newer `CMakeConfigureLog.yaml`, which coexists with or replaces the
+   older `CMakeError.log`/`CMakeOutput.log` pair depending on CMake
+   version), and `*ninja_log*` (Ninja's own `.ninja_log`, which doesn't
+   follow the `.log`-suffix convention at all). This one change
+   subsumes `config.log`, `CMakeError.log`, `CMakeOutput.log`,
+   `LastTest.log`, and `meson-log.txt` all at once — none of them need
+   to be named individually anymore, since they all end in `.log`.
+   Size-capped at 5M per file so one pathological log can't silently
+   balloon the artifact.
+
+Tested locally before committing, not just written and hoped: built a
+realistic multi-package tree (Meson's `meson-logs/meson-log.txt`,
+CMake's `CMakeError.log` + `CMakeConfigureLog.yaml`, Ninja's
+`.ninja_log`, an unrelated `README.md`, and one deliberately
+stale/pre-marker file) and ran the actual updated commands against it.
+Confirmed: the listing shows every file including the non-log
+`README.md`; the content copy correctly grabs the three genuine logs;
+the stale file is correctly excluded by the mtime filter; the
+unrelated `README.md` is correctly excluded from content copying
+(visible in the listing, not duplicated as content).
+
+Also worth naming honestly: this project's own sandbox git remote had
+gone stale mid-session (an earlier `git fetch` in this same turn showed
+`origin/main` one commit behind the real GitHub state, because the
+`meson-log.txt` fix from the previous entry — applied and pushed by the
+person building this — had already landed under a different commit hash
+than the local sandbox commit that produced the patch file). Caught via
+a failed `git am` on a genuinely fresh clone, not silently — re-fetched
+properly and rebuilt this change against the real current state rather
+than assuming the earlier local commit was still authoritative.
+
+Not yet re-run against real CI — the next concrete step.
+
 ## f4-qt CI: diagnostic-log collection was missing `meson-log.txt` -- xkbcommon's own failure had zero evidence collected for it, found by checking the actual zip
 
 The reordering from the previous entry worked exactly as intended:

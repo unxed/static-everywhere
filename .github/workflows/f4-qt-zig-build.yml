@@ -179,12 +179,38 @@ jobs:
         if: failure() || cancelled()
         run: |
           mkdir -p /tmp/diagnostic-logs
-          find ~/.conan2/p/b -newer /tmp/job-start-marker \
-            \( -name 'config.log' -o -name 'CMakeError.log' -o -name 'CMakeOutput.log' -o -name 'meson-log.txt' \) \
+
+          # Full recursive file listing FIRST, unconditionally -- this is
+          # the direct answer to a real complaint about the previous
+          # approach (a hardcoded allowlist of exact filenames, missing
+          # meson-log.txt entirely on the first Meson-based package this
+          # whole build hit, discovered only after a wasted ~20-minute CI
+          # cycle): stop guessing which exact name a given build system
+          # uses for its own log and just show what's actually there.
+          # Cheap (paths only, no content) and complete regardless of
+          # which build system produced it.
+          find ~/.conan2/p/b -newer /tmp/job-start-marker -type f \
+            > /tmp/diagnostic-logs/conan-cache-file-listing.txt 2>/dev/null || true
+          if [ -d f4-src ]; then
+            find f4-src -type f \
+              > /tmp/diagnostic-logs/f4-src-file-listing.txt 2>/dev/null || true
+          fi
+
+          # Broad content capture by extension/naming convention, not by
+          # an ever-growing list of exact names -- catches config.log,
+          # CMakeError.log, CMakeOutput.log, meson-log.txt, LastTest.log,
+          # CMake's newer CMakeConfigureLog.yaml, and ninja's own
+          # .ninja_log all at once, plus whatever the next unknown build
+          # system's log filename turns out to be, without needing
+          # another round trip to find out. Size-capped at 5M per file so
+          # one pathologically large log can't silently balloon the
+          # artifact.
+          find ~/.conan2/p/b -newer /tmp/job-start-marker -type f -size -5M \
+            \( -iname '*.log' -o -iname '*.yaml' -o -iname '*ninja_log*' \) \
             -exec sh -c 'mkdir -p "/tmp/diagnostic-logs/conan-cache/$(dirname "${1#$HOME/.conan2/p/b/}")" && cp "$1" "/tmp/diagnostic-logs/conan-cache/${1#$HOME/.conan2/p/b/}"' _ {} \;
           if [ -d f4-src ]; then
-            find f4-src \
-              \( -name 'config.log' -o -name 'CMakeError.log' -o -name 'CMakeOutput.log' -o -name 'LastTest.log' -o -name 'meson-log.txt' \) \
+            find f4-src -type f -size -5M \
+              \( -iname '*.log' -o -iname '*.yaml' -o -iname '*ninja_log*' \) \
               -exec sh -c 'mkdir -p "/tmp/diagnostic-logs/f4-src/$(dirname "${1#f4-src/}")" && cp "$1" "/tmp/diagnostic-logs/f4-src/${1#f4-src/}"' _ {} \;
           fi
           {
