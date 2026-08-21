@@ -218,6 +218,25 @@ elif [ "${CONFIG}" = "linux" ] && [ "${TOOLCHAIN}" = "zig" ]; then
     # now that libmount shouldn't be pulled in at all, but harmless to
     # leave in case some other package's option matrix still needs it.)
     #
+    # glib/*:with_elf=False -- same pattern, this time sidestepping
+    # elfutils rather than keep chasing its own internal bugs (a real
+    # duplicate-symbol collision with zlib's crc32, already fixed via a
+    # Conan post_source hook that patches lib/crc32.c directly -- see
+    # STATUS.md for that whole chase). glib's actual recipe source
+    # confirms elfutils is only pulled in for the `gresource` CLI tool
+    # (embeds resources into ELF sections, a GNOME/GLib build
+    # convention f4-qt's own Qt-based code has no reason to touch),
+    # gated behind exactly this option. Open question, not yet
+    # resolved: raised directly with f4's own upstream maintainer why
+    # this Qt build needs glib at all -- Qt's own recipe defaults
+    # with_glib to False and only requires glib when explicitly turned
+    # on, which this project's own build command never does, yet
+    # upstream's official build script *also* force-builds glib from
+    # source, meaning something in the graph still needs it for a
+    # reason not yet traced. This with_elf=False fix is safe regardless
+    # of that answer (harmless no-op if glib turns out unnecessary,
+    # useful if it stays) -- not blocking on the answer to keep it.
+    #
     # CMAKE_SIZEOF_VOID_P=8: CMake's own "Detecting C/CXX compiler ABI
     # info" step -- which normally populates this variable by
     # introspecting a small compiled test program -- fails with zig-cc
@@ -395,6 +414,7 @@ HOOKEOF"
 -s:b build_type=Release -s:b compiler.cppstd=gnu20 \
 -o:h 'qt/*:shared=False' -o:h 'qt/*:qtwayland=True' -o:h 'qt/*:with_egl=True' \
 -o:h 'glib/*:with_mount=False' \
+-o:h 'glib/*:with_elf=False' \
 -o:h 'xkbcommon/*:with_wayland=True' -o:h 'libraw/*:shared=False' \
 -c 'tools.build:compiler_executables={\"c\":\"${ZIGCC}\",\"cpp\":\"${ZIGCXX}\"}' \
 -c 'tools.cmake.cmaketoolchain:extra_variables={\"CMAKE_C_COMPILER_LAUNCHER\":\"ccache\",\"CMAKE_CXX_COMPILER_LAUNCHER\":\"ccache\",\"CMAKE_SIZEOF_VOID_P\":\"8\"}' \

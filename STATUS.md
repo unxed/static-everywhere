@@ -1,5 +1,57 @@
 # STATUS
 
+## f4-qt: session paused, waiting on an upstream question — `glib/*:with_elf=False` applied, whether `glib` is needed at all is open
+
+The `elfutils`/`crc32` hook (previous entries) is confirmed working end
+to end: the diagnostic log shows `[HOOK - hook_elfutils_crc32.py]
+post_source(): ... patched elfutils lib/crc32.c` firing for real, and
+the build progressed past the original `duplicate symbol: crc32` error
+to a *different*, related one: `ld.lld: error: undefined hidden symbol:
+__libelf_crc32`. Traced directly against elfutils' real source
+(`libelf/libelf_crc32.c:32`: `#define crc32 attribute_hidden
+__libelf_crc32`) -- the blunt `static` patch broke an internal alias
+elfutils' own code depends on elsewhere. Not yet fixed; this is where
+the crc32 chase currently stands.
+
+**A better question got asked instead of continuing that chase**: does
+f4-qt, a Qt file-manager GUI, need an ELF/DWARF-parsing toolkit at all?
+Traced precisely, not guessed: `glib`'s own recipe source confirms
+`elfutils` is pulled in only for the `gresource` CLI tool (`if
+self.options.get_safe("with_elf"): ...requires.append(
+"elfutils::libelf")`), a GNOME/GTK resource-embedding convention
+f4-qt's own Qt code has no reason to touch. Applied
+`glib/*:with_elf=False` -- same pattern already proven for `with_mount`
+(the earlier `libmount`/zig-header collision).
+
+**Went one step further and found something genuinely worth asking
+upstream about**: Qt's own actual recipe source
+(`recipes/qt/6.x.x/conanfile.py`) shows `"with_glib": False` as Qt's
+own *default*, and `glib` is only ever required when that option is
+explicitly turned on (`if self.options.with_glib: self.requires(
+"glib/2.78.3")`). This project's own build command never sets
+`qt/*:with_glib=True` anywhere -- checked directly, not assumed. Yet
+`glib` is force-built from source by *upstream f4's own official*
+`ci/build-portable-qt-linux.sh` too (confirmed identical to this
+project's own `--build` list in an earlier, already-committed
+cross-check). Something in the graph still needs `glib` for a reason
+not yet traced -- possibly a real Qt submodule dependency, possibly a
+vestigial force-build entry that never actually triggers. Not resolved
+with the tools available here (would need a live `conan graph info`
+resolution against the real graph to trace definitively).
+
+**The person building this asked f4's own upstream maintainer directly
+why this Qt build needs glib at all.** Session paused here to wait for
+that answer rather than keep guessing at the dependency graph blind.
+`with_elf=False` stays applied regardless of the answer -- harmless
+either way (a no-op if glib turns out unnecessary, still useful if it
+stays for some other reason). The `crc32`/`__libelf_crc32` alias
+breakage is the next concrete technical item once the session resumes,
+unless the glib answer removes the need to chase it at all.
+
+Not yet re-run against real CI since the `crc32` alias breakage was
+found -- the next concrete step once this resumes, informed by
+whatever the upstream maintainer says about `glib`.
+
 ## f4-qt: `elfutils` crc32 hook root cause finally found — cached source from earlier CI attempts means `source()` never re-runs, so `post_source` never fires
 
 The diagnostics fixed two entries ago (`-vv` verbosity specifically)
