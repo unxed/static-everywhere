@@ -1,5 +1,37 @@
 # STATUS
 
+## f4-qt CI: reordered diagnostic-log collection/upload to run *before* the slow cache save; `PKG_CONFIG_PATH` fix confirmed NOT to have solved xkbcommon's `xcb/xkb.h`
+
+**Real CI run confirms the `${PKG_CONFIG_PATH:-}` syntax fix itself
+works correctly** (no more "parameter not set" script crash) — but the
+underlying `xkbcommon` failure is unchanged: `xcb/xkb.h: file not
+found`, identical to before. The `PKG_CONFIG_PATH` prefix genuinely
+didn't fix the real problem. Worth noting for whoever picks this up
+next: `xkbcommon` builds via Meson, not CMake/Autotools like every
+other package fixed so far in this build — Meson has its own way of
+constructing subprocess environments for its own internal pkg-config
+invocations, which may not inherit an env var set on the outer `conan
+install` process the same way CMake/Autotools-driven builds do. Not
+chasing this further yet without more direct evidence (a real
+`meson-log.txt` or similar from inside xkbcommon's own build folder
+would help) — not guessing a third time blind.
+
+**Real, sensible workflow reordering, raised directly in conversation**:
+diagnostic-log collection and upload used to run *after* the Conan/
+ccache cache save, which routinely takes 7-20+ minutes (the cache only
+grows across runs, nothing prunes it) — meaning the actually
+time-critical artifact (needed immediately to diagnose what broke) was
+stuck waiting behind an operation that's purely about making the *next*
+run faster. Nothing in either direction depends on the other's
+ordering. Reordered so diagnostic collection/upload now run
+immediately after the build step (right after the quick `ccache stats`
+check), with the cache save moved after them. Verified this is a pure
+reorder, not guessed: diffed the workflow file's own sorted line
+content before and after the change — byte-for-byte identical, only
+the step sequence changed.
+
+Not yet re-run against real CI — the next concrete step.
+
 ## f4-qt: PKG_CONFIG_PATH fix broke the script itself under `set -eu` -- real CI run caught it, fixed and tested properly this time
 
 The previous entry's `PKG_CONFIG_PATH` fix had a genuine bug, caught

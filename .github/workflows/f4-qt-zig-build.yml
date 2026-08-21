@@ -113,43 +113,17 @@ jobs:
         if: always()
         run: ccache -s
 
-      - name: Save Conan downloads and ccache storage
-        # Explicit save step, not the implicit post-step of a combined
-        # actions/cache@v4 -- found the hard way that the combined
-        # action's automatic save silently did not run on a failed job
-        # (no "Post Run actions/cache@v4" anywhere in that job's log at
-        # all), discarding every package this run had already built
-        # (49 of 55, ICU included) and forcing the next attempt to start
-        # completely from zero. if: always() plus a genuinely separate
-        # save step is the documented, reliable way to guarantee this
-        # actually happens regardless of how the job ends.
-        #
-        # timeout-minutes: 20 -- a real gap this project's own two prior
-        # "audit everything" passes both missed: this save step tars and
-        # zstd-compresses the *entire* Conan package cache plus ccache
-        # storage, which only grows across every CI run (nothing prunes
-        # it), and had no bound at all -- caught directly when it was
-        # seen visibly still running 7+ minutes in, a third of the whole
-        # job's typical wall-clock cost, with no way to tell whether it
-        # was genuinely hung or just slow on a now-large cache. Set to
-        # 20, not something tighter like 10: the cache only grows over
-        # time, and killing a save that would have genuinely finished in
-        # 8-9 minutes would recreate the exact "lost all progress"
-        # failure this project already fixed once -- the goal here is
-        # catching a true, multi-hour hang, not shaving minutes off a
-        # merely-large-but-completing save. A step timeout can't lose
-        # diagnostic capability here since this step never produces
-        # diagnostics itself (config.log/CMakeError.log collection is
-        # separate, later, and gated on failure/cancellation already).
-        if: always()
-        timeout-minutes: 20
-        uses: actions/cache/save@v4
-        with:
-          path: |
-            ~/.conan2/p
-            ~/.cache/ccache
-          key: ${{ steps.cache-restore.outputs.cache-primary-key }}
-
+      # Diagnostic collection/upload deliberately runs *before* the cache
+      # save below, not after: raised directly in conversation while
+      # watching a real failed run -- the cache save routinely takes
+      # 7-20+ minutes (it only grows across runs, nothing prunes it), and
+      # there's no reason the far more time-critical diagnostic artifact
+      # (needed *right now* to understand what broke) should have to wait
+      # behind an operation that's purely about making the *next* run
+      # faster. Nothing in either direction depends on the other's
+      # ordering -- this is a pure reorder, confirmed by diffing this
+      # file's own sorted content before and after: identical, only the
+      # step sequence changed.
       - name: Collect diagnostic logs on failure
         # config.log (autotools) and CMakeError.log/CMakeOutput.log
         # (CMake) are where the *real* reason a configure step failed
@@ -227,6 +201,43 @@ jobs:
           path: /tmp/diagnostic-logs
           if-no-files-found: warn
           retention-days: 14
+
+      - name: Save Conan downloads and ccache storage
+        # Explicit save step, not the implicit post-step of a combined
+        # actions/cache@v4 -- found the hard way that the combined
+        # action's automatic save silently did not run on a failed job
+        # (no "Post Run actions/cache@v4" anywhere in that job's log at
+        # all), discarding every package this run had already built
+        # (49 of 55, ICU included) and forcing the next attempt to start
+        # completely from zero. if: always() plus a genuinely separate
+        # save step is the documented, reliable way to guarantee this
+        # actually happens regardless of how the job ends.
+        #
+        # timeout-minutes: 20 -- a real gap this project's own two prior
+        # "audit everything" passes both missed: this save step tars and
+        # zstd-compresses the *entire* Conan package cache plus ccache
+        # storage, which only grows across every CI run (nothing prunes
+        # it), and had no bound at all -- caught directly when it was
+        # seen visibly still running 7+ minutes in, a third of the whole
+        # job's typical wall-clock cost, with no way to tell whether it
+        # was genuinely hung or just slow on a now-large cache. Set to
+        # 20, not something tighter like 10: the cache only grows over
+        # time, and killing a save that would have genuinely finished in
+        # 8-9 minutes would recreate the exact "lost all progress"
+        # failure this project already fixed once -- the goal here is
+        # catching a true, multi-hour hang, not shaving minutes off a
+        # merely-large-but-completing save. A step timeout can't lose
+        # diagnostic capability here since this step never produces
+        # diagnostics itself (config.log/CMakeError.log collection is
+        # separate, later, and gated on failure/cancellation already).
+        if: always()
+        timeout-minutes: 20
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            ~/.conan2/p
+            ~/.cache/ccache
+          key: ${{ steps.cache-restore.outputs.cache-primary-key }}
 
       - name: Upload build log and binary
         if: always()
