@@ -101,13 +101,18 @@ jobs:
 
       - name: Build f4-qt (--toolchain zig)
         run: |
+          # tee, with pipefail so the pipe can't mask a real failure: the
+          # diagnostic collector below parses this file to learn which
+          # package failed, straight from Conan's own output, instead of
+          # guessing.
+          set -o pipefail
           ./tools/build-f4-qt.sh \
             --config linux \
             --toolchain zig \
             --gallery off \
             --src "$PWD/f4-src" \
             --out "$PWD/out/f4-qt" \
-            --no-fetch
+            --no-fetch 2>&1 | tee /tmp/build-output.log
 
       - name: ccache stats
         if: always()
@@ -178,41 +183,74 @@ jobs:
         # pipeline already captures.
         if: failure() || cancelled()
         run: |
-          mkdir -p /tmp/diagnostic-logs
+          set +e
+          OUT=/tmp/diagnostic-logs
+          mkdir -p "$OUT"
 
-          # Full recursive file listing FIRST, unconditionally -- this is
-          # the direct answer to a real complaint about the previous
-          # approach (a hardcoded allowlist of exact filenames, missing
-          # meson-log.txt entirely on the first Meson-based package this
-          # whole build hit, discovered only after a wasted ~20-minute CI
-          # cycle): stop guessing which exact name a given build system
-          # uses for its own log and just show what's actually there.
-          # Cheap (paths only, no content) and complete regardless of
-          # which build system produced it.
-          find ~/.conan2/p/b -newer /tmp/job-start-marker -type f \
-            > /tmp/diagnostic-logs/conan-cache-file-listing.txt 2>/dev/null || true
+          # (1) Listings: paths + sizes, no content. Structurally
+          #     incapable of "missing" a log from a build system we
+          #     haven't met yet -- which is exactly how meson-log.txt got
+          #     missed twice while chasing filename allowlists. Object
+          #     files excluded because they are the bulk and never
+          #     informative as text.
+          find "$HOME/.conan2/p/b" -newer /tmp/job-start-marker -type f \
+               ! -name '*.o' ! -name '*.obj' ! -name '*.lo' \
+               -printf '%10s  %p\n' 2>/dev/null | sort -k2 \
+               > "$OUT/00-listing-conan-cache.txt"
           if [ -d f4-src ]; then
-            find f4-src -type f \
-              > /tmp/diagnostic-logs/f4-src-file-listing.txt 2>/dev/null || true
+            find f4-src -type f ! -name '*.o' ! -name '*.obj' \
+                 -printf '%10s  %p\n' 2>/dev/null | sort -k2 \
+                 > "$OUT/00-listing-f4-src.txt"
           fi
 
-          # Broad content capture by extension/naming convention, not by
-          # an ever-growing list of exact names -- catches config.log,
-          # CMakeError.log, CMakeOutput.log, meson-log.txt, LastTest.log,
-          # CMake's newer CMakeConfigureLog.yaml, and ninja's own
-          # .ninja_log all at once, plus whatever the next unknown build
-          # system's log filename turns out to be, without needing
-          # another round trip to find out. Size-capped at 5M per file so
-          # one pathologically large log can't silently balloon the
-          # artifact.
-          find ~/.conan2/p/b -newer /tmp/job-start-marker -type f -size -5M \
-            \( -iname '*.log' -o -iname '*.yaml' -o -iname '*ninja_log*' \) \
-            -exec sh -c 'mkdir -p "/tmp/diagnostic-logs/conan-cache/$(dirname "${1#$HOME/.conan2/p/b/}")" && cp "$1" "/tmp/diagnostic-logs/conan-cache/${1#$HOME/.conan2/p/b/}"' _ {} \;
-          if [ -d f4-src ]; then
-            find f4-src -type f -size -5M \
-              \( -iname '*.log' -o -iname '*.yaml' -o -iname '*ninja_log*' \) \
-              -exec sh -c 'mkdir -p "/tmp/diagnostic-logs/f4-src/$(dirname "${1#f4-src/}")" && cp "$1" "/tmp/diagnostic-logs/f4-src/${1#f4-src/}"' _ {} \;
+          # (2) Which package actually failed? Conan states it verbatim
+          #     on every failure seen so far ("<pkg>/<ver>: WARN: Build
+          #     folder <path>"), so read it rather than guess. Fallback
+          #     to the most recently touched build dirs if that line
+          #     isn't present (e.g. a failure outside Conan entirely).
+          grep -ohE 'Build folder /[^[:space:]]+' /tmp/build-output.log 2>/dev/null \
+            | sed 's|^Build folder ||' | sort -u > "$OUT/01-failing-build-folders.txt"
+          if [ ! -s "$OUT/01-failing-build-folders.txt" ]; then
+            find "$HOME/.conan2/p/b" -maxdepth 3 -type d -name 'build-*' \
+                 -newer /tmp/job-start-marker 2>/dev/null | tail -5 \
+                 > "$OUT/01-failing-build-folders.txt"
+            find f4-src -maxdepth 4 -type d -name 'build*' 2>/dev/null | tail -5 \
+                 >> "$OUT/01-failing-build-folders.txt"
           fi
+
+          # (3) From those folders ONLY, take every text file under 2M --
+          #     decided by actual content type, not by filename or
+          #     extension. config.log, meson-log.txt, CMakeError.log,
+          #     CMakeConfigureLog.yaml, .ninja_log, meson's introspection
+          #     JSON and any future build system's log all qualify
+          #     automatically. Scoping to the failing package's own build
+          #     folder is what keeps this small enough to download on a
+          #     mobile connection instead of dragging in all ~35
+          #     packages' build trees.
+          while IFS= read -r d; do
+            [ -n "$d" ] && [ -d "$d" ] || continue
+            rel=$(printf '%s' "$d" | sed 's|^/||; s|/|_|g')
+            find "$d" -type f -size -2M \
+                 ! -name '*.o' ! -name '*.obj' ! -name '*.a' ! -name '*.lo' \
+                 ! -name '*.so' ! -name '*.so.*' 2>/dev/null > /tmp/candidates.txt
+            while IFS= read -r f; do
+              case "$(file -b --mime-type "$f" 2>/dev/null)" in
+                text/*|application/json|application/xml|inode/x-empty)
+                  t="$OUT/02-failing-build-folders/$rel/${f#"$d"/}"
+                  mkdir -p "$(dirname "$t")" && cp "$f" "$t"
+                  ;;
+              esac
+            done < /tmp/candidates.txt
+          done < "$OUT/01-failing-build-folders.txt"
+
+          # (4) The build output itself, trimmed -- saves hand-copying
+          #     terminal output out of the GitHub UI, without shipping
+          #     the whole multi-megabyte transcript.
+          tail -n 3000 /tmp/build-output.log > "$OUT/03-build-output-tail.txt" 2>/dev/null
+          grep -nE 'error:|ERROR|FAILED|fatal error|Traceback|undefined' \
+               /tmp/build-output.log 2>/dev/null | tail -n 500 \
+               > "$OUT/04-build-output-errors.txt"
+
           {
             echo "=== df -h ==="
             df -h
@@ -225,8 +263,15 @@ jobs:
               echo "(could not read dmesg -- see raw attempt output below)"
               cat /tmp/dmesg-raw.txt
             fi
-          } > /tmp/diagnostic-logs/system-state.txt
-          find /tmp/diagnostic-logs -type f
+          } > "$OUT/05-system-state.txt"
+
+          # (5) Size report, so an unexpectedly huge artifact is visible
+          #     in the job log itself rather than only after downloading.
+          du -sh "$OUT" > "$OUT/06-collection-size.txt" 2>&1
+          find "$OUT" -type f | wc -l >> "$OUT/06-collection-size.txt"
+          echo "=== collected ==="
+          cat "$OUT/06-collection-size.txt"
+          cat "$OUT/01-failing-build-folders.txt"
 
       - name: Upload diagnostic logs on failure
         if: failure() || cancelled()

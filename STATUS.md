@@ -1,5 +1,61 @@
 # STATUS
 
+## f4-qt CI diagnostics: rebuilt around Conan's own "Build folder" line instead of filename guessing — small artifact, nothing missed
+
+Three rounds of filename-allowlist patching (`LastTest.log`, then
+`meson-log.txt`, then a broadened `*.log`/`*.yaml`/`*ninja_log*` glob
+that **still** didn't match `meson-log.txt` because it ends in `.txt`)
+was the wrong shape of solution, and each round cost a real ~20-minute
+CI cycle to discover. Adding `*.txt` would have been worse still: build
+folders are full of unrelated `README.txt`/`LICENSE.txt` from ~35
+packages, and the person running this is on a mobile connection and
+explicitly can't download everything.
+
+Redesigned around a fact that was in every failure log all along and
+went unused: **Conan names the failing package's build folder
+verbatim** — `xkbcommon/1.5.0: WARN: Build folder /home/runner/.conan2/
+p/b/xkbco.../b/build-release`. So there is no need to guess *which*
+package broke or *what* its build system calls its logs.
+
+The collector now does four things, none of which involve guessing a
+filename:
+
+1. **Listings** (`00-listing-*.txt`): every file with its size, object
+   files excluded. Paths only, no content — cheap, and structurally
+   incapable of missing an unfamiliar build system's log. Anything not
+   collected is still *visible* here with its size, so it can be asked
+   for specifically next time instead of discovered missing.
+2. **Failing-folder detection** (`01-failing-build-folders.txt`): parsed
+   from Conan's own `Build folder` line, with a most-recently-touched
+   fallback if a failure happens outside Conan entirely.
+3. **Content from those folders only** (`02-…`), selected by **actual
+   content type** (`file --mime-type` → `text/*`, JSON, XML), not by
+   filename or extension, capped at 2M per file, with objects/archives/
+   shared libraries excluded. `meson-log.txt`, `config.log`,
+   `CMakeError.log`, `CMakeConfigureLog.yaml`, `.ninja_log`,
+   `build.ninja`, `meson-info.json` and any future build system's log
+   all qualify automatically. Scoping to the one failing package is what
+   keeps the artifact small.
+4. **Build output, trimmed** (`03-…tail`, `04-…errors`): the build step
+   now `tee`s to a file (with `set -o pipefail` so the pipe can't mask a
+   failure), and the collector ships the last 3000 lines plus grepped
+   error lines — which also removes the need to hand-copy terminal
+   output out of the GitHub UI.
+
+Verified end to end against a realistic simulation before committing,
+not reasoned about: a fake `xkbcommon` build folder with
+`meson-logs/meson-log.txt`, `meson-info.json`, `.ninja_log`,
+`build.ninja`, a 300K `.o`, a 200K `.a`, a 3M oversized `.log`, plus an
+*unrelated* second package, and a transcript in Conan's real failure
+format. Result: the failing folder was detected automatically; all four
+genuine text artifacts were collected **including `meson-log.txt` and
+`build.ninja`, neither of which any extension glob would have matched**;
+the object file, archive, oversized log, unrelated package's log and
+unrelated `.c` were all correctly excluded from content while remaining
+visible in the listing; total artifact size 48K.
+
+Not yet re-run against real CI — the next concrete step.
+
 ## f4-qt CI diagnostics: stopped guessing individual log filenames one at a time — full file listing + broad extension-based capture
 
 Real, fair complaint: after the `LastTest.log` miss and then the
