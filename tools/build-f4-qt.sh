@@ -172,6 +172,19 @@ if [ "${CONFIG}" = "linux" ] && [ "${TOOLCHAIN}" = "host" ]; then
     plan_step "! grep -q 'Could not find the Qt platform plugin' ${OUT}/smoke.log"
 
 elif [ "${CONFIG}" = "linux" ] && [ "${TOOLCHAIN}" = "zig" ]; then
+    # Diagnostics audit (prompted directly by losing a real CI cycle to
+    # a hook that silently never fired, with no way to tell why from the
+    # log alone): -vv on the conan install below, and the diagnostic-log
+    # collection in f4-qt-zig-build.yml, both exist because of this
+    # audit, not because either failure had already happened once
+    # before being fixed. -vv is *more* verbose than Conan's own default
+    # (the real ascending order, confirmed against Conan's own docs:
+    # quiet < error < warning < notice < status (default) < verbose <
+    # debug/-vv < trace/-vvv) -- an earlier version of this line used
+    # -vnotice, which is actually *less* verbose than default and would
+    # have suppressed output rather than surfaced more of it; caught and
+    # fixed before it shipped, not after another wasted CI cycle.
+    #
     # A parallel reimplementation of ci/build-portable-qt-linux.sh's
     # essential steps, not a call into it — their script hard-refuses to
     # run outside literally root-in-Ubuntu-18.04, which is exactly the
@@ -284,28 +297,55 @@ elif [ "${CONFIG}" = "linux" ] && [ "${TOOLCHAIN}" = "zig" ]; then
 # the next run, rather than guessing a second time blind.
 import os
 import sys
+import traceback
 
-print(\"static-everywhere hook: hook_elfutils_crc32.py loaded\", file=sys.stderr)
+# Module-level: fires the instant Conan imports this file at all,
+# before any function runs. Both a raw stderr print (visible if Conan
+# forwards hook stdout/stderr directly) and, once a conanfile is
+# available inside post_source, conanfile.output calls too (Conan's
+# own documented, guaranteed-visible hook-output mechanism, prefixed
+# [HOOK - hook_elfutils_crc32] in its own log format) -- not relying
+# on only one of the two now that it's confirmed the first version's
+# raw-print-only approach produced zero visible output in a real run.
+sys.stderr.write(\"static-everywhere hook: hook_elfutils_crc32.py module loaded\\n\")
+sys.stderr.flush()
 
 def post_source(conanfile):
-    print(f\"static-everywhere hook: post_source() called for {conanfile.name}\", file=sys.stderr)
-    if conanfile.name != \"elfutils\":
-        return
-    path = os.path.join(conanfile.source_folder, \"lib\", \"crc32.c\")
-    if not os.path.exists(path):
-        conanfile.output.warning(\"static-everywhere hook: lib/crc32.c not found, elfutils layout may have changed, skipping\")
-        return
-    with open(path, \"r\", encoding=\"utf-8\") as f:
-        content = f.read()
-    old = \"uint32_t\ncrc32 (uint32_t crc, unsigned char *buf, size_t len)\"
-    new = \"static uint32_t\ncrc32 (uint32_t crc, unsigned char *buf, size_t len)\"
-    if old not in content:
-        conanfile.output.warning(\"static-everywhere hook: expected crc32.c pattern not found, elfutils source may have changed, skipping\")
-        return
-    content = content.replace(old, new, 1)
-    with open(path, \"w\", encoding=\"utf-8\") as f:
-        f.write(content)
-    conanfile.output.info(\"static-everywhere hook: patched elfutils lib/crc32.c (added static -- avoids link collision with zlib's own crc32 under fully static linking)\")
+    try:
+        sys.stderr.write(f\"static-everywhere hook: post_source() entered for {conanfile.name}\\n\")
+        sys.stderr.flush()
+        conanfile.output.info(f\"static-everywhere hook: post_source() entered for {conanfile.name}\")
+        if conanfile.name != \"elfutils\":
+            return
+        path = os.path.join(conanfile.source_folder, \"lib\", \"crc32.c\")
+        conanfile.output.info(f\"static-everywhere hook: checking {path}\")
+        if not os.path.exists(path):
+            conanfile.output.warning(\"static-everywhere hook: lib/crc32.c not found, elfutils layout may have changed, skipping\")
+            return
+        with open(path, \"r\", encoding=\"utf-8\") as f:
+            content = f.read()
+        old = \"uint32_t\ncrc32 (uint32_t crc, unsigned char *buf, size_t len)\"
+        new = \"static uint32_t\ncrc32 (uint32_t crc, unsigned char *buf, size_t len)\"
+        if old not in content:
+            conanfile.output.warning(\"static-everywhere hook: expected crc32.c pattern not found, elfutils source may have changed, skipping\")
+            return
+        content = content.replace(old, new, 1)
+        with open(path, \"w\", encoding=\"utf-8\") as f:
+            f.write(content)
+        conanfile.output.info(\"static-everywhere hook: patched elfutils lib/crc32.c (added static -- avoids link collision with zlib's own crc32 under fully static linking)\")
+    except Exception:
+        # A hook-internal exception must never be able to disappear
+        # silently -- print the full traceback through every channel
+        # available rather than assume Conan's own hook-exception
+        # handling will surface it loudly on its own.
+        tb = traceback.format_exc()
+        sys.stderr.write(f\"static-everywhere hook: EXCEPTION in post_source:\\n{tb}\\n\")
+        sys.stderr.flush()
+        try:
+            conanfile.output.error(f\"static-everywhere hook: EXCEPTION in post_source: {tb}\")
+        except Exception:
+            pass
+        raise
 HOOKEOF"
     plan_step "mkdir -p ${OUT}/conan-venv"
     plan_step "command -v uv >/dev/null 2>&1 || { echo 'error: uv not found -- https://astral.sh/uv' >&2; exit 1; }"
@@ -349,6 +389,7 @@ HOOKEOF"
 -c 'tools.build:sharedlinkflags=[\"-target\",\"x86_64-linux-gnu.${GLIBC_BASELINE}\"]' \
 -c 'tools.build:exelinkflags=[\"-target\",\"x86_64-linux-gnu.${GLIBC_BASELINE}\",\"-pie\"]' \
 -c tools.system.package_manager:mode=check \
+-vv \
 --output-folder=qt/host/build-portable-linux"
 
     plan_step "cd ${SRC} && bash ci/build-qwindowkit.sh \"\$PWD/qt/host/build-portable-linux\" Release static"

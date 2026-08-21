@@ -141,12 +141,31 @@ jobs:
         # marker so a restored cache's untouched, unrelated logs from
         # packages built in a *previous* run don't drown out the ones
         # that actually matter from *this* run.
+        #
+        # Originally only searched ~/.conan2/p/b -- a real, found-by-
+        # audit-not-by-failure gap: qwindowkit's own CMake build
+        # (ci/build-qwindowkit.sh) and the actual f4-qt-host CMake
+        # configure/build (both driven directly by this workflow, not
+        # through Conan's package cache at all) would have had zero
+        # diagnostic capture if either ever failed, the same way
+        # elfutils' real failure was invisible before config.log
+        # capture existed at all. f4-src is never cached (cloned fresh
+        # every run), so everything in it is inherently this run's own
+        # -- the mtime filter there is redundant but harmless, kept for
+        # consistency. Also added LastTest.log: --output-on-failure
+        # only prints failed tests' output to the terminal, not
+        # ctest's own fuller Testing/Temporary/LastTest.log.
         if: failure()
         run: |
           mkdir -p /tmp/diagnostic-logs
           find ~/.conan2/p/b -newer /tmp/job-start-marker \
             \( -name 'config.log' -o -name 'CMakeError.log' -o -name 'CMakeOutput.log' \) \
-            -exec sh -c 'mkdir -p "/tmp/diagnostic-logs/$(dirname "${1#$HOME/.conan2/p/b/}")" && cp "$1" "/tmp/diagnostic-logs/${1#$HOME/.conan2/p/b/}"' _ {} \;
+            -exec sh -c 'mkdir -p "/tmp/diagnostic-logs/conan-cache/$(dirname "${1#$HOME/.conan2/p/b/}")" && cp "$1" "/tmp/diagnostic-logs/conan-cache/${1#$HOME/.conan2/p/b/}"' _ {} \;
+          if [ -d f4-src ]; then
+            find f4-src \
+              \( -name 'config.log' -o -name 'CMakeError.log' -o -name 'CMakeOutput.log' -o -name 'LastTest.log' \) \
+              -exec sh -c 'mkdir -p "/tmp/diagnostic-logs/f4-src/$(dirname "${1#f4-src/}")" && cp "$1" "/tmp/diagnostic-logs/f4-src/${1#f4-src/}"' _ {} \;
+          fi
           find /tmp/diagnostic-logs -type f
 
       - name: Upload diagnostic logs on failure
