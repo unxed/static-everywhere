@@ -235,6 +235,26 @@ elif [ "${CONFIG}" = "linux" ] && [ "${TOOLCHAIN}" = "zig" ]; then
     # build, so both wrappers now drop -pie whenever -shared is also
     # present, regardless of which package is being compiled. No
     # per-package overrides needed here any more.
+    #
+    # elfutils*:tools.build:sharedlinkflags -Wl,--allow-multiple-
+    # definition: a real, confirmed upstream bug in elfutils itself
+    # (lib/crc32.c's own `crc32` function has no `static`/hidden-
+    # visibility marking, checked directly against elfutils' actual
+    # source), not something specific to our toolchain. It only
+    # surfaces when statically combining elfutils' own libeu.a (which
+    # contains this internal helper) with zlib's libz.a into the same
+    # final .so ("ld.lld: error: duplicate symbol: crc32") -- with
+    # dynamic linking only one of the two ever gets resolved at
+    # runtime, so upstream never had reason to notice. This IS a
+    # build-time link step (not an early configure-time probe like the
+    # earlier __thread case), where package-scoped Conan confs already
+    # proved reliable (openssl's own fix worked at this same stage) --
+    # unlike -pie/-shared, blanket-allowing multiple definitions
+    # project-wide would risk masking a genuine bug in some other
+    # package, so this stays scoped to elfutils specifically. Both
+    # crc32 implementations are the same standard CRC-32 algorithm, so
+    # letting the linker keep whichever one it finds first is behaviorally
+    # safe regardless of which one wins.
     plan_step "mkdir -p ${OUT}/conan-venv"
     plan_step "command -v uv >/dev/null 2>&1 || { echo 'error: uv not found -- https://astral.sh/uv' >&2; exit 1; }"
     plan_step "uv venv --python 3.12 --clear ${OUT}/conan-venv"
@@ -275,6 +295,7 @@ elif [ "${CONFIG}" = "linux" ] && [ "${TOOLCHAIN}" = "zig" ]; then
 -c 'tools.build:cxxflags=[\"-target\",\"x86_64-linux-gnu.${GLIBC_BASELINE}\"]' \
 -c 'libmount*:tools.build:cflags=[\"-DHAVE_CLOSE_RANGE=1\"]' \
 -c 'tools.build:sharedlinkflags=[\"-target\",\"x86_64-linux-gnu.${GLIBC_BASELINE}\"]' \
+-c 'elfutils*:tools.build:sharedlinkflags=[\"-target\",\"x86_64-linux-gnu.${GLIBC_BASELINE}\",\"-Wl,--allow-multiple-definition\"]' \
 -c 'tools.build:exelinkflags=[\"-target\",\"x86_64-linux-gnu.${GLIBC_BASELINE}\",\"-pie\"]' \
 -c tools.system.package_manager:mode=check \
 --output-folder=qt/host/build-portable-linux"

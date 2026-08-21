@@ -1,5 +1,43 @@
 # STATUS
 
+## f4-qt: `-pie`/`-shared` wrapper fix confirmed working (got past both openssl AND elfutils' earlier failure) — new, unrelated, real elfutils/zlib upstream bug found next
+
+Real CI progress, confirming the previous fix genuinely worked this
+time: `elfutils` got past its `__thread`-support probe entirely (no
+`-pie`/`-shared` conflict at all this run) and progressed all the way
+into its actual `make` build, compiling most of `libelf` — a
+significantly later failure point than any previous attempt.
+
+New failure, unrelated to anything toolchain-specific: `ld.lld: error:
+duplicate symbol: crc32`, linking `libelf.so` — `elfutils`' own internal
+`lib/crc32.c` and `zlib`'s own public `crc32()` both define a symbol
+named `crc32`, and combining both into the same shared object once
+everything is statically archived surfaces a genuine collision.
+**Verified this is a real upstream elfutils issue, not a guess**:
+cloned `elfutils` directly and checked `lib/crc32.c`'s actual function
+definition — `uint32_t crc32(uint32_t crc, unsigned char *buf, size_t
+len)`, no `static`, no hidden-visibility attribute, nothing to prevent
+it from being an ordinary externally-visible symbol. With `zlib` linked
+*dynamically* (the common case upstream would have tested against),
+only one `crc32` ever gets resolved at runtime, so this never had reason
+to surface before — it's specifically a fully-static combination that
+exposes it.
+
+Fixed with a package-scoped `elfutils*:tools.build:sharedlinkflags`
+addition of `-Wl,--allow-multiple-definition`. Unlike the `-pie`/
+`-shared` case, this stays package-scoped rather than becoming an
+unconditional wrapper-level rule: blanket-allowing multiple definitions
+project-wide would risk silently masking a genuine bug in some other
+package later, where the `-pie`/`-shared` combination is never
+meaningful for *any* package regardless. This particular failure is a
+real build-time link step (not an early configure-time probe like the
+`__thread` case), the same stage where the earlier `openssl` package-
+scoped fix already proved reliable — expecting this one to hold too.
+Both `crc32` implementations are the same standard algorithm, so which
+one the linker keeps is behaviorally irrelevant here.
+
+Not yet re-run against real CI — the next concrete step.
+
 ## f4-qt: previous `elfutils` fix confirmed NOT to have worked (via real `config.log` from the exact commit that supposedly fixed it) — replaced with an unconditional wrapper-level fix
 
 The user caught a real mistake in the previous entry's own diagnosis. A
