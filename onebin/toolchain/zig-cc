@@ -89,4 +89,28 @@ if [ "$has_shared" = 1 ]; then
     done)
 fi
 
+
+# Host headers as a last-resort search path. zig cc with an explicit
+# -target uses ONLY its own bundled libc headers and does not search the
+# host's /usr/include the way a native gcc/clang does. That is correct
+# for libc -- it is how this project pins the glibc baseline -- but it
+# also hides genuinely host-provided headers that are part of the Layer
+# 1/2 host contract (xcb/*, X11/*), which pkg-config deliberately does
+# NOT emit a -I for, because /usr/include is a compiler default
+# everywhere else. Diagnosed from xkbcommon's own meson-log.txt:
+# `pkgconf --cflags xcb-xkb` returns success with EMPTY output while
+# `--libs` returns -L/usr/lib/... (Conan sets
+# PKG_CONFIG_ALLOW_SYSTEM_LIBS=1 but has no cflags equivalent), so the
+# compile got no -I at all and failed on 'xcb/xkb.h' file not found.
+#
+# -idirafter, NOT -I: it appends the directory AFTER all built-in system
+# include paths, so zig's own libc headers still win for anything it
+# provides and the glibc pin is untouched; only headers zig does not
+# ship at all fall through to the host. Verified against real zig 0.13.0
+# rather than assumed: the failure reproduces exactly without this flag,
+# builds with it, `-E -H` confirms stdio.h still resolves to zig's own
+# generic-glibc copy, a linked binary's highest symbol version stays at
+# GLIBC_2.4, and X11/Xlib.h (which Qt will need next) resolves too.
+set -- "$@" -idirafter /usr/include
+
 exec zig cc "$@"

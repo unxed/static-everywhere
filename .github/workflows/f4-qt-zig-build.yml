@@ -205,11 +205,16 @@ jobs:
 
           # (2) Which package actually failed? Conan states it verbatim
           #     on every failure seen so far ("<pkg>/<ver>: WARN: Build
-          #     folder <path>"), so read it rather than guess. Fallback
+          #     folder <path>"), so read it rather than guess. The WARN
+          #     prefix is load-bearing: Conan also prints a plain
+          #     "<pkg>: Build folder <path>" line for every package it
+          #     builds successfully, and matching those too collected
+          #     all ~30 build trees into a 65MB artifact -- caught on the
+          #     first real run of this collector, on a mobile connection. Fallback
           #     to the most recently touched build dirs if that line
           #     isn't present (e.g. a failure outside Conan entirely).
-          grep -ohE 'Build folder /[^[:space:]]+' /tmp/build-output.log 2>/dev/null \
-            | sed 's|^Build folder ||' | sort -u > "$OUT/01-failing-build-folders.txt"
+          grep -ohE 'WARN: Build folder /[^[:space:]]+' /tmp/build-output.log 2>/dev/null \
+            | sed 's|^WARN: Build folder ||' | sort -u > "$OUT/01-failing-build-folders.txt"
           if [ ! -s "$OUT/01-failing-build-folders.txt" ]; then
             find "$HOME/.conan2/p/b" -maxdepth 3 -type d -name 'build-*' \
                  -newer /tmp/job-start-marker 2>/dev/null | tail -5 \

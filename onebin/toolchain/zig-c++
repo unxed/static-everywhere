@@ -37,4 +37,12 @@ if [ "$has_shared" = 1 ]; then
     done)
 fi
 
+
+# See zig-cc for the full reasoning: zig cc with -target does not
+# search the host /usr/include, which hides host-contract headers
+# (xcb/*, X11/*) that pkg-config never emits a -I for. -idirafter
+# appends it after the built-in system paths, so zig's own libc
+# headers still win and the glibc pin is unaffected.
+set -- "$@" -idirafter /usr/include
+
 exec zig c++ "$@"
