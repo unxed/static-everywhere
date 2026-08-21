@@ -258,6 +258,29 @@ elif [ "${CONFIG}" = "linux" ] && [ "${TOOLCHAIN}" = "zig" ]; then
     # kept alongside (not instead of) the with_elf=False/crc32-hook
     # fixes as defense in depth rather than assumed sufficient alone.
     #
+    # PKG_CONFIG_PATH prefix on the main conan install: a real CI run
+    # got past elfutils/glib/harfbuzz entirely (confirming those fixes
+    # worked) and reached a new, unrelated failure -- xkbcommon's own
+    # X11 variant failing to find <xcb/xkb.h>, from the `xorg/system`
+    # Conan package's pkg-config-based discovery of the host's XCB
+    # extension headers. Checked directly, not guessed: libxcb-xkb-dev
+    # (which genuinely does provide this exact header on Debian/Ubuntu,
+    # confirmed via dpkg-query -L) is already in this workflow's own
+    # apt-get install list, and plain `pkg-config --exists xcb-xkb`
+    # succeeds cleanly when tested directly against a real installed
+    # libxcb-xkb-dev -- the package and its .pc file are both genuinely
+    # present and correctly registered. The likely remaining gap:
+    # whatever PKG_CONFIG_PATH Conan's own generators construct for this
+    # package's build environment may not include the system's default
+    # pkgconfig directories, since Conan-managed builds commonly curate
+    # an explicit path pointing only at Conan-provided .pc files to
+    # avoid accidentally picking up the wrong version of something --
+    # plausible but not confirmed against a live run yet. This
+    # explicitly prepends the standard Debian/Ubuntu multiarch pkgconfig
+    # locations (additively, preserving whatever Conan's own value
+    # already is via the trailing $PKG_CONFIG_PATH) rather than assuming
+    # they're already reachable.
+    #
     # CMAKE_SIZEOF_VOID_P=8: CMake's own "Detecting C/CXX compiler ABI
     # info" step -- which normally populates this variable by
     # introspecting a small compiled test program -- fails with zig-cc
@@ -420,7 +443,7 @@ HOOKEOF"
     # actually links against gets rebuilt regardless of remote binary
     # availability, because Conan package IDs don't encode the glibc
     # baseline this pass exists to pin.
-    plan_step "cd ${SRC} && env PATH=\"${OUT}/conan-venv/bin:\$PATH\" conan install qt/host \
+    plan_step "cd ${SRC} && env PATH=\"${OUT}/conan-venv/bin:\$PATH\" PKG_CONFIG_PATH=\"/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/lib/pkgconfig:/usr/share/pkgconfig:\$PKG_CONFIG_PATH\" conan install qt/host \
 --build=missing --build='m4/*' \
 --build='brotli/*' --build='bzip2/*' --build='double-conversion/*' --build='elfutils/*' \
 --build='expat/*' --build='fontconfig/*' --build='freetype/*' --build='glib/*' \

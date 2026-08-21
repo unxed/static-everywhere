@@ -1,5 +1,45 @@
 # STATUS
 
+## f4-qt: real CI progress confirms glib/harfbuzz/elfutils fixes worked; two new items caught -- cache-save timeout gap, new xkbcommon failure
+
+**The `harfbuzz`/`glib`/`elfutils` fixes are confirmed working**: a real
+CI run got all the way past that entire chain of issues without a
+single recurrence, reaching a completely new, unrelated failure
+(`xkbcommon`). The whole `crc32`/`__libelf_crc32`/`elfutils` saga from
+the last several entries is now moot.
+
+**A real gap the user caught directly, not from a log but from watching
+the run live**: the "Save Conan downloads and ccache storage" step was
+still visibly running 7+ minutes in — roughly a third of the whole
+job's typical wall-clock cost — with no way to tell whether it was
+genuinely hung or just slow on a cache that only ever grows (nothing
+prunes it across runs). This is exactly the kind of gap this project's
+own two prior "audit everything" passes were supposed to catch and
+didn't. Added `timeout-minutes: 20` to that step specifically — not
+tighter (e.g. 10), since killing a save that would have genuinely
+finished in 8-9 minutes would recreate the exact "lost all progress"
+disaster this project already fixed once elsewhere.
+
+**New failure, unrelated to anything already fixed**: `xkbcommon`'s X11
+variant fails with `xcb/xkb.h: No such file or directory`. Checked
+directly rather than guessed: `libxcb-xkb-dev` (which genuinely does
+provide this exact header on Debian/Ubuntu, confirmed via `dpkg-query
+-L`) is already in this workflow's own apt-get install list, and the
+`xorg/system` Conan package's own recipe source independently confirms
+the same package name is correct. Plain `pkg-config --exists xcb-xkb`
+also succeeds cleanly against a real installed `libxcb-xkb-dev` --
+package and `.pc` file both genuinely present and correctly registered.
+The likely remaining gap, not yet confirmed against a live CI run:
+whatever `PKG_CONFIG_PATH` Conan's own generators construct for this
+package's build may not include the system's default pkgconfig
+directories, a common pattern for Conan-managed builds that curate an
+explicit path to avoid picking up wrong-version system libraries.
+Prepended the standard Debian/Ubuntu multiarch pkgconfig locations to
+the main `conan install` invocation's environment, additively
+(preserving whatever Conan's own value already is).
+
+Not yet re-run against real CI — the next concrete step.
+
 ## f4-qt: found the real, well-evidenced answer for "who needs glib" while waiting on upstream — `harfbuzz`'s own `with_glib=True` default
 
 Traced this properly instead of waiting idle for the upstream reply.

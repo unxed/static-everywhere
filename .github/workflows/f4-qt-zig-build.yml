@@ -123,7 +123,26 @@ jobs:
         # completely from zero. if: always() plus a genuinely separate
         # save step is the documented, reliable way to guarantee this
         # actually happens regardless of how the job ends.
+        #
+        # timeout-minutes: 20 -- a real gap this project's own two prior
+        # "audit everything" passes both missed: this save step tars and
+        # zstd-compresses the *entire* Conan package cache plus ccache
+        # storage, which only grows across every CI run (nothing prunes
+        # it), and had no bound at all -- caught directly when it was
+        # seen visibly still running 7+ minutes in, a third of the whole
+        # job's typical wall-clock cost, with no way to tell whether it
+        # was genuinely hung or just slow on a now-large cache. Set to
+        # 20, not something tighter like 10: the cache only grows over
+        # time, and killing a save that would have genuinely finished in
+        # 8-9 minutes would recreate the exact "lost all progress"
+        # failure this project already fixed once -- the goal here is
+        # catching a true, multi-hour hang, not shaving minutes off a
+        # merely-large-but-completing save. A step timeout can't lose
+        # diagnostic capability here since this step never produces
+        # diagnostics itself (config.log/CMakeError.log collection is
+        # separate, later, and gated on failure/cancellation already).
         if: always()
+        timeout-minutes: 20
         uses: actions/cache/save@v4
         with:
           path: |
