@@ -1,5 +1,35 @@
 # STATUS
 
+## f4-qt: PKG_CONFIG_PATH fix broke the script itself under `set -eu` -- real CI run caught it, fixed and tested properly this time
+
+The previous entry's `PKG_CONFIG_PATH` fix had a genuine bug, caught
+immediately on the very next real CI run: `./tools/build-f4-qt.sh: 1:
+eval: PKG_CONFIG_PATH: parameter not set`. `build-f4-qt.sh` runs under
+`set -eu` (line 5) -- referencing `$PKG_CONFIG_PATH` bare fails hard
+under `set -u`'s nounset behavior when the variable has never been set
+at all (not just empty), which is the normal state on a fresh GitHub
+Actions runner. Should have been caught before committing; wasn't.
+
+Fixed with `${PKG_CONFIG_PATH:-}` instead of the bare `$PKG_CONFIG_PATH`
+-- the standard, correct way to safely reference a potentially-unset
+variable under `set -u`, defaulting to empty rather than erroring.
+Tested properly this time, not just assumed correct: extracted the real
+generated command from `--print-plan` and actually executed it under
+`set -eu` in two scenarios -- `PKG_CONFIG_PATH` genuinely unset (the
+real CI case that broke), and already set to something (confirming the
+fix still appends correctly rather than only working in the broken
+case's absence). Both passed. Also scanned the rest of the script for
+any other bare reference to an external (not script-defined) environment
+variable that could share the same risk -- found none: every other
+`${VAR}`/`$VAR` in the script is either a POSIX-guaranteed builtin
+(`$PWD`) or a variable the script itself always assigns before use
+(`SRC`, `OUT`, `REPO_ROOT`, `DEPS_LOCK`, etc.) -- `PATH`/
+`PKG_CONFIG_PATH` were the only references to variables that come from
+outside the script's own control, and `PATH` is POSIX-guaranteed
+present unlike the optional `PKG_CONFIG_PATH`.
+
+Not yet re-run against real CI — the next concrete step.
+
 ## f4-qt: real CI progress confirms glib/harfbuzz/elfutils fixes worked; two new items caught -- cache-save timeout gap, new xkbcommon failure
 
 **The `harfbuzz`/`glib`/`elfutils` fixes are confirmed working**: a real

@@ -443,7 +443,7 @@ HOOKEOF"
     # actually links against gets rebuilt regardless of remote binary
     # availability, because Conan package IDs don't encode the glibc
     # baseline this pass exists to pin.
-    plan_step "cd ${SRC} && env PATH=\"${OUT}/conan-venv/bin:\$PATH\" PKG_CONFIG_PATH=\"/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/lib/pkgconfig:/usr/share/pkgconfig:\$PKG_CONFIG_PATH\" conan install qt/host \
+    plan_step "cd ${SRC} && env PATH=\"${OUT}/conan-venv/bin:\$PATH\" PKG_CONFIG_PATH=\"/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/lib/pkgconfig:/usr/share/pkgconfig:\${PKG_CONFIG_PATH:-}\" conan install qt/host \
 --build=missing --build='m4/*' \
 --build='brotli/*' --build='bzip2/*' --build='double-conversion/*' --build='elfutils/*' \
 --build='expat/*' --build='fontconfig/*' --build='freetype/*' --build='glib/*' \
