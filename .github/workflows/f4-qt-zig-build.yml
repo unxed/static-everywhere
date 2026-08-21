@@ -149,6 +149,15 @@ jobs:
         # only prints failed tests' output to the terminal, not
         # ctest's own fuller Testing/Temporary/LastTest.log.
         #
+        # Also added meson-log.txt (Meson's own build log, typically at
+        # <build_dir>/meson-logs/meson-log.txt): xkbcommon builds via
+        # Meson, not CMake/Autotools like every other package this whole
+        # collection mechanism was originally built around, and a real
+        # CI run's diagnostic artifact came back with zero evidence for
+        # xkbcommon's own xcb/xkb.h failure specifically *because* this
+        # filename wasn't in the search list at all -- found by checking
+        # the actual collected zip, not guessed in advance.
+        #
         # failure() || cancelled(), not failure() alone: confirmed via
         # GitHub's own community discussion (staff-answered) that a
         # step-condition of failure() alone does NOT run when the job
@@ -171,11 +180,11 @@ jobs:
         run: |
           mkdir -p /tmp/diagnostic-logs
           find ~/.conan2/p/b -newer /tmp/job-start-marker \
-            \( -name 'config.log' -o -name 'CMakeError.log' -o -name 'CMakeOutput.log' \) \
+            \( -name 'config.log' -o -name 'CMakeError.log' -o -name 'CMakeOutput.log' -o -name 'meson-log.txt' \) \
             -exec sh -c 'mkdir -p "/tmp/diagnostic-logs/conan-cache/$(dirname "${1#$HOME/.conan2/p/b/}")" && cp "$1" "/tmp/diagnostic-logs/conan-cache/${1#$HOME/.conan2/p/b/}"' _ {} \;
           if [ -d f4-src ]; then
             find f4-src \
-              \( -name 'config.log' -o -name 'CMakeError.log' -o -name 'CMakeOutput.log' -o -name 'LastTest.log' \) \
+              \( -name 'config.log' -o -name 'CMakeError.log' -o -name 'CMakeOutput.log' -o -name 'LastTest.log' -o -name 'meson-log.txt' \) \
               -exec sh -c 'mkdir -p "/tmp/diagnostic-logs/f4-src/$(dirname "${1#f4-src/}")" && cp "$1" "/tmp/diagnostic-logs/f4-src/${1#f4-src/}"' _ {} \;
           fi
           {

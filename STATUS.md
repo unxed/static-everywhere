@@ -1,5 +1,35 @@
 # STATUS
 
+## f4-qt CI: diagnostic-log collection was missing `meson-log.txt` -- xkbcommon's own failure had zero evidence collected for it, found by checking the actual zip
+
+The reordering from the previous entry worked exactly as intended:
+diagnostic logs arrived quickly this time, before the slow cache save.
+But checking the actual collected zip for anything explaining
+`xkbcommon`'s `xcb/xkb.h` failure turned up nothing at all — only
+`config.log` files from unrelated autotools packages (`icu`, `libffi`,
+`libiconv`, `m4`, `xz_utils`). Real, concrete reason, not a mystery:
+`xkbcommon` builds via **Meson**, not CMake or Autotools like every
+other package this collection mechanism was built around, and Meson
+writes its own log to `meson-logs/meson-log.txt` inside the build
+folder — a filename this project's `find` patterns never searched for
+at all, in either the Conan-cache location or the `f4-src` location.
+
+Added `meson-log.txt` to both `find` patterns. Tested against a
+realistic directory layout before committing, not just written and
+hoped: created a fake `<build>/meson-logs/meson-log.txt` under a
+`~/.conan2/p/b/...` path with a timestamp after the job-start marker,
+ran the actual updated `find`/`cp` command, confirmed it gets collected
+correctly.
+
+This doesn't fix `xkbcommon` itself — it fixes the *ability to see why*
+it's failing, which is what was actually missing. The next CI run
+should finally have the real Meson-side detail (likely showing exactly
+what `PKG_CONFIG_PATH`/environment Meson's own pkg-config dependency
+lookup saw) needed to fix the actual `xcb/xkb.h` problem correctly,
+rather than guessing at environment-propagation theories a third time.
+
+Not yet re-run against real CI — the next concrete step.
+
 ## f4-qt CI: reordered diagnostic-log collection/upload to run *before* the slow cache save; `PKG_CONFIG_PATH` fix confirmed NOT to have solved xkbcommon's `xcb/xkb.h`
 
 **Real CI run confirms the `${PKG_CONFIG_PATH:-}` syntax fix itself
