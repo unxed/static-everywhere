@@ -1,5 +1,65 @@
 # STATUS
 
+## f4-qt CI diagnostics: second, deeper audit pass — five more real gaps found and fixed, one false alarm ruled out
+
+Five gaps found and fixed in one pass, on a pipeline this size, was
+itself the signal that the first audit was too shallow — reactive
+enough to catch what had already broken, not systematic enough to
+catch what hadn't yet. Redid it properly: for every command in
+`tools/build-f4-qt.sh`'s zig path and `f4-qt-zig-build.yml`, asked "how
+could this fail or hang, and would we actually see why" rather than
+re-reading the same text with the same mental model.
+
+**Real, systemic gap: `if: failure()` does not fire on a cancelled
+job.** Confirmed via a GitHub staff-answered community thread, not
+assumed: a step condition of `failure()` alone does not run when the
+job is cancelled (including by hitting `timeout-minutes`) — only
+`cancelled()` catches that case. This is a genuinely serious blind
+spot for a ~35-package from-scratch build with a 300-minute ceiling:
+anything that hung rather than erroring cleanly would previously have
+produced *zero* diagnostics, precisely when the wall-clock cost of
+finding out is highest. Changed both diagnostic steps to
+`if: failure() || cancelled()`.
+
+**Two concrete hang risks, previously unbounded.** The smoke-test
+invocation (both the `--toolchain host` and `--toolchain zig` copies)
+had no timeout at all — if `f4-qt-host` hung instead of exiting cleanly
+with code 2, this would silently consume the *entire* remaining job
+budget with nothing to show for it, compounded by the above gap.
+Wrapped both with `timeout --kill-after=30s 120s` — verified locally
+that `timeout` preserves the wrapped command's real exit code when it
+finishes normally, and only substitutes its own distinct code (124)
+when it actually has to kill something, so the existing
+`|| [ $? -eq 2 ]` check still behaves correctly either way. Also added
+`ctest --timeout 300` (a hanging individual test was the same
+unbounded risk, just for `ctest` instead of the smoke test).
+
+**Disk/memory exhaustion was invisible.** A parallel, Qt-scale build
+compiling many packages at `-j$(nproc)` is a real, plausible candidate
+for exhausting a GitHub-hosted runner's disk or RAM — which manifests
+as a process silently vanishing (SIGKILL), no compiler error text at
+all, a fundamentally different and harder failure shape than anything
+config.log/CMakeError.log capture already covers. Added `df -h`,
+`free -h`, and a kernel OOM-kill trace check to the diagnostic
+collection. Caught and fixed a subtler bug in the OOM check itself
+while writing it: `dmesg` typically needs root on Ubuntu
+(`kernel.dmesg_restrict`), and piping it straight into `grep` would
+make a permission failure indistinguishable from "checked, found
+nothing" (the pipe's exit status comes from `grep`, not `dmesg`) — a
+false negative masquerading as a clean check. Fixed with `sudo dmesg`
+captured to a file first, checked explicitly, with the two outcomes
+(couldn't read vs. read-and-clean) kept visibly distinct. Tested both
+paths locally before committing.
+
+**Cross-checked, not just re-read: the `--build='pkg/*'` package
+list.** Real-cloned the exact pinned upstream `f4` commit again and
+diffed its actual `target_packages` array against this project's own
+list programmatically (not by eye) — exact match, `m4` accounted for
+correctly on both sides just via a different structural placement.
+Ruled out as a real risk rather than silently left unchecked.
+
+Not yet re-run against real CI — the next concrete step.
+
 ## f4-qt: `elfutils` crc32 hook was created but never fired — added diagnostics instead of guessing at a second mechanism blind
 
 The `post_source` hook from the previous entry did get created (visible

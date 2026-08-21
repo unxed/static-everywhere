@@ -155,7 +155,26 @@ jobs:
         # consistency. Also added LastTest.log: --output-on-failure
         # only prints failed tests' output to the terminal, not
         # ctest's own fuller Testing/Temporary/LastTest.log.
-        if: failure()
+        #
+        # failure() || cancelled(), not failure() alone: confirmed via
+        # GitHub's own community discussion (staff-answered) that a
+        # step-condition of failure() alone does NOT run when the job
+        # is cancelled by hitting timeout-minutes -- a real, systemic
+        # gap found on a second, deeper pass of this same audit: if
+        # anything in a ~35-package from-scratch build ever genuinely
+        # hangs rather than erroring cleanly, this whole diagnostic
+        # pipeline would previously have produced nothing at all,
+        # exactly when the wall-clock cost of finding out is highest.
+        #
+        # Also captures disk space (df -h), memory (free -h), and
+        # kernel OOM-kill traces (dmesg) -- a parallel, Qt-scale build
+        # with many packages compiling at -j$(nproc) is a genuine,
+        # plausible candidate for exhausting a GitHub-hosted runner's
+        # disk or RAM, which manifests as a process silently vanishing
+        # (SIGKILL) with no compiler error text at all, a different and
+        # much harder-to-diagnose failure shape than anything else this
+        # pipeline already captures.
+        if: failure() || cancelled()
         run: |
           mkdir -p /tmp/diagnostic-logs
           find ~/.conan2/p/b -newer /tmp/job-start-marker \
@@ -166,10 +185,23 @@ jobs:
               \( -name 'config.log' -o -name 'CMakeError.log' -o -name 'CMakeOutput.log' -o -name 'LastTest.log' \) \
               -exec sh -c 'mkdir -p "/tmp/diagnostic-logs/f4-src/$(dirname "${1#f4-src/}")" && cp "$1" "/tmp/diagnostic-logs/f4-src/${1#f4-src/}"' _ {} \;
           fi
+          {
+            echo "=== df -h ==="
+            df -h
+            echo "=== free -h ==="
+            free -h
+            echo "=== dmesg (OOM/kill traces, if any) ==="
+            if sudo dmesg > /tmp/dmesg-raw.txt 2>&1; then
+              grep -iE 'killed process|out of memory|oom' /tmp/dmesg-raw.txt || echo "(checked -- none found)"
+            else
+              echo "(could not read dmesg -- see raw attempt output below)"
+              cat /tmp/dmesg-raw.txt
+            fi
+          } > /tmp/diagnostic-logs/system-state.txt
           find /tmp/diagnostic-logs -type f
 
       - name: Upload diagnostic logs on failure
-        if: failure()
+        if: failure() || cancelled()
         uses: actions/upload-artifact@v4
         with:
           name: f4-qt-zig-build-diagnostic-logs

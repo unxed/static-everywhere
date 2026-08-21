@@ -167,7 +167,7 @@ if [ "${CONFIG}" = "linux" ] && [ "${TOOLCHAIN}" = "host" ]; then
     plan_step "${ONEBIN_BIN} audit --profile static --level 1 --strict ${OUT}/f4"
     plan_step "${ONEBIN_BIN} audit --profile hybrid --glibc-max 2.27 --level 1 --strict ${SRC}/build-qt/f4-qt-host"
 
-    plan_step "env QT_QPA_PLATFORM=offscreen QSG_RHI_BACKEND=software ${SRC}/build-qt/f4-qt-host --f4-ext-connect=127.0.0.1:1 > ${OUT}/smoke.log 2>&1 || [ \$? -eq 2 ]"
+    plan_step "timeout --kill-after=30s 120s env QT_QPA_PLATFORM=offscreen QSG_RHI_BACKEND=software ${SRC}/build-qt/f4-qt-host --f4-ext-connect=127.0.0.1:1 > ${OUT}/smoke.log 2>&1 || [ \$? -eq 2 ]"
     plan_step "! grep -q 'QQmlApplicationEngine failed to load component' ${OUT}/smoke.log"
     plan_step "! grep -q 'Could not find the Qt platform plugin' ${OUT}/smoke.log"
 
@@ -401,11 +401,11 @@ HOOKEOF"
 -DQWindowKit_DIR=\"\$PWD/build/qwindowkit-install/lib/cmake/QWindowKit\" \
 -DBUILD_TESTING=ON -DUSE_QWK=ON -DF4_PORTABLE_STATIC=ON"
     plan_step "cd ${SRC} && cmake --build qt/host/build-portable-linux --config Release --parallel \$(nproc)"
-    plan_step "cd ${SRC} && ctest --test-dir qt/host/build-portable-linux -C Release --output-on-failure -R '^(F4|QtShellController|WindowGeometryPersistence)'"
+    plan_step "cd ${SRC} && ctest --test-dir qt/host/build-portable-linux -C Release --output-on-failure --timeout 300 -R '^(F4|QtShellController|WindowGeometryPersistence)'"
 
     plan_step "${ONEBIN_BIN} audit --profile hybrid --glibc-max ${GLIBC_BASELINE} --level 1 --strict ${SRC}/qt/host/build-portable-linux/bin/Release/f4-qt-host"
 
-    plan_step "env QT_QPA_PLATFORM=offscreen QSG_RHI_BACKEND=software ${SRC}/qt/host/build-portable-linux/bin/Release/f4-qt-host --f4-ext-connect=127.0.0.1:1 --f4-ext-nonce=ci-smoke > ${OUT}/smoke.log 2>&1 || [ \$? -eq 2 ]"
+    plan_step "timeout --kill-after=30s 120s env QT_QPA_PLATFORM=offscreen QSG_RHI_BACKEND=software ${SRC}/qt/host/build-portable-linux/bin/Release/f4-qt-host --f4-ext-connect=127.0.0.1:1 --f4-ext-nonce=ci-smoke > ${OUT}/smoke.log 2>&1 || [ \$? -eq 2 ]"
     plan_step "! grep -q 'QQmlApplicationEngine failed to load component' ${OUT}/smoke.log"
     plan_step "! grep -q 'Could not find the Qt platform plugin' ${OUT}/smoke.log"
 
