@@ -23,58 +23,65 @@ for this entire stretch of work.
   changes cheaply.
 - Compiler wrappers: `onebin/toolchain/zig-cc`, `zig-c++`.
 
-### The one thing currently blocking — root cause FOUND, fix committed, not yet CI-verified
+### The one thing currently blocking — **Qt itself**; root cause found and fixed, not yet CI-verified
 
-**`xkbcommon/1.5.0`** (the only Meson package in the chain) failed with
-`fatal error: 'xcb/xkb.h' file not found`. Root cause established from
-its own `meson-log.txt`, then **reproduced and fixed locally against
-real zig 0.13.0** — not guessed:
+`xkbcommon` is **passed** — the `-idirafter /usr/include` fix worked, and
+the build now reaches **Qt**, the last and heaviest package. Qt's
+configure refuses:
 
-- Meson *did* find the dependency (`Run-time dependency xcb-xkb found:
-  YES 1.15`). `pkgconf --libs` returned `-L/usr/lib/x86_64-linux-gnu
-  -lxcb-xkb` (Conan sets `PKG_CONFIG_ALLOW_SYSTEM_LIBS=1`), but
-  `pkgconf --cflags` returned success with **empty output** —
-  pkg-config never emits `-I/usr/include`, since it is a compiler
-  default everywhere else, and Conan has no cflags equivalent of that
-  env var.
-- **`zig cc` with an explicit `-target` does not search the host
-  `/usr/include` at all** — only its own bundled headers. Correct for
-  libc (that is how the glibc baseline is pinned), but it also hides
-  host-contract headers like `xcb/*` and `X11/*`.
+```
+ERROR: Feature "opengl_desktop": Forcing to "ON" breaks its condition
+       WrapOpenGL_FOUND = "FALSE"
+ERROR: Feature "egl": Forcing to "ON" breaks its condition
+       EGL_FOUND = "FALSE"
+```
 
-Fix: `onebin/toolchain/zig-cc` and `zig-c++` now append
-**`-idirafter /usr/include`** — deliberately `-idirafter`, not `-I`, so
-it is searched *after* all built-in system paths and cannot shadow
-zig's own libc headers.
+This project forces `qt/*:with_egl=True`, so a failed detection is fatal
+rather than a silent downgrade. `libgl1-mesa-dev` and `libegl1-mesa-dev`
+*are* installed by the workflow — CMake simply could not find them.
 
-Verified locally with real zig before committing: the failure
-reproduces exactly without the flag and compiles with it *through the
-actual wrapper scripts*; `-E -H` confirms `stdio.h` still resolves to
-zig's own `generic-glibc` copy; a linked binary's highest symbol
-version stays `GLIBC_2.4`; `X11/Xlib.h` (which Qt needs next) resolves
-too; and the pre-existing `-Wl,-rpath-link` and `-pie`/`-shared`
-filters still behave.
+Root cause, from Qt's own generated files in the diagnostic artifact:
+`CMakeFiles/<ver>/CMakeCCompiler.cmake` contains
+`set(CMAKE_LIBRARY_ARCHITECTURE "")` — **empty**. CMake builds
+`find_library()`'s search paths from that variable, so with it empty it
+never looks in `/usr/lib/x86_64-linux-gnu`, which is exactly where
+Debian/Ubuntu multiarch puts `libGL.so` and `libEGL.so`. The empty value
+is a second, worse consequence of the long-known broken CMake ABI
+detection under `zig-cc` (the same defect `CMAKE_SIZEOF_VOID_P=8`
+already papers over).
 
-**Not yet confirmed by a real CI run** — that is the next step. Expect
-**Qt itself** to be the next significant unknown: it is the last and by
-far the heaviest package, and nothing past `xkbcommon` has ever been
-exercised.
+Fix: added `CMAKE_LIBRARY_ARCHITECTURE=x86_64-linux-gnu` to
+`tools.cmake.cmaketoolchain:extra_variables`.
+
+**Proven, not inferred.** Reproduced locally with real zig 0.13.0 and a
+two-line CMake project doing `find_library(z)`: with `zig-cc` as the
+compiler the variable came out `''` and the lookup returned `NOTFOUND`
+even though `/usr/lib/x86_64-linux-gnu/libz.so` exists; adding the one
+variable made the same lookup succeed. Testing against the host `gcc`
+first was misleading — gcc's own ABI detection sets the variable and
+silently overrode the `-D`, so the first attempt appeared to prove
+nothing was wrong. Watch for that trap.
+
+**Not yet confirmed by a real CI run.** Qt is still almost entirely
+unexplored territory: nothing past its configure step has ever run, and
+it is by far the longest package to build.
 
 Worth knowing: **real zig can be downloaded into the sandbox**
 (`https://ziglang.org/download/0.13.0/zig-linux-x86_64-0.13.0.tar.xz`,
-~47MB, extracts and runs directly, no install). Doing that turned what
-would have been a fourth blind guess into a verified fix in minutes,
-after three earlier guesses each cost a ~20-minute CI cycle. Use it
-before proposing any toolchain-level change.
+~47MB, extracts and runs directly, no install). Two consecutive
+blockers were solved this way in minutes each, after three earlier blind
+guesses cost a ~20-minute CI cycle apiece. `cmake` is present in the
+sandbox too. Reproduce locally before proposing any toolchain change.
 
-**Diagnostics: the first real run exposed a bug, now fixed.** Conan
-prints a plain `<pkg>: Build folder <path>` line for *every* package it
-builds, not just failures, so the collector matched all ~30 of them and
-produced a **65MB** artifact — bad on a mobile connection. It now
-matches only the `WARN: Build folder` line, which Conan emits for the
-failing package alone. The rest of the collector worked as designed: it
-picked up `meson-log.txt` without anyone having to name that file, and
-that log is what solved the blocker above.
+**Diagnostics are working.** The collector found `meson-log.txt`
+(solved `xkbcommon`) and Qt's generated `CMakeCCompiler.cmake` (solved
+this one) without either filename being known in advance. One bug was
+found and fixed on its first real run: Conan prints a plain `<pkg>:
+Build folder <path>` line for *every* package, not just failures, so
+matching that collected ~30 build trees into a 65MB artifact; it now
+matches only `WARN: Build folder`. Current artifact: 25MB on disk but
+**4.6MB downloaded** (small text files compress well) — acceptable, no
+further tuning needed unless it grows.
 
 ### Dead ends — already resolved, do not reopen
 

@@ -281,6 +281,34 @@ elif [ "${CONFIG}" = "linux" ] && [ "${TOOLCHAIN}" = "zig" ]; then
     # already is via the trailing $PKG_CONFIG_PATH) rather than assuming
     # they're already reachable.
     #
+    # CMAKE_LIBRARY_ARCHITECTURE=x86_64-linux-gnu: the second, worse
+    # consequence of that same broken ABI detection, and the thing that
+    # blocked Qt itself. CMake normally derives this from the compiler's
+    # ABI info; with zig-cc it comes out EMPTY (seen directly in Qt's own
+    # generated CMakeFiles/<ver>/CMakeCCompiler.cmake:
+    # `set(CMAKE_LIBRARY_ARCHITECTURE "")`). find_library() builds its
+    # search paths from it, so with it empty CMake never looks in
+    # /usr/lib/x86_64-linux-gnu -- which is exactly where Debian/Ubuntu
+    # multiarch puts libGL.so and libEGL.so. Qt then reported
+    # `WrapOpenGL_FOUND = "FALSE"` / `EGL_FOUND = "FALSE"` and refused to
+    # configure, because this project forces qt:with_egl=True.
+    #
+    # Proven, not inferred: reproduced locally with real zig 0.13.0 and
+    # a two-line CMake project doing find_library(z). With zig-cc as the
+    # compiler, CMAKE_LIBRARY_ARCHITECTURE came out '' and the lookup
+    # returned NOTFOUND even though /usr/lib/x86_64-linux-gnu/libz.so
+    # exists; adding this one variable made the same lookup succeed.
+    # (Testing it against the host gcc first was misleading -- gcc's ABI
+    # detection sets the variable itself and silently overrode the -D.)
+    #
+    # Only correct because this build targets x86_64 Linux exclusively.
+    # Note this deliberately lets CMake see host libraries in the
+    # multiarch dir: that is the intent for Layer-1 host-contract
+    # libraries like libGL/libEGL. Conan's own toolchain still puts its
+    # package paths ahead of system ones, so vendored dependencies are
+    # not expected to be shadowed by host copies -- worth watching if a
+    # dependency ever resolves to an unexpected host library.
+    #
     # CMAKE_SIZEOF_VOID_P=8: CMake's own "Detecting C/CXX compiler ABI
     # info" step -- which normally populates this variable by
     # introspecting a small compiled test program -- fails with zig-cc
@@ -462,7 +490,7 @@ HOOKEOF"
 -o:h 'harfbuzz/*:with_glib=False' \
 -o:h 'xkbcommon/*:with_wayland=True' -o:h 'libraw/*:shared=False' \
 -c 'tools.build:compiler_executables={\"c\":\"${ZIGCC}\",\"cpp\":\"${ZIGCXX}\"}' \
--c 'tools.cmake.cmaketoolchain:extra_variables={\"CMAKE_C_COMPILER_LAUNCHER\":\"ccache\",\"CMAKE_CXX_COMPILER_LAUNCHER\":\"ccache\",\"CMAKE_SIZEOF_VOID_P\":\"8\"}' \
+-c 'tools.cmake.cmaketoolchain:extra_variables={\"CMAKE_C_COMPILER_LAUNCHER\":\"ccache\",\"CMAKE_CXX_COMPILER_LAUNCHER\":\"ccache\",\"CMAKE_SIZEOF_VOID_P\":\"8\",\"CMAKE_LIBRARY_ARCHITECTURE\":\"x86_64-linux-gnu\"}' \
 -c 'tools.build:cflags=[\"-target\",\"x86_64-linux-gnu.${GLIBC_BASELINE}\"]' \
 -c 'tools.build:cxxflags=[\"-target\",\"x86_64-linux-gnu.${GLIBC_BASELINE}\"]' \
 -c 'libmount*:tools.build:cflags=[\"-DHAVE_CLOSE_RANGE=1\"]' \
