@@ -236,44 +236,63 @@ elif [ "${CONFIG}" = "linux" ] && [ "${TOOLCHAIN}" = "zig" ]; then
     # present, regardless of which package is being compiled. No
     # per-package overrides needed here any more.
     #
-    # elfutils*:tools.build:sharedlinkflags -Wl,--allow-multiple-
-    # definition: a real, confirmed upstream bug in elfutils itself
-    # (lib/crc32.c's own `crc32` function has no `static`/hidden-
-    # visibility marking, checked directly against elfutils' actual
-    # source), not something specific to our toolchain. It only
-    # surfaces when statically combining elfutils' own libeu.a (which
-    # contains this internal helper) with zlib's libz.a into the same
-    # final .so ("ld.lld: error: duplicate symbol: crc32") -- with
-    # dynamic linking only one of the two ever gets resolved at
-    # runtime, so upstream never had reason to notice. This IS a
-    # build-time link step (not an early configure-time probe like the
-    # earlier __thread case), where package-scoped Conan confs already
-    # proved reliable (openssl's own fix worked at this same stage) --
-    # unlike -pie/-shared, blanket-allowing multiple definitions
-    # project-wide would risk masking a genuine bug in some other
-    # package, so this stays scoped to elfutils specifically. Both
-    # crc32 implementations are the same standard CRC-32 algorithm, so
-    # letting the linker keep whichever one it finds first is behaviorally
-    # safe regardless of which one wins.
+    # elfutils/zlib crc32 duplicate-symbol collision: a real, confirmed
+    # upstream bug in elfutils itself (lib/crc32.c's own `crc32`
+    # function has no `static`/hidden-visibility marking, checked
+    # directly against elfutils' actual source), not something specific
+    # to our toolchain. It only surfaces when statically combining
+    # elfutils' own libeu.a (which contains this internal helper) with
+    # zlib's libz.a into the same final .so ("ld.lld: error: duplicate
+    # symbol: crc32") -- with dynamic linking only one of the two ever
+    # gets resolved at runtime, so upstream never had reason to notice.
     #
-    # Update: the flag itself, --allow-multiple-definition, turned out to
-    # be its own separate zig cc bug (ziglang/zig#21455, "unsupported
-    # linker arg: --allow-multiple-definition" -- confirmed via search,
-    # not guessed, an already-filed issue matching this exact flag),
-    # same class as the earlier -rpath-link case: zig cc's driver only
-    # recognizes a hardcoded allowlist of -Wl, flags, and this wasn't on
-    # it, regardless of ld.lld itself supporting it fine. Switched to
-    # -Wl,-z,muldefs -- the same semantic effect, but parsed through
-    # lld's generic -z option handling rather than as its own dedicated
-    # long-option flag. Reasonably confident this specific spelling
-    # works, not just guessed: this project's own toolchain already
-    # successfully passes other -z flags (-z relro, -z now, -z
-    # noexecstack) through zig-cc in every single package built so far,
-    # confirming -z-prefixed flags generally are on zig's allowlist even
-    # where the specific long-option equivalent (--allow-multiple-
-    # definition) isn't. Not verified against a live zig invocation in
-    # this sandbox (no zig available here) -- the next CI run is the
-    # actual test.
+    # Tried telling the linker to simply tolerate it first
+    # (-Wl,--allow-multiple-definition, then -Wl,-z,muldefs after the
+    # first turned out to be its own separate zig cc bug --
+    # ziglang/zig#21455) -- both rejected outright by zig cc's own
+    # narrow -Wl,/-z allowlist ("unsupported linker arg" /
+    # "unsupported linker extension flag"), confirmed against two real
+    # CI runs, not guessed. Rather than keep guessing at flag spellings
+    # zig cc might happen to accept -- a real cost, each attempt is a
+    # full CI cycle -- fixed at the actual root instead: a Conan
+    # post_source hook (conan.io/2.0/reference/extensions/hooks.html)
+    # patches elfutils' own lib/crc32.c to add `static` right after its
+    # source is fetched, before build() runs. This is the correct
+    # upstream-shaped fix (the function was never meant to be
+    # externally visible), works regardless of which linker flags zig
+    # cc's driver happens to recognize, and doesn't risk masking a
+    # genuine duplicate-symbol bug in some other package the way a
+    # project-wide --allow-multiple-definition-equivalent would.
+    plan_step "mkdir -p \$HOME/.conan2/extensions/hooks"
+    plan_step "cat > \$HOME/.conan2/extensions/hooks/hook_elfutils_crc32.py << 'HOOKEOF'
+# static-everywhere: elfutils' own lib/crc32.c defines \`crc32\` with no
+# static/hidden-visibility marker, colliding with zlib's own public
+# crc32() once both land statically in the same final .so. Real upstream
+# gap (harmless under dynamic linking, where only one ever resolves at
+# runtime), not a toolchain quirk -- see STATUS.md. Patching \`static\`
+# onto the definition here is the correct fix, applied once right after
+# Conan fetches elfutils' source, before its own build() runs.
+import os
+
+def post_source(conanfile):
+    if conanfile.name != \"elfutils\":
+        return
+    path = os.path.join(conanfile.source_folder, \"lib\", \"crc32.c\")
+    if not os.path.exists(path):
+        conanfile.output.warning(\"static-everywhere hook: lib/crc32.c not found, elfutils layout may have changed, skipping\")
+        return
+    with open(path, \"r\", encoding=\"utf-8\") as f:
+        content = f.read()
+    old = \"uint32_t\ncrc32 (uint32_t crc, unsigned char *buf, size_t len)\"
+    new = \"static uint32_t\ncrc32 (uint32_t crc, unsigned char *buf, size_t len)\"
+    if old not in content:
+        conanfile.output.warning(\"static-everywhere hook: expected crc32.c pattern not found, elfutils source may have changed, skipping\")
+        return
+    content = content.replace(old, new, 1)
+    with open(path, \"w\", encoding=\"utf-8\") as f:
+        f.write(content)
+    conanfile.output.info(\"static-everywhere hook: patched elfutils lib/crc32.c (added static -- avoids link collision with zlib's own crc32 under fully static linking)\")
+HOOKEOF"
     plan_step "mkdir -p ${OUT}/conan-venv"
     plan_step "command -v uv >/dev/null 2>&1 || { echo 'error: uv not found -- https://astral.sh/uv' >&2; exit 1; }"
     plan_step "uv venv --python 3.12 --clear ${OUT}/conan-venv"
@@ -314,7 +333,6 @@ elif [ "${CONFIG}" = "linux" ] && [ "${TOOLCHAIN}" = "zig" ]; then
 -c 'tools.build:cxxflags=[\"-target\",\"x86_64-linux-gnu.${GLIBC_BASELINE}\"]' \
 -c 'libmount*:tools.build:cflags=[\"-DHAVE_CLOSE_RANGE=1\"]' \
 -c 'tools.build:sharedlinkflags=[\"-target\",\"x86_64-linux-gnu.${GLIBC_BASELINE}\"]' \
--c 'elfutils*:tools.build:sharedlinkflags=[\"-target\",\"x86_64-linux-gnu.${GLIBC_BASELINE}\",\"-Wl,-z,muldefs\"]' \
 -c 'tools.build:exelinkflags=[\"-target\",\"x86_64-linux-gnu.${GLIBC_BASELINE}\",\"-pie\"]' \
 -c tools.system.package_manager:mode=check \
 --output-folder=qt/host/build-portable-linux"

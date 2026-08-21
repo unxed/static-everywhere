@@ -1,5 +1,56 @@
 # STATUS
 
+## f4-qt: `-z muldefs` also rejected by zig cc — stopped guessing at flag spellings, fixed the elfutils/crc32 collision at the actual root instead
+
+Third failed attempt at telling the linker to tolerate the `crc32`
+collision: `-Wl,-z,muldefs` — the fix from the previous entry, chosen
+specifically because other `-z` flags already worked throughout this
+build — got a real CI run this time, and `zig cc` rejected it too, with
+a more specific message than the earlier ones: `error: unsupported
+linker extension flag: -z muldefs`. Read literally, this means `zig
+cc`'s driver does parse the `-z <value>` *form* (that's why `-z relro`/
+`-z now`/`-z noexecstack` work), but validates the *value* against its
+own separate, narrower allowlist — `muldefs` isn't on it either, even
+though the flag mechanism itself is recognized.
+
+Three flag-spelling attempts in a row rejected by `zig cc`'s own driver
+(`-rpath-link`, `--allow-multiple-definition`, `-z muldefs`), each
+discovered only after a full ~15-20 minute CI cycle. Stopped guessing at
+a fourth spelling and fixed the actual root cause instead, which was
+already identified precisely two entries ago: `elfutils`' own `lib/
+crc32.c` has no `static`/hidden-visibility marker on its `crc32`
+function, which is what causes the collision with zlib's own public
+`crc32()` in the first place. Implemented via a Conan `post_source`
+hook (`conan.io/2.0/reference/extensions/hooks.html`) — a small Python
+file at `~/.conan2/extensions/hooks/hook_elfutils_crc32.py`, created by
+`quickstart-f4-qt.sh`/`build-f4-qt.sh` itself before invoking `conan
+install`, which patches `lib/crc32.c` to add `static` right after
+Conan fetches `elfutils`' source, before `build()` runs. This is the
+correct, upstream-shaped fix (the function was never meant to be
+externally visible) and works regardless of which specific linker
+flags `zig cc`'s driver happens to recognize — sidesteps the whole
+guessing game rather than trying a fourth spelling blind.
+
+Tested thoroughly before committing, not just written and hoped:
+extracted the exact hook-creation command `--print-plan` produces and
+actually executed it (not just printed it) to catch any heredoc/
+escaping issues before spending another CI cycle; validated the
+resulting Python file's syntax with `ast.parse`; ran the patch's exact
+string-replace logic against `elfutils`' real, current `lib/crc32.c`
+(cloned directly from upstream) and confirmed it successfully adds
+`static` to the real function; compiled a minimal reproduction of the
+patched signature to confirm `static` on its own introduces no syntax
+issue (unrelated compile errors surfaced when compiling the real file
+standalone, from missing build-generated `config.h` and other
+pre-existing declarations in `system.h` entirely unrelated to `crc32`
+— not something this patch caused, confirmed by isolating just the
+signature change in a clean minimal file that compiled and ran fine).
+
+Not yet re-run against real CI — the next concrete step. If this
+mechanism proves reliable, it's also the template for any future
+"actually need to patch a third-party package's source" situation this
+project runs into, rather than something built ad hoc each time.
+
 ## f4-qt: `--allow-multiple-definition` was itself an unsupported zig cc flag (another known, filed zig bug) — switched to `-z muldefs`
 
 The `crc32` duplicate-symbol fix from the previous entry got past the
