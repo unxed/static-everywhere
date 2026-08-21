@@ -1,5 +1,44 @@
 # STATUS
 
+## f4-qt: previous `elfutils` fix confirmed NOT to have worked (via real `config.log` from the exact commit that supposedly fixed it) — replaced with an unconditional wrapper-level fix
+
+The user caught a real mistake in the previous entry's own diagnosis. A
+new CI run's diagnostic log looked byte-identical (including the
+runner's hostname) to the prior failure, and I concluded it must be
+stale/cached data from before the `elfutils*:tools.build:exelinkflags`
+fix — but the run's own summary page showed it was triggered against
+the exact commit containing that fix (`6b6bf8c`). The "identical
+hostname" reasoning was wrong (GitHub Actions can reuse a warm runner
+across close-together manual triggers of the same workflow) — the
+config.log being identical meant something more direct: **the
+package-scoped conf override genuinely did not take effect**, confirmed
+by re-reading that exact config.log's compile line: `-pie` is still
+present alongside `-shared`, unchanged.
+
+Root cause of the override not working, best understanding without
+digging further into Conan internals: OpenSSL's own Configure/Makefile
+system and elfutils' plain GNU autotools apparently pull LDFLAGS from
+Conan's generated files at different points/mechanisms, and a
+package-scoped `tools.build:exelinkflags` conf reliably reaches one but
+not the other (openssl's own final `.so` link picked it up; elfutils'
+early `configure`-time `__thread`-support probe did not).
+
+**Fixed properly instead of chasing the exact Conan mechanism further**:
+moved the fix into `onebin/toolchain/zig-cc`/`zig-c++` themselves,
+unconditionally — the same place that already reliably fixes the
+`-rpath-link` issue. `-pie` and `-shared` are never simultaneously valid
+for *any* package this project could ever build (not just inconvenient
+here, not meaningful ELF at all), so both wrappers now drop `-pie`
+whenever `-shared` is also present in the argument list, regardless of
+which package is being compiled — no per-package Conan overrides needed
+at all any more; removed the now-redundant `openssl*`/`elfutils*`
+overrides from `tools/build-f4-qt.sh` entirely. Tested the filtering
+logic directly against a reconstructed version of elfutils' own real
+failing command line before committing — confirmed `-pie` is dropped,
+`-shared` and everything else pass through unchanged.
+
+Not yet re-run against real CI — the next concrete step.
+
 ## f4-qt CI: real progress confirmed, two things worth naming — cache-save race (benign) and `elfutils`' `-pie`/`-shared` conflict (same class as `openssl`, now fixed)
 
 Next real CI run: got past `libmount`/`openssl` and 12 further packages

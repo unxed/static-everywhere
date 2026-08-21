@@ -58,4 +58,35 @@ set -- $(for _onebin_arg in "$@"; do
     esac
 done)
 
+# Found first with openssl's providers/legacy.so, then again with
+# elfutils' own `checking for __thread support` configure probe (two
+# unrelated packages, two different build systems -- OpenSSL's own
+# Configure/Makefile vs. plain GNU autotools): whenever -shared is also
+# present, this project's own global -pie (added for hardening on real
+# executables) collides with it ("error: dynamic libraries cannot be
+# position independent executables"). A per-package Conan conf override
+# (tools.build:exelinkflags scoped to just that package) fixed this for
+# openssl but, confirmed directly from elfutils' own config.log, did NOT
+# take effect for elfutils' early configure-time probe -- evidently
+# different build systems pull LDFLAGS from Conan's generated files at
+# different points, and package-scoped conf overrides don't reliably
+# reach all of them. -pie and -shared are never simultaneously valid
+# for any package this project could ever build (the combination isn't
+# meaningful ELF, not just inconvenient here), so fixing it here,
+# unconditionally, for every future package that might hit the same
+# combination, is both more reliable and simpler than chasing exactly
+# which Conan generator each build system's LDFLAGS actually come from.
+has_shared=0
+for _onebin_arg in "$@"; do
+    if [ "$_onebin_arg" = "-shared" ]; then
+        has_shared=1
+    fi
+done
+if [ "$has_shared" = 1 ]; then
+    # shellcheck disable=SC2046
+    set -- $(for _onebin_arg in "$@"; do
+        [ "$_onebin_arg" = "-pie" ] || printf '%s\n' "$_onebin_arg"
+    done)
+fi
+
 exec zig cc "$@"

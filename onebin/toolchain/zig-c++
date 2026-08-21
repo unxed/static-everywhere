@@ -20,4 +20,21 @@ set -- $(for _onebin_arg in "$@"; do
     esac
 done)
 
+# See zig-cc for why: -pie and -shared are never simultaneously valid,
+# and per-package Conan conf overrides didn't reliably reach every build
+# system's early configure-time probes. Fixed unconditionally here
+# instead.
+has_shared=0
+for _onebin_arg in "$@"; do
+    if [ "$_onebin_arg" = "-shared" ]; then
+        has_shared=1
+    fi
+done
+if [ "$has_shared" = 1 ]; then
+    # shellcheck disable=SC2046
+    set -- $(for _onebin_arg in "$@"; do
+        [ "$_onebin_arg" = "-pie" ] || printf '%s\n' "$_onebin_arg"
+    done)
+fi
+
 exec zig c++ "$@"
