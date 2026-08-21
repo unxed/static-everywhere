@@ -1,5 +1,48 @@
 # STATUS
 
+## f4-qt: `elfutils` crc32 hook was created but never fired — added diagnostics instead of guessing at a second mechanism blind
+
+The `post_source` hook from the previous entry did get created (visible
+in the CI log — the file-write command itself echoed its own content,
+as expected), but **never actually fired**: none of the hook's own
+diagnostic messages (`"static-everywhere hook: patched elfutils..."`,
+or either warning variant) appeared anywhere in the real CI log, and the
+`crc32` duplicate-symbol error was completely unchanged from before the
+hook existed. Checked Conan's own docs specifically for whether hooks
+in `<conan_home>/extensions/hooks/` need an explicit activation step
+(some Conan 1.x versions required one): confirmed, repeatedly, across
+several doc versions, that "activation... is done automatically once
+the hook file is stored in the hook folder" — no separate registration
+should be needed, which is what this project's mechanism already
+assumed.
+
+Given placement and naming both match documented conventions, and the
+sandbox test of the file-creation mechanism itself (extracting and
+actually running `--print-plan`'s exact hook-writing command, then
+importing the resulting module and calling `post_source` directly)
+worked flawlessly — the uncertainty is now squarely about *why Conan
+itself* isn't invoking this hook in the real CI environment, not about
+anything this project's own script does wrong in producing the file.
+Rather than guess at a second, different hook mechanism blind (another
+full CI cycle to find out it's also wrong), added real diagnostics to
+the *existing* mechanism first: a module-level `print()` that fires the
+instant Conan loads this file at all (regardless of whether
+`post_source` is ever called for anything), and an unconditional
+`print()` inside `post_source` itself for *every* package it's called
+for (not just `elfutils`) — together these will tell apart "Conan never
+loads hook files from this location at all" from "it loads fine but
+this specific condition or Conan-version behavior has a real bug" on
+the next run, rather than guessing a second mechanism blind. Tested
+end-to-end in the sandbox again before committing: extracted and ran
+the real hook-creation command, then genuinely imported the resulting
+module and called `post_source()` against a fake package, confirming
+both diagnostic prints appear and the patch itself still applies
+correctly.
+
+Not yet re-run against real CI — the next concrete step, and this time
+should finally reveal *why* the hook isn't firing, not just that it
+isn't.
+
 ## f4-qt: `-z muldefs` also rejected by zig cc — stopped guessing at flag spellings, fixed the elfutils/crc32 collision at the actual root instead
 
 Third failed attempt at telling the linker to tolerate the `crc32`

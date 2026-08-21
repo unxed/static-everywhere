@@ -272,9 +272,23 @@ elif [ "${CONFIG}" = "linux" ] && [ "${TOOLCHAIN}" = "zig" ]; then
 # runtime), not a toolchain quirk -- see STATUS.md. Patching \`static\`
 # onto the definition here is the correct fix, applied once right after
 # Conan fetches elfutils' source, before its own build() runs.
+#
+# The first attempt at this hook silently never fired (confirmed: none
+# of its own output messages appeared anywhere in a real CI log, and
+# the crc32 collision was unchanged) -- diagnostic prints added below,
+# both at module-import time (fires the instant Conan loads this file
+# at all, regardless of whether post_source ever runs for any package)
+# and unconditionally inside post_source for *every* package (not just
+# elfutils), to tell apart \"Conan never loads hook files from here\"
+# from \"it loads fine but this specific condition/logic has a bug\" on
+# the next run, rather than guessing a second time blind.
 import os
+import sys
+
+print(\"static-everywhere hook: hook_elfutils_crc32.py loaded\", file=sys.stderr)
 
 def post_source(conanfile):
+    print(f\"static-everywhere hook: post_source() called for {conanfile.name}\", file=sys.stderr)
     if conanfile.name != \"elfutils\":
         return
     path = os.path.join(conanfile.source_folder, \"lib\", \"crc32.c\")
