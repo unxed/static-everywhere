@@ -1,5 +1,36 @@
 # STATUS
 
+## f4-qt: `elfutils` crc32 hook root cause finally found — cached source from earlier CI attempts means `source()` never re-runs, so `post_source` never fires
+
+The diagnostics fixed two entries ago (`-vv` verbosity specifically)
+paid off decisively this time: the full CI log clearly shows
+`static-everywhere hook: hook_elfutils_crc32.py module loaded` firing
+three separate times — confirming Conan genuinely finds and imports the
+hook file — but **no** `post_source() entered for ...` message appears
+anywhere after that, for `elfutils` or any other package. Not a
+condition bug, not a scoping issue: `post_source` itself is never
+invoked at all, for anything.
+
+Real, well-grounded diagnosis: this project's own `actions/cache`
+mechanism restores `~/.conan2/p` from earlier CI attempts — including
+`elfutils`' already-fetched source, cached from *before* this hook ever
+existed. Conan correctly treats an already-present source folder as not
+needing `source()` re-invoked, and `post_source` only fires as part of
+that method running. The hook was never broken; the source it needed to
+patch had already been fetched and cached long before the hook was
+written, and nothing was forcing Conan to fetch it again.
+
+Fixed by forcing exactly that: `conan remove 'elfutils/*' -c` right
+before the main install, scoped to `elfutils` only so the other ~34
+packages' cached build progress stays untouched. Checked, not assumed,
+that `conan remove` on a pattern that matches nothing is a real error in
+Conan 2.x (confirmed via an open upstream GitHub issue asking for
+exactly a "skip silently if missing" flag, which doesn't exist yet) --
+`|| true` here is handling a genuinely expected case (first run, nothing
+cached yet), not masking a real failure.
+
+Not yet re-run against real CI — the next concrete step.
+
 ## f4-qt CI diagnostics: second, deeper audit pass — five more real gaps found and fixed, one false alarm ruled out
 
 Five gaps found and fixed in one pass, on a pipeline this size, was

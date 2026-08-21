@@ -354,6 +354,21 @@ HOOKEOF"
 
     plan_step "env PATH=\"${OUT}/conan-venv/bin:\$PATH\" conan profile detect --force"
 
+    # Real, concrete diagnosis of why the crc32 hook never fired despite
+    # loading correctly (confirmed via -vv: "hook_elfutils_crc32.py
+    # module loaded" appears in the log, but post_source() itself never
+    # does, for elfutils or anything else): this project's own
+    # actions/cache restore step brings back elfutils' already-fetched
+    # source from an earlier CI attempt (predating this hook's own
+    # existence), and Conan correctly treats already-cached source as
+    # not needing source() re-invoked -- which means post_source()
+    # never runs either, on this run or any future one, for as long as
+    # that cached source folder persists. Force elfutils' source to be
+    # re-fetched by removing just it from the cache immediately before
+    # the real install -- `-c` for non-interactive, scoped to elfutils
+    # only so the other ~34 packages' cached progress is untouched.
+    plan_step "env PATH=\"${OUT}/conan-venv/bin:\$PATH\" conan remove 'elfutils/*' -c || true"
+
     plan_step "cd ${SRC} && git config --global --add safe.directory \"\$PWD\""
 
     # Same fontconfig-recipe-URL workaround as upstream's own script
