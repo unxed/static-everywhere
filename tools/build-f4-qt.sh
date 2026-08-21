@@ -255,6 +255,25 @@ elif [ "${CONFIG}" = "linux" ] && [ "${TOOLCHAIN}" = "zig" ]; then
     # crc32 implementations are the same standard CRC-32 algorithm, so
     # letting the linker keep whichever one it finds first is behaviorally
     # safe regardless of which one wins.
+    #
+    # Update: the flag itself, --allow-multiple-definition, turned out to
+    # be its own separate zig cc bug (ziglang/zig#21455, "unsupported
+    # linker arg: --allow-multiple-definition" -- confirmed via search,
+    # not guessed, an already-filed issue matching this exact flag),
+    # same class as the earlier -rpath-link case: zig cc's driver only
+    # recognizes a hardcoded allowlist of -Wl, flags, and this wasn't on
+    # it, regardless of ld.lld itself supporting it fine. Switched to
+    # -Wl,-z,muldefs -- the same semantic effect, but parsed through
+    # lld's generic -z option handling rather than as its own dedicated
+    # long-option flag. Reasonably confident this specific spelling
+    # works, not just guessed: this project's own toolchain already
+    # successfully passes other -z flags (-z relro, -z now, -z
+    # noexecstack) through zig-cc in every single package built so far,
+    # confirming -z-prefixed flags generally are on zig's allowlist even
+    # where the specific long-option equivalent (--allow-multiple-
+    # definition) isn't. Not verified against a live zig invocation in
+    # this sandbox (no zig available here) -- the next CI run is the
+    # actual test.
     plan_step "mkdir -p ${OUT}/conan-venv"
     plan_step "command -v uv >/dev/null 2>&1 || { echo 'error: uv not found -- https://astral.sh/uv' >&2; exit 1; }"
     plan_step "uv venv --python 3.12 --clear ${OUT}/conan-venv"
@@ -295,7 +314,7 @@ elif [ "${CONFIG}" = "linux" ] && [ "${TOOLCHAIN}" = "zig" ]; then
 -c 'tools.build:cxxflags=[\"-target\",\"x86_64-linux-gnu.${GLIBC_BASELINE}\"]' \
 -c 'libmount*:tools.build:cflags=[\"-DHAVE_CLOSE_RANGE=1\"]' \
 -c 'tools.build:sharedlinkflags=[\"-target\",\"x86_64-linux-gnu.${GLIBC_BASELINE}\"]' \
--c 'elfutils*:tools.build:sharedlinkflags=[\"-target\",\"x86_64-linux-gnu.${GLIBC_BASELINE}\",\"-Wl,--allow-multiple-definition\"]' \
+-c 'elfutils*:tools.build:sharedlinkflags=[\"-target\",\"x86_64-linux-gnu.${GLIBC_BASELINE}\",\"-Wl,-z,muldefs\"]' \
 -c 'tools.build:exelinkflags=[\"-target\",\"x86_64-linux-gnu.${GLIBC_BASELINE}\",\"-pie\"]' \
 -c tools.system.package_manager:mode=check \
 --output-folder=qt/host/build-portable-linux"

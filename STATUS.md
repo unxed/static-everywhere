@@ -1,5 +1,37 @@
 # STATUS
 
+## f4-qt: `--allow-multiple-definition` was itself an unsupported zig cc flag (another known, filed zig bug) — switched to `-z muldefs`
+
+The `crc32` duplicate-symbol fix from the previous entry got past the
+actual `crc32` conflict — confirmed by the CI run regressing to an
+*earlier* failure point (`checking whether the C compiler works... no`,
+the same class as the very first `elfutils` attempt), meaning the
+package-scoped conf really did apply broadly to this package's LDFLAGS
+(reaching even the early compiler-works probe, not just the final `.so`
+link) — but the flag itself, `-Wl,--allow-multiple-definition`, turned
+out to be its own separate `zig cc` limitation: `error: unsupported
+linker arg: --allow-multiple-definition`. Checked, not guessed: this is
+[ziglang/zig#21455](https://github.com/ziglang/zig/issues/21455), an
+already-filed, still-open issue matching this exact flag — same class
+of bug as the earlier `-rpath-link` case (`zig cc`'s driver only
+recognizes a hardcoded allowlist of `-Wl,` flags, `ld.lld` itself
+supports plenty more than that allowlist covers).
+
+Switched to `-Wl,-z,muldefs` — same semantic effect (GNU ld/lld both
+treat it as an alias for allowing multiple definitions), but parsed
+through `lld`'s generic `-z <value>` handling rather than as its own
+dedicated long-option flag. Reasonably confident this specific spelling
+will work, not a blind guess: this project's own toolchain already
+successfully passes other `-z`-prefixed flags (`-z relro`, `-z now`,
+`-z noexecstack`) through `zig cc` in *every single package* built so
+far in this whole build — confirming `-z`-prefixed flags generally are
+on `zig`'s allowlist even where a specific long-option equivalent isn't.
+Not verified against a live `zig` invocation (none available in this
+sandbox) — honestly flagged as such in the code comment too, not
+overstated as proven.
+
+Not yet re-run against real CI — the next concrete step.
+
 ## f4-qt: `-pie`/`-shared` wrapper fix confirmed working (got past both openssl AND elfutils' earlier failure) — new, unrelated, real elfutils/zlib upstream bug found next
 
 Real CI progress, confirming the previous fix genuinely worked this
