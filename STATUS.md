@@ -258,15 +258,44 @@ The fixed collector will answer this outright on the next run: the
 `INCLUDES` line for `qcollator_icu.cpp.o` either contains the Conan ICU
 path or it does not.
 
-### A shortcut worth considering rather than waiting
+### Rejected: disabling ICU
 
-The Conan Qt recipe exposes `with_icu`. Setting `qt/*:with_icu=False`
-drops the dependency entirely — Qt Core has its own locale and codec
-paths on Linux and does not need ICU — which sidesteps the whole
-question and makes the artifact smaller. Whether that is acceptable
-depends on whether f4 needs ICU-quality collation and timezone display
-names; it is a product decision, not a toolchain one, so it is recorded
-here rather than taken.
+`qt/*:with_icu=False` would make this go away. **Not doing that.**
+Internationalisation matters in its own right, and more importantly this
+build is a showcase for a toolchain other people are meant to use for
+their own software. A toolchain that silently compiles against the
+host's copy of a vendored library is broken for everyone, not just for
+Qt; switching off the one dependency that happened to expose it would
+hide a defect that would then surface in somebody else's build, without
+version-suffixed symbols to make it obvious. The bug gets fixed, not
+routed around.
+
+### Eliminated by reproduction, not by reading
+
+Qt's *exact* call was replayed locally against this run's own generated
+files — `find_package(ICU 50.1 COMPONENTS i18n uc data)`, then
+`target_link_libraries(Core PRIVATE ICU::i18n ICU::uc ICU::data)`:
+`ICU_FOUND=1`, all three targets carry the right
+`INTERFACE_INCLUDE_DIRECTORIES`, and the generated `build.ninja` shows
+`INCLUDES = -isystem <icu>/include` on the compile line. Reading Qt's
+own `qt_find_package` (`QtFindPackageHelpers.cmake`) and
+`qt_internal_extend_target` (`QtTargetHelpers.cmake`) adds nothing that
+would strip include directories: the former only attaches metadata
+properties, the latter does a plain `target_link_libraries(${target}
+PRIVATE ${arg_LIBRARIES})`.
+
+There is also a constraint worth stating, because it rules out a whole
+class of explanation: `qcollator_icu.cpp` is a `SOURCES` entry in the
+*same* `qt_internal_extend_target(Core CONDITION QT_FEATURE_icu …)` call
+that carries `LIBRARIES ICU::i18n ICU::uc ICU::data`, and it was
+compiled. So that call ran, with its condition true, and both halves of
+it should have applied.
+
+That is a genuine contradiction with the observed result, and it means
+one of the assumptions above is wrong in a way that reading cannot
+reveal. The compile line settles it, so stop guessing and go get it: the
+`INCLUDES` line for `qcollator_icu.cpp.o` either contains the Conan ICU
+path or it does not, and the fixed extractor prints exactly that.
 
 <!-- ------------------------------------------------------------------ -->
 
