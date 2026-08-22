@@ -43,15 +43,32 @@ MAX_BYTES = 512 * 1024
 OBJ_RE = re.compile(r"[\w./+-]+\.(?:o|obj)\b")
 
 
+# Deliberately strict. The first version of this matched any line
+# containing "undefined" or "duplicate", which sounds right and is not:
+# a real build log is full of *command echoes* carrying flags like
+# `-no-undefined` and `-Wduplicate-enum`. On a real Qt failure that
+# filled the entire budget with liblzma object names from a package that
+# had built successfully twenty minutes earlier, and the three objects
+# the failure actually named never appeared. Match the diagnostic forms
+# -- with their punctuation -- not the bare words.
+FAILURE_RE = re.compile(
+    r"(?:^|\s)(?:error:|warning:\s+.*error:|FAILED:|ninja:\s+build stopped)"
+    r"|undefined symbol:|duplicate symbol:|referenced by|^>>>"
+)
+
+
 def objects_from_log(path):
-    """Object names mentioned anywhere in a line that looks like a failure."""
-    interesting = ("error", "ERROR", "FAILED", "undefined", "duplicate",
-                   "referenced by", ">>>")
+    """Object names named by a line that is genuinely a failure diagnostic.
+
+    Returns the *last* names in file order. A build log is chronological
+    and the failure is at the end; taking the first N would report on
+    whatever packages happened to be noisy earliest.
+    """
     found, seen = [], set()
     try:
         with open(path, encoding="utf-8", errors="replace") as f:
             for line in f:
-                if not any(k in line for k in interesting):
+                if not FAILURE_RE.search(line):
                     continue
                 for m in OBJ_RE.finditer(line):
                     name = m.group(0)
@@ -105,7 +122,13 @@ def main(argv):
         print("# no object files named in any error line of the build log")
         return 0
 
-    wanted = wanted[:MAX_OBJECTS]
+    # Keep the LAST names: the failure is at the end of a build log.
+    dropped = max(0, len(wanted) - MAX_OBJECTS)
+    wanted = wanted[-MAX_OBJECTS:]
+    if dropped:
+        print(f"# {dropped} earlier object name(s) dropped to stay within "
+              f"the {MAX_OBJECTS}-object cap; the failure is at the end of "
+              f"the log, so the newest are kept")
     print(f"# {len(wanted)} object file(s) named in error lines; "
           f"looking each one up in build.ninja")
     for w in wanted:

@@ -191,6 +191,85 @@ caught it). `make test` after every change. Don't touch `filelist.md`.
 
 <!-- ------------------------------------------------------------------ -->
 
+## ICU narrowed to one remaining possibility; the new collector shipped but picked the wrong 60 objects — fixed
+
+The ICU failure reproduced identically (same 26 `_74` symbols, same
+`rcc` link, target 397). Two things came out of this run.
+
+### The collector worked, and was wrong
+
+`04b-compile-commands.txt` was produced — 3.8 KB — but it listed sixty
+**liblzma** objects and none of the three the failure names. Two defects,
+both mine:
+
+1. **The failure filter matched bare words.** It accepted any line
+   containing `undefined` or `duplicate`. A real build log is full of
+   *command echoes* carrying `-no-undefined` and `-Wduplicate-enum` —
+   liblzma's libtool link line has both, and it is one line of several
+   thousand characters naming sixty object files. Now matched on the
+   diagnostic forms with their punctuation (`undefined symbol:`,
+   `duplicate symbol:`, `error:`, `FAILED:`, leading `>>>`).
+2. **It kept the first N objects, not the last.** A build log is
+   chronological and the failure is at the end; the cap was being spent
+   on whichever package happened to be noisiest earliest — one that had
+   built successfully twenty minutes before.
+
+Retested against this run's real log with the earlier noise prepended:
+**exactly three objects, `qtimezonelocale.cpp.o`, `qcollator_icu.cpp.o`
+and `qstringconverter.cpp.o`, and nothing else.** The synthetic
+`build.ninja` test still passes.
+
+Worth noting the shape of the mistake: the filter was written from what
+failure lines *say* rather than from what a build log actually contains.
+The same class as the `*/CMakeFiles/*` near-miss two entries up —
+plausible rule, never checked against real data.
+
+### The cause is now down to one possibility
+
+Everything except Qt's own wiring has been eliminated, using this run's
+own generated files rather than reasoning:
+
+- **Conan is correct.** Copying this run's `FindICU.cmake`,
+  `module-ICUTargets.cmake` and friends into a throwaway CMake project
+  and calling `find_package(ICU)` gives `ICU_FOUND=1 ver=78.2` and all
+  three of `ICU::uc`, `ICU::i18n`, `ICU::data` with
+  `INTERFACE_INCLUDE_DIRECTORIES` pointing at the real package include
+  directory.
+- **CMake propagation is correct.** Linking exactly what Qt links —
+  `target_link_libraries(Core PRIVATE ICU::i18n ICU::uc ICU::data)` —
+  puts `-isystem <icu>/include` on the compile line. Verified by reading
+  the generated `build.ninja`.
+- **Include priority is not the issue, in any spelling.** Five
+  combinations tested against real zig: Conan as `-I`, as `-isystem`,
+  and with a competing plain `-I /usr/include` before *or* after. The
+  Conan directory wins every time — `/usr/include` is demoted to the
+  bottom whichever flag names it. The earlier far2l `TTYX` pattern (a
+  plain `-I /usr/include` displacing a scoped include) is **ruled out**
+  here.
+
+So the ICU include directory simply was not on those compile lines, and
+the remaining question is why Qt's `Core` didn't get it. Note that
+`qstringconverter.cpp` — 25 of the 26 references — is an *unconditional*
+Core source, not part of any ICU-conditional block, so this is not one
+stray file: `Core` as a whole compiled without ICU includes while
+`QT_FEATURE_icu` was `ON`.
+
+The fixed collector will answer this outright on the next run: the
+`INCLUDES` line for `qcollator_icu.cpp.o` either contains the Conan ICU
+path or it does not.
+
+### A shortcut worth considering rather than waiting
+
+The Conan Qt recipe exposes `with_icu`. Setting `qt/*:with_icu=False`
+drops the dependency entirely — Qt Core has its own locale and codec
+paths on Linux and does not need ICU — which sidesteps the whole
+question and makes the artifact smaller. Whether that is acceptable
+depends on whether f4 needs ICU-quality collation and timezone display
+names; it is a product decision, not a toolchain one, so it is recorded
+here rather than taken.
+
+<!-- ------------------------------------------------------------------ -->
+
 ## Qt links ICU against the *host's* headers: 26 `_74` symbols, and `-idirafter /usr/include` is what turned a loud error into a silent one
 
 The `statx` shim worked and openssl passed. Qt now builds to target 397
