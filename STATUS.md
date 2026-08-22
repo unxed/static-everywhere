@@ -191,6 +191,47 @@ caught it). `make test` after every change. Don't touch `filelist.md`.
 
 <!-- ------------------------------------------------------------------ -->
 
+## Diagnostic artifact halved by four role-based exclusions — measured against the real Qt failure, and one tempting rule turned out to be a trap
+
+Qt's build tree generates ~9600 small text files, and the collector was
+shipping all of them because they are, correctly, text. Measured on the
+actual Qt failure artifact rather than estimated:
+
+| category | size | files |
+| --- | --- | --- |
+| `*/lib/cmake/*` — installed package-config exports | 7.63 MB | 2378 |
+| `cmake_install.cmake` — generated install scripts | 2.75 MB | 246 |
+| `*/qt_sbom/*` — SBOM output | 2.71 MB | 632 |
+| `*_autogen.dir/*` — moc/uic bookkeeping | 0.6 MB | 220 |
+
+All four are generated bookkeeping with no diagnostic content. Excluding
+them: **10.6MB → 5.4MB zipped**, 9609 candidate files → 6133. Verified
+by running the exact `find` command against the real tree, not by
+reasoning about the globs.
+
+These are directory **roles**, which is the distinction three earlier
+rounds of this got wrong by reaching for filename allowlists instead.
+And every excluded file is still listed with its size in
+`00-listing-*`, so nothing becomes invisible — it can be asked for
+specifically next time.
+
+**The trap, recorded so nobody re-proposes it.** `*/CMakeFiles/*` looks
+like the obvious fifth rule: 6.55MB across 992 files, the largest
+remaining block. It must not be excluded. That directory holds
+`CMakeFiles/CMakeConfigureLog.yaml` — the single file that diagnosed
+both the `WrapOpenGL`/`EGL` detection failure and the
+`statx`-vs-`renameat2` contrast. The first draft of this change modelled
+the savings with that rule included and the survival check *appeared* to
+pass, because the check was written against a different rule list than
+the one being measured. The file is 0.39MB and the rest of `CMakeFiles`
+is spread thin across per-target directories, so there is nothing much
+to win there and a great deal to lose. A comment in the workflow says so
+at the point of temptation.
+
+YAML validates; no other step touched.
+
+<!-- ------------------------------------------------------------------ -->
+
 ## `statx` shim broke openssl on its first CI run — an object file in a flag list is not idempotent; fixed by weak linkage plus package scoping
 
 Failed after ~20 minutes, at `openssl`, not at Qt:

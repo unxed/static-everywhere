@@ -235,7 +235,32 @@ jobs:
           while IFS= read -r d; do
             [ -n "$d" ] && [ -d "$d" ] || continue
             rel=$(printf '%s' "$d" | sed 's|^/||; s|/|_|g')
+            #     Role-based exclusions, measured against a real Qt
+            #     failure artifact rather than guessed. Qt's build tree
+            #     generates ~9600 small text files, and four kinds of
+            #     generated bookkeeping account for half the download
+            #     while carrying no diagnostic information at all:
+            #     SBOM output, installed package-config exports,
+            #     per-directory install scripts, and moc/uic autogen
+            #     bookkeeping. Excluding them took that artifact from
+            #     10.6MB to 5.4MB zipped. These are directory *roles*,
+            #     not a filename allowlist -- the distinction that the
+            #     three earlier rounds of this got wrong -- and every
+            #     excluded file is still listed with its size in
+            #     00-listing-*, so nothing becomes invisible: it can be
+            #     asked for specifically next time.
+            #
+            #     Do NOT add '*/CMakeFiles/*' here. That directory holds
+            #     CMakeConfigureLog.yaml, which is the single file that
+            #     diagnosed both the WrapOpenGL/EGL detection failure and
+            #     the statx-vs-renameat2 contrast. Checked: it is 0.39MB
+            #     and the rest of CMakeFiles is spread thin, so there is
+            #     nothing to win there and a great deal to lose.
             find "$d" -type f -size -2M \
+                 ! -path '*/qt_sbom/*' \
+                 ! -path '*/lib/cmake/*' \
+                 ! -path '*_autogen.dir/*' \
+                 ! -name 'cmake_install.cmake' \
                  ! -name '*.o' ! -name '*.obj' ! -name '*.a' ! -name '*.lo' \
                  ! -name '*.so' ! -name '*.so.*' 2>/dev/null > /tmp/candidates.txt
             while IFS= read -r f; do
