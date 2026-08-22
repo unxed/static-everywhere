@@ -23,7 +23,7 @@ for this entire stretch of work.
   changes cheaply.
 - Compiler wrappers: `onebin/toolchain/zig-cc`, `zig-c++`.
 
-### The one thing currently blocking — Qt's `moc` fails to link on `statx`; root cause found and proven, fix **not chosen yet**
+### The one thing currently blocking — Qt's `moc` failed to link on `statx`; **shim implemented**, not yet CI-verified
 
 The `CMAKE_LIBRARY_ARCHITECTURE` fix worked. Qt now configures and
 **builds**, reaching target 124 of 6627 before the first executable link
@@ -48,11 +48,20 @@ symbol delta is seven names (`fcntl64, renameat2, statx, thrd_current,
 thrd_equal, thrd_sleep, thrd_yield`), and nothing but `statx` is live
 for this build.
 
-**A decision is needed before the next run**: raise the baseline to
-2.28 (one line, but deviates from upstream f4's Ubuntu 18.04 target), or
-inject a `statx` syscall shim (tested here end to end — links, runs,
-`onebin audit --glibc-max 2.27` says PASS Level 1). Full detail, with
-evidence for each, in the log entry below.
+**Decided and implemented: the shim, not a baseline bump.** Keeping 2.27
+is the point — these builds are supposed to run on old systems, and
+raising the baseline to dodge one symbol trades that away. `statx()` is
+now provided by `contrib/f4-qt/compat/statx.c`, the same thin
+`syscall(SYS_statx, …)` wrapper glibc itself is, compiled ahead of
+`conan install` and appended to `tools.build:exelinkflags`. Verified
+locally against a reconstruction of Qt's actual `moc` link line
+(archive ordering and `--gc-sections` included): links, runs, returns
+real kernel data, `onebin audit --glibc-max 2.27` → `requires
+GLIBC_2.2.5`, **PASS Level 1**.
+
+Not yet CI-verified. Next failure, if any, will be something new: the
+2.27→2.28 delta is a closed set of seven symbols and only `statx` was
+live.
 
 `xkbcommon` is **passed** — the `-idirafter /usr/include` fix worked, and
 the build now reaches **Qt**, the last and heaviest package. Qt's
@@ -168,6 +177,57 @@ Patches are delivered as `git format-patch` output and must apply with
 before handing anything over (the sandbox remote has gone stale
 mid-session before, and a failed `git am` on a fresh clone is what
 caught it). `make test` after every change. Don't touch `filelist.md`.
+
+<!-- ------------------------------------------------------------------ -->
+
+## `statx` shim implemented — 2.27 kept deliberately, verified against a reconstruction of Qt's real `moc` link line
+
+Decision taken: **keep the 2.27 baseline, ship the symbol.** Running on
+old systems is the whole point of picking 2.27; raising it to 2.28 to
+dodge a single function would trade that away for a one-line diff. It is
+also the doctrine-shaped answer — Layer 1 says ship your code rather
+than demand a newer host.
+
+`contrib/f4-qt/compat/statx.c` provides the same thin
+`syscall(SYS_statx, …)` wrapper glibc itself is. It is compiled by
+`tools/build-f4-qt.sh` immediately before `conan install` — it has to
+exist before the first configure-time link probe any package runs — and
+appended to `tools.build:exelinkflags`.
+
+Three things that were checked rather than assumed:
+
+- **Archive ordering.** Conan's `exelinkflags` land in
+  `CMAKE_EXE_LINKER_FLAGS`, which CMake emits *before* the object files
+  and libraries. That is the position where a static *archive* would
+  silently fail to resolve anything. A plain `.o` is unconditionally
+  linked and its definition is visible to archive members pulled in
+  later, so the shim is deliberately an object, not a `libcompat.a`.
+  Confirmed by rebuilding Qt's actual `moc` link line — shim object in
+  the flags position, the referencing translation unit inside a static
+  archive, `--gc-sections` on — which links, runs, and returns real
+  kernel data (`qt_real_statx -> 0, size=3`).
+- **The path must be absolute.** `--out` may be relative, and every use
+  of it so far ran from this script's own directory. A flag handed to
+  Conan does not: it is re-evaluated inside each package's build folder
+  under `~/.conan2/p/b/…`, where a relative path resolves to nothing and
+  would have broken *every* executable link in the graph, not just Qt's.
+  Added `OUT_ABS`, computed by string rather than by `cd` so
+  `--print-plan` still works before the directory exists. The CI
+  workflow happens to pass an absolute `--out` already, so this would
+  have worked there by luck — which is exactly the kind of thing that
+  breaks the first time someone runs the script by hand.
+- **Old kernels.** Pre-4.11 has no `SYS_statx`; the syscall returns
+  `-ENOSYS` and the shim reports `-1`/`errno`. Qt's own `#else` branch
+  already returns `-ENOSYS` and falls back to `stat()`, so the shimmed
+  build degrades exactly the way the unshimmed one would.
+
+`onebin audit --profile hybrid --glibc-max 2.27` on the result:
+`requires GLIBC_2.2.5`, **0 errors, PASS Level 1**. `shellcheck` clean,
+`make test` 272 passed unchanged.
+
+An upstream report for Qt is drafted separately: the `statx` guard
+should be a link-checked feature the way `renameat2` in the same file
+already is.
 
 <!-- ------------------------------------------------------------------ -->
 

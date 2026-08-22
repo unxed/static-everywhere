@@ -157,6 +157,17 @@ fi
 
 plan_step "mkdir -p ${OUT}"
 
+# Absolute form of --out. Most uses of ${OUT} are fine relative, because
+# they run from this script's own working directory, but anything handed
+# to Conan as a *flag* is re-evaluated inside each package's own build
+# folder under ~/.conan2/p/b/..., where a relative path silently resolves
+# to nothing. Done by string, not by `cd`, so --print-plan still works
+# before the directory exists.
+case "${OUT}" in
+    /*) OUT_ABS="${OUT}" ;;
+    *)  OUT_ABS="$(pwd)/${OUT#./}" ;;
+esac
+
 # 3. Build, Audit, and Smoke Test
 if [ "${CONFIG}" = "linux" ] && [ "${TOOLCHAIN}" = "host" ]; then
     plan_step "cd ${SRC} && ci/build-portable-qt-linux.sh"
@@ -367,6 +378,17 @@ elif [ "${CONFIG}" = "linux" ] && [ "${TOOLCHAIN}" = "zig" ]; then
     # cc's driver happens to recognize, and doesn't risk masking a
     # genuine duplicate-symbol bug in some other package the way a
     # project-wide --allow-multiple-definition-equivalent would.
+    # statx() compat shim. zig cc's -target versions the symbol stubs but
+    # not the headers, so Qt's bare `#ifdef STATX_BASIC_STATS` guard sees a
+    # glibc newer than the 2.27 it will link against, emits the call, and
+    # fails at link time on qtbase/libexec/moc. Full reasoning, evidence
+    # and the alternatives considered are in contrib/f4-qt/compat/statx.c
+    # and STATUS.md. Compiled here, ahead of `conan install`, because the
+    # object has to exist before the very first configure-time link probe
+    # any package runs -- it is appended to exelinkflags below, so every
+    # executable link in the graph references it.
+    plan_step "${ZIGCC} -target x86_64-linux-gnu.${GLIBC_BASELINE} -O2 -fPIC -c ${REPO_ROOT}/contrib/f4-qt/compat/statx.c -o ${OUT_ABS}/compat-statx.o"
+
     plan_step "mkdir -p \$HOME/.conan2/extensions/hooks"
     plan_step "cat > \$HOME/.conan2/extensions/hooks/hook_elfutils_crc32.py << 'HOOKEOF'
 # static-everywhere: elfutils' own lib/crc32.c defines \`crc32\` with no
@@ -495,7 +517,7 @@ HOOKEOF"
 -c 'tools.build:cxxflags=[\"-target\",\"x86_64-linux-gnu.${GLIBC_BASELINE}\"]' \
 -c 'libmount*:tools.build:cflags=[\"-DHAVE_CLOSE_RANGE=1\"]' \
 -c 'tools.build:sharedlinkflags=[\"-target\",\"x86_64-linux-gnu.${GLIBC_BASELINE}\"]' \
--c 'tools.build:exelinkflags=[\"-target\",\"x86_64-linux-gnu.${GLIBC_BASELINE}\",\"-pie\"]' \
+-c 'tools.build:exelinkflags=[\"-target\",\"x86_64-linux-gnu.${GLIBC_BASELINE}\",\"-pie\",\"${OUT_ABS}/compat-statx.o\"]' \
 -c tools.system.package_manager:mode=check \
 -vv \
 --output-folder=qt/host/build-portable-linux"
