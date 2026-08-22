@@ -23,7 +23,7 @@ for this entire stretch of work.
   changes cheaply.
 - Compiler wrappers: `onebin/toolchain/zig-cc`, `zig-c++`.
 
-### The one thing currently blocking — Qt's `moc` failed to link on `statx`; **shim implemented**, not yet CI-verified
+### The one thing currently blocking — nothing known; `statx` shim landed and its first CI run found one real defect, now fixed
 
 The `CMAKE_LIBRARY_ARCHITECTURE` fix worked. Qt now configures and
 **builds**, reaching target 124 of 6627 before the first executable link
@@ -59,9 +59,20 @@ locally against a reconstruction of Qt's actual `moc` link line
 real kernel data, `onebin audit --glibc-max 2.27` → `requires
 GLIBC_2.2.5`, **PASS Level 1**.
 
-Not yet CI-verified. Next failure, if any, will be something new: the
-2.27→2.28 delta is a closed set of seven symbols and only `statx` was
-live.
+The shim's first CI run failed after ~20 minutes — **not at Qt**, at
+`openssl`, with `duplicate symbol: statx`. Cause: the object was in the
+*global* `exelinkflags`, and a flag list is not idempotent. openssl
+assembles LDFLAGS from several sources and replayed the whole list three
+times; three `-target`/`-pie` are harmless, three copies of an object
+file are not. It also reuses those flags for `-shared` links, so the
+object reached `providers/legacy.so` despite only ever being added to
+*exe* flags. Fixed two ways (details in the log entry below): the shim
+is now `__attribute__((weak))`, and the object is scoped to `qt/*`
+instead of every package in the graph.
+
+Not yet re-run. The 2.27→2.28 delta remains a closed set of seven
+symbols with only `statx` live, so a next failure should be something
+new.
 
 `xkbcommon` is **passed** — the `-idirafter /usr/include` fix worked, and
 the build now reaches **Qt**, the last and heaviest package. Qt's
@@ -177,6 +188,70 @@ Patches are delivered as `git format-patch` output and must apply with
 before handing anything over (the sandbox remote has gone stale
 mid-session before, and a failed `git am` on a fresh clone is what
 caught it). `make test` after every change. Don't touch `filelist.md`.
+
+<!-- ------------------------------------------------------------------ -->
+
+## `statx` shim broke openssl on its first CI run — an object file in a flag list is not idempotent; fixed by weak linkage plus package scoping
+
+Failed after ~20 minutes, at `openssl`, not at Qt:
+
+```
+ld.lld: error: duplicate symbol: statx
+>>> defined at contrib/f4-qt/compat/statx.c:61
+>>> defined at contrib/f4-qt/compat/statx.c:61
+make[1]: *** [Makefile:18064: providers/legacy.so] Error 1
+```
+
+The link line says it plainly — the object appears **three times**:
+
+```
+... -pie <out>/compat-statx.o -target ... -pie <out>/compat-statx.o
+    -m64 -target ... -pie <out>/compat-statx.o -o providers/legacy.so
+```
+
+Two things were wrong, and the previous entry's own reasoning walked
+past both:
+
+1. **A flag list is not idempotent.** Build systems that assemble
+   LDFLAGS from several Conan-generated sources replay the entire list
+   verbatim — visible in this same log for `libffi`, `libiconv` and
+   `liblzma` too, where `-target` and `-pie` are likewise repeated.
+   Repeating a *flag* is harmless, which is exactly why nobody notices;
+   repeating an *object file* is a second definition of every symbol in
+   it. Injecting an object through a flag inherits the flag's
+   duplication semantics without inheriting its idempotence.
+2. **`exelinkflags` did not stay in executables.** openssl reuses the
+   same flags for its `-shared` links, so the object was pulled into
+   `providers/legacy.so`. The name of the conf key describes Conan's
+   intent, not what each package's build system actually does with it.
+
+### Fix, both halves tested
+
+- **`__attribute__((weak))` on the shim.** Weak definitions collapse
+  instead of colliding. Verified against real zig: the object linked in
+  three times succeeds for both an executable and a `-shared` link,
+  reproducing openssl's exact pattern. It also means a genuine `statx()`
+  from a newer libc would take precedence if one were ever present.
+- **Scope the object to `qt/*`.** Qt is the only package in the graph
+  that needs it; there was never a reason to hand a foreign object to
+  the other 34. Verified against real Conan 2.29.1 with two throwaway
+  packages: `pkga/*:tools.build:exelinkflags=…` lands in `pkga`'s
+  generated `conan_toolchain.cmake` and **not** in `pkgb`'s. Also
+  verified, because it would have silently dropped the glibc pin: a
+  package-scoped conf **replaces** the global value rather than
+  extending it, so the `qt/*` list has to repeat `-target` and `-pie`.
+
+Both original failure modes re-checked afterwards: the openssl-shaped
+`-shared` link with the object three times now succeeds, and Qt's `moc`
+link (shim in the flags position, referencing TU inside a static
+archive, `--gc-sections` on) still links, runs, returns real kernel data
+and audits `requires GLIBC_2.2.5`, **PASS Level 1**.
+
+Worth keeping as a general rule: **do not inject object files through
+flag variables.** If it has to be done, make every symbol in the object
+weak, and scope it to the one package that needs it.
+
+`shellcheck` clean, `make test` 272 passed unchanged.
 
 <!-- ------------------------------------------------------------------ -->
 

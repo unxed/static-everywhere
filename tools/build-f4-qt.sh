@@ -384,9 +384,23 @@ elif [ "${CONFIG}" = "linux" ] && [ "${TOOLCHAIN}" = "zig" ]; then
     # fails at link time on qtbase/libexec/moc. Full reasoning, evidence
     # and the alternatives considered are in contrib/f4-qt/compat/statx.c
     # and STATUS.md. Compiled here, ahead of `conan install`, because the
-    # object has to exist before the very first configure-time link probe
-    # any package runs -- it is appended to exelinkflags below, so every
-    # executable link in the graph references it.
+    # object has to exist before Conan starts building anything.
+    #
+    # Scoped to `qt/*` below, not global: Qt is the only package in the
+    # graph that needs it, and a first attempt at putting it in the
+    # global exelinkflags broke openssl. An object file in a *flag* list
+    # is not idempotent -- build systems that assemble LDFLAGS from
+    # several sources replay the whole list, and openssl's link line
+    # ended up carrying `-target ... -pie <object>` three times, which is
+    # fine for the flags and a duplicate symbol for the object. openssl
+    # also reuses its LDFLAGS for `-shared` links, so the object reached
+    # providers/legacy.so despite only ever being added to *exe* flags.
+    # The shim is additionally weak, so repetition can no longer break
+    # anything even where scoping doesn't reach.
+    #
+    # Note that a package-scoped conf *replaces* the global value rather
+    # than extending it (verified against real Conan 2.29.1), which is
+    # why the qt-scoped list repeats -target and -pie.
     plan_step "${ZIGCC} -target x86_64-linux-gnu.${GLIBC_BASELINE} -O2 -fPIC -c ${REPO_ROOT}/contrib/f4-qt/compat/statx.c -o ${OUT_ABS}/compat-statx.o"
 
     plan_step "mkdir -p \$HOME/.conan2/extensions/hooks"
@@ -517,7 +531,8 @@ HOOKEOF"
 -c 'tools.build:cxxflags=[\"-target\",\"x86_64-linux-gnu.${GLIBC_BASELINE}\"]' \
 -c 'libmount*:tools.build:cflags=[\"-DHAVE_CLOSE_RANGE=1\"]' \
 -c 'tools.build:sharedlinkflags=[\"-target\",\"x86_64-linux-gnu.${GLIBC_BASELINE}\"]' \
--c 'tools.build:exelinkflags=[\"-target\",\"x86_64-linux-gnu.${GLIBC_BASELINE}\",\"-pie\",\"${OUT_ABS}/compat-statx.o\"]' \
+-c 'tools.build:exelinkflags=[\"-target\",\"x86_64-linux-gnu.${GLIBC_BASELINE}\",\"-pie\"]' \
+-c 'qt/*:tools.build:exelinkflags=[\"-target\",\"x86_64-linux-gnu.${GLIBC_BASELINE}\",\"-pie\",\"${OUT_ABS}/compat-statx.o\"]' \
 -c tools.system.package_manager:mode=check \
 -vv \
 --output-folder=qt/host/build-portable-linux"

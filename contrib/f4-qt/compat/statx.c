@@ -56,6 +56,18 @@
 #include <sys/syscall.h>
 #include <unistd.h>
 
+/*
+ * Weak on purpose. This object is injected through a *linker flag*, and
+ * a flag list is not guaranteed to be used only once: build systems that
+ * assemble LDFLAGS from several sources replay the whole list verbatim.
+ * openssl does exactly that -- its link line carried `-target ... -pie
+ * <this object>` three times over -- and a repeated flag is harmless
+ * while a repeated object file is a duplicate symbol definition. Weak
+ * definitions collapse instead of colliding, so the shim survives being
+ * linked in any number of times. It also means a real statx() from a
+ * newer libc would win if one were ever present.
+ */
+__attribute__((weak))
 int statx(int dirfd, const char *pathname, int flags,
           unsigned int mask, struct statx *statxbuf)
 {
