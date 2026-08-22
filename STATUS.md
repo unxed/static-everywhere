@@ -23,7 +23,7 @@ for this entire stretch of work.
   changes cheaply.
 - Compiler wrappers: `onebin/toolchain/zig-cc`, `zig-c++`.
 
-### The one thing currently blocking — nothing known; `statx` shim landed and its first CI run found one real defect, now fixed
+### The one thing currently blocking — Qt's `rcc` fails to link on 26 ICU symbols; the host's ICU headers got in, and our own `-idirafter` is why it was silent
 
 The `CMAKE_LIBRARY_ARCHITECTURE` fix worked. Qt now configures and
 **builds**, reaching target 124 of 6627 before the first executable link
@@ -188,6 +188,91 @@ Patches are delivered as `git format-patch` output and must apply with
 before handing anything over (the sandbox remote has gone stale
 mid-session before, and a failed `git am` on a fresh clone is what
 caught it). `make test` after every change. Don't touch `filelist.md`.
+
+<!-- ------------------------------------------------------------------ -->
+
+## Qt links ICU against the *host's* headers: 26 `_74` symbols, and `-idirafter /usr/include` is what turned a loud error into a silent one
+
+The `statx` shim worked and openssl passed. Qt now builds to target 397
+of 6627 (was 124) and fails linking `qtbase/libexec/rcc`:
+
+```
+ld.lld: error: undefined symbol: ucal_getTimeZoneDisplayName_74
+>>> referenced by qtimezonelocale.cpp:80
+>>>   in archive qtbase/lib/libQt6Core.a
+```
+
+26 undefined symbols, **every one suffixed `_74`**, from three
+translation units: `qstringconverter.cpp` (25 refs),
+`qcollator_icu.cpp` (7) and `qtimezonelocale.cpp` (6).
+
+ICU renames its exports with its own major version. The Conan ICU in
+this graph is **78.2** — its archives export `_78`. `_74` is Ubuntu
+24.04's system ICU (confirmed: `libicu-dev 74.2-1ubuntu3.1`, and
+`U_ICU_VERSION_MAJOR_NUM 74`). So Qt **compiled against the host's ICU
+headers and linked against Conan's ICU libraries.**
+
+### Why it was silent, which is the part that matters
+
+Reproduced against real zig, with a fake ICU-78 include tree beside the
+host's real ICU 74:
+
+| what the compile line has | result |
+| --- | --- |
+| `-isystem <conan-icu>` (how CMake passes imported-target includes) | ICU **78** — Conan wins |
+| `-I <conan-icu>` | ICU **78** — Conan wins |
+| neither, through `zig-c++` | ICU **74**, silently, from the host |
+| neither, through raw `zig c++` | **`fatal error: 'unicode/uvernum.h' file not found`** |
+
+So include *priority* is not the bug: whenever the Conan directory is on
+the line at all, it wins. The bug is that it wasn't on the line — and
+our own `-idirafter /usr/include` converted that from a compile error
+naming the exact file into a link error 300 targets later naming 26
+symbols.
+
+**This is a doctrine-level hazard of that flag, and it should be written
+down as one.** `-idirafter /usr/include` was added so host-contract
+headers (`xcb/*`, `X11/*`) that pkg-config never emits a `-I` for could
+be found. It cannot distinguish those from the host copy of a library we
+deliberately vendor. Any vendored library whose headers also exist in
+`/usr/include` — ICU, zlib, freetype, libpng, expat, sqlite3, all of
+which are in this graph — can bind to the host version this way without
+a single diagnostic. The build got lucky that ICU version-suffixes its
+symbols; zlib or expat would have linked cleanly against mismatched
+headers and failed at runtime instead.
+
+### What is *not* yet evidenced
+
+Why the ICU include directory never reached Qt's compile lines. The
+Conan side checks out completely: `FindICU.cmake` reports 78.2 and sets
+`ICU_INCLUDE_DIR`; `module-ICU-Target-release.cmake` gives `ICU::uc`,
+`ICU::i18n` and `ICU::data` an `INTERFACE_INCLUDE_DIRECTORIES` of
+`/home/runner/.conan2/p/b/icu3bd6fc3f3fd1e/p/include`, which exists and
+contains `unicode/uvernum.h`. Qt's side looks right too:
+`qtbase/src/corelib/CMakeLists.txt:966` adds `ICU::i18n ICU::uc
+ICU::data` to `Core` under `QT_FEATURE_icu`, which is `ON` — and
+`qcollator_icu.cpp`, one of the three failing TUs, is a source in *that
+very block*. `ICU_DIR-NOTFOUND` in the cache confirms module mode was
+used, as expected with Conan's generated `FindICU.cmake`.
+
+So the include dirs are defined and the target links them, yet the
+compile lines evidently lacked them. Settling that needs the actual
+compile command, and **the collector cannot currently supply it**:
+Qt's `build.ninja` holds every compile line and is excluded by the 2M
+per-file cap.
+
+### Proposed next step
+
+Have the collector extract, from `build.ninja`, the build statements for
+the object files *named in the link errors*. That is derived from the
+failure rather than guessed — the same principle that replaced filename
+guessing with Conan's own `Build folder` line. One run would then say
+exactly which `-I`/`-isystem` entries `qcollator_icu.cpp.o` got.
+
+Worth considering in parallel: a build-time assertion that no compile
+resolves a vendored library's headers to `/usr/include`. The cheap
+version is to check the failure's opposite — temporarily drop
+`-idirafter` and see which compiles break and where.
 
 <!-- ------------------------------------------------------------------ -->
 
