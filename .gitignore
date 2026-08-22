@@ -1,1 +1,3 @@
 onebin/build
+__pycache__/
+*.pyc
