@@ -23,7 +23,36 @@ for this entire stretch of work.
   changes cheaply.
 - Compiler wrappers: `onebin/toolchain/zig-cc`, `zig-c++`.
 
-### The one thing currently blocking — **Qt itself**; root cause found and fixed, not yet CI-verified
+### The one thing currently blocking — Qt's `moc` fails to link on `statx`; root cause found and proven, fix **not chosen yet**
+
+The `CMAKE_LIBRARY_ARCHITECTURE` fix worked. Qt now configures and
+**builds**, reaching target 124 of 6627 before the first executable link
+fails:
+
+```
+[124/6627] Linking CXX executable qtbase/libexec/moc
+ld.lld: error: undefined symbol: statx
+```
+
+Root cause, proven against real zig 0.13.0: **zig's `-target
+x86_64-linux-gnu.<ver>` versions the symbol stubs but not the headers.**
+The headers always describe the newest glibc, so preprocessor-based
+feature detection sees a glibc newer than the one that gets linked.
+`statx()` is glibc 2.28; the baseline is 2.27; Qt guards the call on
+`#ifdef STATX_BASIC_STATS` alone. Compiles, then doesn't link. The same
+build shows the contrast: Qt's `renameat2` guard *is* a link test, so it
+failed correctly and Qt disabled the feature itself.
+
+The remaining risk surface is **closed and small** — the full 2.27→2.28
+symbol delta is seven names (`fcntl64, renameat2, statx, thrd_current,
+thrd_equal, thrd_sleep, thrd_yield`), and nothing but `statx` is live
+for this build.
+
+**A decision is needed before the next run**: raise the baseline to
+2.28 (one line, but deviates from upstream f4's Ubuntu 18.04 target), or
+inject a `statx` syscall shim (tested here end to end — links, runs,
+`onebin audit --glibc-max 2.27` says PASS Level 1). Full detail, with
+evidence for each, in the log entry below.
 
 `xkbcommon` is **passed** — the `-idirafter /usr/include` fix worked, and
 the build now reaches **Qt**, the last and heaviest package. Qt's
@@ -139,6 +168,114 @@ Patches are delivered as `git format-patch` output and must apply with
 before handing anything over (the sandbox remote has gone stale
 mid-session before, and a failed `git am` on a fresh clone is what
 caught it). `make test` after every change. Don't touch `filelist.md`.
+
+<!-- ------------------------------------------------------------------ -->
+
+## Qt configures and **builds**; fails at `moc` on `statx` — root cause is that zig's `-target` glibc version is a *link-time* contract only, and the whole remaining risk surface is seven symbols
+
+The `CMAKE_LIBRARY_ARCHITECTURE` fix worked. Qt got past configure and
+compiled 124 of 6627 targets before failing at the first executable it
+links:
+
+```
+[124/6627] Linking CXX executable qtbase/libexec/moc
+ld.lld: error: undefined symbol: statx
+>>> referenced by qfilesystemengine_unix.cpp:359
+>>>   in archive qtbase/src/tools/bootstrap/libBootstrap.a
+```
+
+**Root cause, proven against real zig 0.13.0, not inferred.** `statx()`
+entered glibc in 2.28; the baseline here is 2.27. The reason Qt emitted
+a call to it anyway is the general fact this project now has to carry:
+
+> **zig's `-target x86_64-linux-gnu.<ver>` versions the symbol stubs but
+> not the headers.** The headers always describe the newest glibc. So
+> any feature detection done in the *preprocessor* sees a glibc newer
+> than the one that will be linked against, and only a detection method
+> that actually *links* can see the truth.
+
+Demonstrated with a five-line C file calling `statx()`:
+
+| `-target` | compile | link |
+| --- | --- | --- |
+| `x86_64-linux-gnu.2.27` | **succeeds** | `undefined symbol: statx` |
+| `x86_64-linux-gnu.2.28` | succeeds | succeeds |
+
+Qt 6.11.1 guards this call on a header macro alone —
+`#ifdef STATX_BASIC_STATS` (`qfilesystemengine_unix.cpp:355`) — and that
+macro comes from the kernel UAPI headers, which zig also ships
+unversioned. On a *genuine* Ubuntu 18.04 the same guard behaves
+correctly, because there glibc 2.27's own `<sys/stat.h>` never pulls in
+`<linux/stat.h>` and the macro is simply undefined. So this is not a Qt
+bug on real 2.27 hardware and not something upstream f4 would ever have
+hit; it is specific to building against a *synthesised* old glibc.
+
+**The same build proves the contrast, which is the useful part.** Qt
+does have a real configure test for `renameat2` — also a 2.28 symbol —
+and that test is a `try_compile`, so it *linked*, so it failed
+correctly, and Qt disabled the feature on its own:
+`CMakeConfigureLog.yaml` records `ld.lld: error: undefined symbol:
+renameat2`, and `qtcore-config_p.h` ends up with
+`#define QT_FEATURE_renameat2 -1`. Two 2.28 symbols, two guard styles,
+one survives the toolchain and one doesn't. That is a clean, evidenced
+upstream report for Qt: `statx` should be a link-checked feature the way
+`renameat2` already is.
+
+### How much else is waiting behind this
+
+Bounded, and the bound is small. Diffing the dynamic symbol tables of
+zig's own generated glibc stubs for the two versions gives the complete
+2.27→2.28 delta — **seven symbols**:
+
+```
+fcntl64, renameat2, statx, thrd_current, thrd_equal,
+thrd_sleep, thrd_yield
+```
+
+`renameat2` is already handled by Qt itself. `statx` is this failure.
+`thrd_*` are C11 threads, which Qt does not use, and `fcntl64` is not
+called by name. So once `statx` is resolved there is **no further
+2.27-vs-2.28 hazard in this build** — this converts an open-ended worry
+into a closed list. The technique generalises to any baseline pair and
+is worth keeping (`readelf --dyn-syms` on the two stubs under
+`~/.cache/zig/o/*/libc.so.6`); it is a plausible `onebin` feature.
+
+### Three ways out, all real, none taken yet
+
+1. **Raise the baseline to 2.28.** One line in `tools/build-f4-qt.sh`.
+   Cheapest, and 2.28 is *this project's own* default anyway. The cost
+   is fidelity: 2.27 was chosen to mirror upstream f4's Ubuntu 18.04
+   target (`05-REFERENCE-f4-qt.md §7.5`), and this reference build
+   exists partly to reproduce what upstream ships. Deviating is
+   defensible but must be written down, not done quietly.
+2. **Ship a `statx` compat shim.** The same thin `syscall(SYS_statx,…)`
+   wrapper glibc itself is, injected via
+   `tools.build:exelinkflags`. **Tested end to end here**: links at
+   2.27, and the resulting binary *runs* and returns real kernel data
+   (`qt_real_statx -> 0, size=3`), with `onebin audit --glibc-max 2.27`
+   reporting `requires GLIBC_2.4`, **PASS Level 1**. Safe on kernels
+   without the syscall too, because Qt's own `#else` path already
+   returns `-ENOSYS` and falls back to `stat()`. This is also the more
+   doctrine-shaped answer — Layer 1 says ship your code rather than
+   demand a newer host.
+3. **Patch Qt / report upstream.** Correct long-term regardless of
+   which of the above is chosen, and the `renameat2` contrast makes the
+   report write itself.
+
+Not decided here: 1 vs 2 is a baseline-policy call, not a technical one.
+
+### Diagnostics: one real gap
+
+The collector worked — `config.summary`, `qconfig_p.h` and
+`CMakeConfigureLog.yaml` were all present and the `renameat2` contrast
+came straight out of them. But 61MB of the 64MB artifact is Qt's SBOM
+output: **637 files under `qt_sbom/`**, plus ~9300 generated `.cmake`
+files in total against ~270 genuinely diagnostic ones. They qualify
+because they are real text, which is exactly what the content-type rule
+is supposed to select for. Worth an exclusion for `*/qt_sbom/*` and
+possibly for generated per-package `.cmake` fragments — but note the
+rule that has already been learned twice: exclude by *directory role*,
+not by inventing another filename allowlist.
 
 <!-- ------------------------------------------------------------------ -->
 
