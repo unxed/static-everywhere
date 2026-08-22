@@ -261,13 +261,28 @@ compile command, and **the collector cannot currently supply it**:
 Qt's `build.ninja` holds every compile line and is excluded by the 2M
 per-file cap.
 
-### Proposed next step
+### Next step, now implemented
 
-Have the collector extract, from `build.ninja`, the build statements for
-the object files *named in the link errors*. That is derived from the
-failure rather than guessed — the same principle that replaced filename
-guessing with Conan's own `Build folder` line. One run would then say
-exactly which `-I`/`-isystem` entries `qcollator_icu.cpp.o` got.
+`tools/ci-extract-compile-commands.py` extracts from `build.ninja` the
+build statements for the object files *named in the link errors* —
+including the `INCLUDES`, `FLAGS` and `DEFINES` lines CMake writes
+underneath each one. Derived from the failure rather than guessed, the
+same principle that replaced filename guessing with Conan's own `Build
+folder` line. New artifact file: `04b-compile-commands.txt`.
+
+Raising the 2M cap instead was not an option, and the artifact says why:
+Qt's `build.ninja` is **64.8 MB**. Worth noting that this number came
+from `00-listing-conan-cache.txt` — the design rule that anything not
+collected must still be *visible with its size* in the listing is what
+made the gap diagnosable at all, rather than merely suspected.
+
+Verified two ways rather than reasoned about: against a synthesised
+`build.ninja` in CMake's real format (matches the right two statements
+with their `INCLUDES`, ignores an unrelated third, and reports a missing
+`build.ninja` without failing), and by running the step exactly as CI
+will against *this* failure's real log — it names precisely the five
+objects the errors mention, `qstringconverter.cpp.o`,
+`qcollator_icu.cpp.o` and `qtimezonelocale.cpp.o` among them.
 
 Worth considering in parallel: a build-time assertion that no compile
 resolves a vendored library's headers to `/usr/include`. The cheap

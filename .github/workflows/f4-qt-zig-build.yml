@@ -281,6 +281,24 @@ jobs:
                /tmp/build-output.log 2>/dev/null | tail -n 500 \
                > "$OUT/04-build-output-errors.txt"
 
+          # (4b) The compile commands for the objects the failure names.
+          #      A link error names symbols and object files; it does not
+          #      name the flags those objects were built with, and twice
+          #      now the flags were the answer -- WrapOpenGL/EGL came down
+          #      to find_library search paths, and Qt's 26 undefined _74
+          #      ICU symbols came down to an include directory missing
+          #      from a compile line. build.ninja has every compile line
+          #      verbatim but is far too large to ship for a project the
+          #      size of Qt, so ship only the statements the failure
+          #      itself points at. Derived from the error output, not
+          #      guessed -- same principle as reading Conan's own "Build
+          #      folder" line instead of guessing filenames. Never allowed
+          #      to fail the collector.
+          python3 tools/ci-extract-compile-commands.py \
+                  /tmp/build-output.log \
+                  $(cat "$OUT/01-failing-build-folders.txt" 2>/dev/null) \
+                  > "$OUT/04b-compile-commands.txt" 2>&1 || true
+
           {
             echo "=== df -h ==="
             df -h
