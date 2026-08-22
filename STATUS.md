@@ -62,9 +62,27 @@ first was misleading — gcc's own ABI detection sets the variable and
 silently overrode the `-D`, so the first attempt appeared to prove
 nothing was wrong. Watch for that trap.
 
-**Not yet confirmed by a real CI run.** Qt is still almost entirely
-unexplored territory: nothing past its configure step has ever run, and
-it is by far the longest package to build.
+**Independently re-verified in a second, clean sandbox** (see the log
+entry below): both of Qt's error conditions reproduce exactly
+(`OpenGL_FOUND=FALSE`, `EGL_LIBRARY-NOTFOUND`) with the variable unset
+and both resolve with it set. Three follow-on questions were also
+answered locally, so they no longer need a CI cycle each:
+
+- Qt's own `egl`, `opengl` and `glx` feature tests all compile, and a
+  real executable links against `libOpenGL`/`libGLX`/`libEGL`/`libX11`
+  and audits **PASS Level 1** at the 2.27 baseline.
+- The `-I /usr/include` / libc++ conflict that broke far2l's `TTYX`
+  **cannot recur** under the wrappers — `-idirafter` immunises against
+  it structurally. Qt will not hit it.
+- Setting `CMAKE_LIBRARY_ARCHITECTURE` does **not** let host libraries
+  shadow Conan's vendored ones; `CMAKE_PREFIX_PATH` still wins. That
+  closes the concern the fix's own commit message flagged to watch.
+
+**Still not confirmed by a real CI run**, and Qt remains almost entirely
+unexplored past configure: nothing beyond that step has ever run, and it
+is by far the longest package to build. What is now known is that the
+detection failure is genuinely fixed and that the next failure, whatever
+it is, will not be one of the four above.
 
 Worth knowing: **real zig can be downloaded into the sandbox**
 (`https://ziglang.org/download/0.13.0/zig-linux-x86_64-0.13.0.tar.xz`,
@@ -121,6 +139,90 @@ Patches are delivered as `git format-patch` output and must apply with
 before handing anything over (the sandbox remote has gone stale
 mid-session before, and a failed `git am` on a fresh clone is what
 caught it). `make test` after every change. Don't touch `filelist.md`.
+
+<!-- ------------------------------------------------------------------ -->
+
+## `CMAKE_LIBRARY_ARCHITECTURE` fix re-verified from scratch, plus three follow-on questions answered locally instead of by CI cycle
+
+No code changed in this session. The point was to spend sandbox time
+where the project's own convention says it is cheapest — reproducing
+locally rather than paying ~20 minutes of CI per guess — and to attack
+the questions the previous session left explicitly open.
+
+Setup, for anyone repeating this: `apt-get install cmake ninja-build
+pkg-config libgl1-mesa-dev libegl1-mesa-dev libglvnd-dev` plus the
+workflow's own `xorg-dev`/xcb list, and real zig 0.13.0 downloaded from
+`ziglang.org` (~45MB, extracts and runs in place). `cmake` was **not**
+preinstalled in this sandbox even though an earlier session's note said
+it was — install it, don't assume it.
+
+**1. The fix is right, and the failure it fixes is exactly Qt's.** A
+four-line CMake project doing `find_package(OpenGL)` and
+`find_library(EGL)` under `zig-cc`, with `-target
+x86_64-linux-gnu.2.27` and `CMAKE_SIZEOF_VOID_P=8` — i.e. the real
+build's conditions minus Conan — reproduces both of Qt's errors
+verbatim:
+
+```
+CMAKE_LIBRARY_ARCHITECTURE=''            (unset)
+OpenGL_FOUND=FALSE
+OPENGL_opengl_LIBRARY=OPENGL_opengl_LIBRARY-NOTFOUND
+OPENGL_glx_LIBRARY=OPENGL_glx_LIBRARY-NOTFOUND
+EGL_LIBRARY=PROBE_EGL_LIBRARY-NOTFOUND
+```
+
+Adding the one variable turns all four into real paths under
+`/usr/lib/x86_64-linux-gnu`. Note that `find_path` was **never** the
+problem — `EGL/egl.h` and `GL/gl.h` resolve to `/usr/include` in both
+cases. It is `find_library` alone that depends on
+`CMAKE_LIBRARY_ARCHITECTURE`, which is worth knowing because it means
+the symptom class to watch for is always "header found, library not".
+
+**2. Detection succeeding is not the same as linking succeeding — so
+that was checked too.** Qt's three relevant feature tests
+(`configure.cmake`'s `egl`, `opengl`, `glx` compile tests, transcribed)
+all return 1, and a real executable linking `OpenGL::OpenGL`,
+`OpenGL::GLX`, `OpenGL::EGL` and `X11::X11` builds. `onebin audit
+--profile hybrid --glibc-max 2.27` on it: `needed: libEGL.so.1
+libGLX.so.0 libOpenGL.so.0 libX11.so.6 libc.so.6`, `requires
+GLIBC_2.2.5`, **0 errors, PASS Level 1** (warnings are the usual
+`OB0060` build paths from an ad-hoc cmake call with no
+`-ffile-prefix-map`). So the host-contract GL/EGL/X11 layer is sound
+end to end under this toolchain, not merely discoverable.
+
+**3. The far2l `TTYX` failure class cannot recur under the wrappers.**
+This was the real worry: `TTYX` broke because far2l's CMake calls plain
+`include_directories(${X11_INCLUDE_DIR})`, giving `/usr/include` `-I`
+(high) priority and displacing zig's bundled libc++ headers; Qt's build
+does the same kind of thing in several places. Tested directly rather
+than assumed, and the answer is that the `-idirafter /usr/include` the
+wrappers already add (for xkbcommon, for an unrelated reason) **also
+fixes this class structurally**. `zig c++ -I/usr/include` on a file
+including `<cerrno>`/`<string>`/`<filesystem>` fails with the exact
+libc++ "didn't find libc++'s `<errno.h>` header" error; the same
+compile through `zig-c++` succeeds, and `-E -v` shows why:
+`/usr/include` ends up **last** in the search list, below all of zig's
+`libcxx`/`libc` directories, because marking a directory as a system
+directory moves it out of the `-I` list entirely no matter which flag
+put it there first.
+
+Also checked, because it is a plausible latent regression: the
+`-isystem /usr/include` that `onebin-linux-hybrid.cmake` carries for
+far2l's sake does **not** conflict with the wrapper's `-idirafter`.
+Both spellings, together or separately, produce the identical search
+order with `/usr/include` at the bottom. Neither needs removing.
+
+**4. Host libraries do not shadow Conan's vendored ones.** The
+`CMAKE_LIBRARY_ARCHITECTURE` commit message flagged this as "worth
+watching if one ever resolves to a host copy". With the variable set
+and a prefix containing a `libz.so`/`zlib.h` on `CMAKE_PREFIX_PATH`,
+`find_library(z)` and `find_path(zlib.h)` both resolve to the prefix,
+not to `/usr/lib/x86_64-linux-gnu`. CMake searches `CMAKE_PREFIX_PATH`
+ahead of system paths and the fix does not change that ordering. The
+concern is closed, not merely unobserved.
+
+`make test`: 272 passed, 0 failed, 3 skipped — unchanged, as expected
+for a session that changed no code.
 
 <!-- ------------------------------------------------------------------ -->
 
