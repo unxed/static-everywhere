@@ -503,6 +503,24 @@ HOOKEOF"
     # verbatim, this has nothing to do with which compiler is used.
     plan_step "cd ${SRC} && env PATH=\"${OUT}/conan-venv/bin:\$PATH\" conan download fontconfig/2.15.0 --only-recipe --remote=conancenter"
 
+    # CMAKE_*_IMPLICIT_INCLUDE_DIRECTORIES: CMake could not detect them
+    # under zig-cc -- CMakeCXXCompiler.cmake in a real failing build reads
+    # `set(CMAKE_CXX_IMPLICIT_INCLUDE_DIRECTORIES "")` -- so CMake stopped
+    # filtering /usr/include out of target include lists and emitted it
+    # explicitly. CMake's own FindBacktrace sets Backtrace_INCLUDE_DIR to a
+    # bare /usr/include, Qt Core links Backtrace::Backtrace, and imported
+    # targets' includes are emitted as -isystem in link order -- so Core
+    # compiled with `-isystem /usr/include` sitting *ahead* of the vendored
+    # `-isystem <icu>/include`. Result: Qt compiled against the host's ICU
+    # 74 headers and linked against Conan's ICU 78 archives, failing with
+    # 26 undefined `*_74` symbols. Declaring the directory implicit is not
+    # a fiction: the zig-cc/zig-c++ wrappers append `-idirafter
+    # /usr/include`, so it genuinely is a lowest-priority implicit search
+    # path for this compiler. This is the same underlying defect as the
+    # empty CMAKE_LIBRARY_ARCHITECTURE -- CMake cannot introspect zig-cc --
+    # and it protects every vendored library whose headers also exist on
+    # the host, not just ICU.
+    #
     # Same target_packages list as upstream: every package the target
     # actually links against gets rebuilt regardless of remote binary
     # availability, because Conan package IDs don't encode the glibc
@@ -526,7 +544,7 @@ HOOKEOF"
 -o:h 'harfbuzz/*:with_glib=False' \
 -o:h 'xkbcommon/*:with_wayland=True' -o:h 'libraw/*:shared=False' \
 -c 'tools.build:compiler_executables={\"c\":\"${ZIGCC}\",\"cpp\":\"${ZIGCXX}\"}' \
--c 'tools.cmake.cmaketoolchain:extra_variables={\"CMAKE_C_COMPILER_LAUNCHER\":\"ccache\",\"CMAKE_CXX_COMPILER_LAUNCHER\":\"ccache\",\"CMAKE_SIZEOF_VOID_P\":\"8\",\"CMAKE_LIBRARY_ARCHITECTURE\":\"x86_64-linux-gnu\"}' \
+-c 'tools.cmake.cmaketoolchain:extra_variables={\"CMAKE_C_COMPILER_LAUNCHER\":\"ccache\",\"CMAKE_CXX_COMPILER_LAUNCHER\":\"ccache\",\"CMAKE_SIZEOF_VOID_P\":\"8\",\"CMAKE_LIBRARY_ARCHITECTURE\":\"x86_64-linux-gnu\",\"CMAKE_C_IMPLICIT_INCLUDE_DIRECTORIES\":\"/usr/include\",\"CMAKE_CXX_IMPLICIT_INCLUDE_DIRECTORIES\":\"/usr/include\"}' \
 -c 'tools.build:cflags=[\"-target\",\"x86_64-linux-gnu.${GLIBC_BASELINE}\"]' \
 -c 'tools.build:cxxflags=[\"-target\",\"x86_64-linux-gnu.${GLIBC_BASELINE}\"]' \
 -c 'libmount*:tools.build:cflags=[\"-DHAVE_CLOSE_RANGE=1\"]' \

@@ -23,7 +23,7 @@ for this entire stretch of work.
   changes cheaply.
 - Compiler wrappers: `onebin/toolchain/zig-cc`, `zig-c++`.
 
-### The one thing currently blocking — Qt's `rcc` fails to link on 26 ICU symbols; the host's ICU headers got in, and our own `-idirafter` is why it was silent
+### The one thing currently blocking — ICU root-caused and **fixed**, not yet CI-verified
 
 The `CMAKE_LIBRARY_ARCHITECTURE` fix worked. Qt now configures and
 **builds**, reaching target 124 of 6627 before the first executable link
@@ -188,6 +188,92 @@ Patches are delivered as `git format-patch` output and must apply with
 before handing anything over (the sandbox remote has gone stale
 mid-session before, and a failed `git am` on a fresh clone is what
 caught it). `make test` after every change. Don't touch `filelist.md`.
+
+<!-- ------------------------------------------------------------------ -->
+
+## ICU root cause found: CMake emitted `-isystem /usr/include` *ahead* of the vendored ICU, because it could not introspect `zig-cc`
+
+The fixed extractor did its job on the first try. `04b-compile-commands.txt`
+came back with exactly the three objects the failure names, and the
+answer was in the `INCLUDES` line — and it was the opposite of the
+standing hypothesis. **The Conan ICU directory was there all along.** The
+order was wrong:
+
+```
+-isystem <zlib>/include
+-isystem /usr/include          <-- host ICU 74 lives here
+-isystem <double-conversion>/include
+-isystem <icu>/include         <-- vendored ICU 78, too late
+-isystem <pcre2>/include
+```
+
+Every earlier experiment had tested the Conan directory against a
+*competing spelling* (`-I` vs `-isystem`) and the Conan directory always
+won. The one arrangement never tested was the one that actually
+occurred: **both as `-isystem`, with `/usr/include` first.** Reproduced
+immediately once tried — that ordering yields ICU 74, the reverse yields
+78.
+
+### Where `/usr/include` comes from, and why CMake let it through
+
+`Backtrace_INCLUDE_DIR:PATH=/usr/include` in Qt's own `CMakeCache.txt`.
+CMake's `FindBacktrace` locates `execinfo.h`, which lives directly in
+`/usr/include`, so the imported target `Backtrace::Backtrace` carries a
+bare `/usr/include` as its interface include directory. Qt Core links
+it, CMake emits imported targets' includes as `-isystem` in link order,
+and `backtrace` precedes `icu` in Qt's own dependency list
+(`QT_QMAKE_LIBS_FOR_core: openssl;backtrace;doubleconversion;icu;…`) —
+the order in the compile line matches exactly. The same cache shows
+`EGL`, `GLESv2`, `Libdrm` and `OPENGL` all resolving to `/usr/include`
+too, so this was never going to stay an ICU problem.
+
+Normally CMake filters this out: it omits any include directory the
+compiler already searches implicitly. Under `zig-cc` it cannot, and the
+failing build says so in its own generated files:
+
+```
+set(CMAKE_CXX_IMPLICIT_INCLUDE_DIRECTORIES "")
+```
+
+Empty. **Same underlying defect as the empty
+`CMAKE_LIBRARY_ARCHITECTURE`** — CMake's compiler introspection does not
+work against `zig-cc` — and the second time it has produced a failure
+three hundred build targets away from its cause.
+
+A detail worth recording because it cost an hour: this does **not**
+reproduce on Ubuntu's CMake 3.28, which drops the directory on its own.
+It reproduces exactly on **3.31.6**, which is the version the build
+actually uses (pinned in the script's own `uv pip install`). Reproducing
+against the version under test, not the one lying around, is the whole
+game here.
+
+### The fix
+
+Declare the directory implicit, for both languages, in
+`tools.cmake.cmaketoolchain:extra_variables`:
+
+```
+CMAKE_C_IMPLICIT_INCLUDE_DIRECTORIES=/usr/include
+CMAKE_CXX_IMPLICIT_INCLUDE_DIRECTORIES=/usr/include
+```
+
+This is not a fiction to make CMake behave. The `zig-cc`/`zig-c++`
+wrappers append `-idirafter /usr/include`, so the directory genuinely
+*is* a lowest-priority implicit search path for this compiler. The
+toolchain was simply failing to tell CMake a true thing that CMake could
+not work out for itself.
+
+Verified end to end against real zig and CMake 3.31.6, with an imported
+`Backtrace::Backtrace` carrying a bare `/usr/include` linked ahead of an
+imported ICU-78 target — the shape taken from Qt's real compile line, not
+invented. Before: both a C and a C++ executable report `compiled against
+ICU major 74`. After: both report `78`. `shellcheck` clean.
+
+And it is general, which matters more than fixing Qt: it protects every
+vendored library whose headers also exist on the host — `zlib`,
+`freetype`, `libpng`, `expat`, `sqlite3` are all in this graph. ICU was
+merely the one that version-suffixes its symbols and therefore failed
+loudly instead of at runtime.
 
 <!-- ------------------------------------------------------------------ -->
 
