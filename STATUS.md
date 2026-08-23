@@ -23,7 +23,7 @@ for this entire stretch of work.
   changes cheaply.
 - Compiler wrappers: `onebin/toolchain/zig-cc`, `zig-c++`.
 
-### The one thing currently blocking — `close_range` (glibc 2.34), shimmed; ICU fix confirmed working
+### The one thing currently blocking — the runner ran **out of disk** at ~52%; capacity, not a toolchain bug
 
 The `CMAKE_LIBRARY_ARCHITECTURE` fix worked. Qt now configures and
 **builds**, reaching target 124 of 6627 before the first executable link
@@ -188,6 +188,65 @@ Patches are delivered as `git format-patch` output and must apply with
 before handing anything over (the sandbox remote has gone stale
 mid-session before, and a failed `git am` on a fresh clone is what
 caught it). `make test` after every change. Don't touch `filelist.md`.
+
+<!-- ------------------------------------------------------------------ -->
+
+## `close_range` shim worked — Qt reached target 3438/6627, then the runner ran out of disk
+
+Best run so far by a wide margin, and the first failure that is not a
+toolchain problem at all.
+
+```
+[3438/6627] Building CXX object qtdeclarative/.../QuickControls2Fusion...
+System.IO.IOException: No space left on device :
+  '/home/runner/actions-runner/.../Worker_...log'
+```
+
+The runner died hard enough that it could not write **its own** log, so
+no diagnostic artifact was produced — the collector is precisely the
+thing that cannot run when the disk is full.
+
+`qtbase` is now built in its entirety, tools included; the failure is
+deep inside `qtdeclarative`. Progress across runs: 124 → 397 → 1863 →
+3438 of 6627.
+
+### It was arithmetic, not bad luck
+
+The `df` output the collector had already been recording all along
+answers this without needing a fresh artifact:
+
+| failed at target | used | free |
+| --- | --- | --- |
+| 397 (ICU) | 101G | 44G |
+| 1863 (`close_range`) | 115G | 30G |
+
+**≈9.8 MB of disk per build target.** The 4764 targets remaining after
+1863 needed roughly 46GB against 30GB available, so the wall was always
+going to arrive around target ~4900 — every previous run simply failed
+before reaching it. Worth noting that this is the second time
+`05-system-state.txt` has paid for itself by answering a question asked
+long after the run that recorded it.
+
+### Fix
+
+A preflight step removes the toolchains GitHub's `ubuntu-24.04` image
+ships that this job never touches — .NET, Android, GHC/ghcup, Swift,
+PowerShell, Chromium, Boost, the CodeQL bundle — plus cached Docker
+images.
+
+It **measures each directory before deleting it** and prints `df` either
+side. That matters more than it sounds: the sizes usually quoted for
+this trick come from blog posts, and if the total freed turns out to be
+too small for a ~46GB shortfall, that shows up in the first thirty
+seconds of the run rather than forty minutes in.
+
+`df -h /` also moves into the `ccache stats` step, which has
+`if: always()`. Disk headroom now gets reported on every run, success or
+failure, by a step that does not depend on the collector surviving.
+
+Not verified beyond linting the step bodies and dry-running the loop —
+whether the reclaimed space is actually enough is the next run's
+question, and it will answer it up front instead of at the end.
 
 <!-- ------------------------------------------------------------------ -->
 

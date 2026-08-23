@@ -32,6 +32,43 @@ jobs:
       - name: Checkout static-everywhere
         uses: actions/checkout@v4
 
+      - name: Free disk space on the runner
+        # A run died at target ~3438/6627 with "No space left on device",
+        # so hard the runner could not write its own log and no diagnostic
+        # artifact was produced. Not a toolchain bug -- capacity. The df
+        # output the collector had already recorded in earlier runs shows
+        # why, and shows it was inevitable rather than unlucky:
+        #
+        #   failed at target  397  ->  101G used,  44G free
+        #   failed at target 1863  ->  115G used,  30G free
+        #
+        # That is ~9.8MB of disk per build target. The 4764 targets
+        # remaining after 1863 needed roughly 46GB against 30GB available,
+        # so the wall was always going to arrive around target ~4900.
+        #
+        # GitHub's ubuntu-24.04 image ships several toolchains this job
+        # never touches. Removing them is the standard remedy. This step
+        # measures each one before deleting it and prints df either side,
+        # so the next run reports what each was actually worth instead of
+        # leaving us to trust a number off the internet -- if the total
+        # freed turns out to be too small, that shows up here rather than
+        # forty minutes later.
+        run: |
+          echo "=== before ==="
+          df -h /
+          for d in /usr/share/dotnet /usr/local/lib/android /opt/ghc \
+                   /usr/local/.ghcup /usr/share/swift \
+                   /usr/local/share/powershell /usr/local/share/chromium \
+                   /usr/local/share/boost /opt/hostedtoolcache/CodeQL; do
+            if [ -e "$d" ]; then
+              printf '  %-8s %s\n' "$(du -sh "$d" 2>/dev/null | cut -f1)" "$d"
+              sudo rm -rf "$d" || true
+            fi
+          done
+          docker image prune -af >/dev/null 2>&1 || true
+          echo "=== after ==="
+          df -h /
+
       - name: Install host X11/EGL/OpenGL dev headers
         # The same list quickstart-f4-qt.sh's own preflight check looks
         # for -- these are ordinary, ABI-stable desktop packages this
@@ -114,9 +151,18 @@ jobs:
             --out "$PWD/out/f4-qt" \
             --no-fetch 2>&1 | tee /tmp/build-output.log
 
-      - name: ccache stats
+      - name: ccache stats and disk usage
         if: always()
-        run: ccache -s
+        # df belongs here, not only in the diagnostic collector: when the
+        # disk fills, the collector is exactly what cannot run. This step
+        # is cheap, runs on success and failure alike, and gives every
+        # future run a headroom figure to compare against.
+        run: |
+          ccache -s
+          echo "=== df -h / ==="
+          df -h /
+          echo "=== biggest consumers ==="
+          du -sh "$HOME/.conan2" "$HOME/.cache/ccache" 2>/dev/null || true
 
       # Diagnostic collection/upload deliberately runs *before* the cache
       # save below, not after: raised directly in conversation while
