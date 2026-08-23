@@ -378,11 +378,13 @@ elif [ "${CONFIG}" = "linux" ] && [ "${TOOLCHAIN}" = "zig" ]; then
     # cc's driver happens to recognize, and doesn't risk masking a
     # genuine duplicate-symbol bug in some other package the way a
     # project-wide --allow-multiple-definition-equivalent would.
-    # statx() compat shim. zig cc's -target versions the symbol stubs but
-    # not the headers, so Qt's bare `#ifdef STATX_BASIC_STATS` guard sees a
-    # glibc newer than the 2.27 it will link against, emits the call, and
-    # fails at link time on qtbase/libexec/moc. Full reasoning, evidence
-    # and the alternatives considered are in contrib/f4-qt/compat/statx.c
+    # glibc compat shims. zig cc's -target versions the symbol stubs but
+    # not the headers, so a bare `#ifdef` on a kernel-header macro sees a
+    # glibc newer than the 2.27 that will be linked against, emits the
+    # call, and fails at link time. Two so far, both in Qt and both the
+    # same shape: statx() (2.28) behind STATX_BASIC_STATS, and
+    # close_range() (2.34) behind CLOSE_RANGE_CLOEXEC. Full reasoning, evidence
+    # and the alternatives considered are in contrib/f4-qt/compat/glibc-shims.c
     # and STATUS.md. Compiled here, ahead of `conan install`, because the
     # object has to exist before Conan starts building anything.
     #
@@ -401,7 +403,7 @@ elif [ "${CONFIG}" = "linux" ] && [ "${TOOLCHAIN}" = "zig" ]; then
     # Note that a package-scoped conf *replaces* the global value rather
     # than extending it (verified against real Conan 2.29.1), which is
     # why the qt-scoped list repeats -target and -pie.
-    plan_step "${ZIGCC} -target x86_64-linux-gnu.${GLIBC_BASELINE} -O2 -fPIC -c ${REPO_ROOT}/contrib/f4-qt/compat/statx.c -o ${OUT_ABS}/compat-statx.o"
+    plan_step "${ZIGCC} -target x86_64-linux-gnu.${GLIBC_BASELINE} -O2 -fPIC -c ${REPO_ROOT}/contrib/f4-qt/compat/glibc-shims.c -o ${OUT_ABS}/compat-glibc-shims.o"
 
     plan_step "mkdir -p \$HOME/.conan2/extensions/hooks"
     plan_step "cat > \$HOME/.conan2/extensions/hooks/hook_elfutils_crc32.py << 'HOOKEOF'
@@ -550,7 +552,7 @@ HOOKEOF"
 -c 'libmount*:tools.build:cflags=[\"-DHAVE_CLOSE_RANGE=1\"]' \
 -c 'tools.build:sharedlinkflags=[\"-target\",\"x86_64-linux-gnu.${GLIBC_BASELINE}\"]' \
 -c 'tools.build:exelinkflags=[\"-target\",\"x86_64-linux-gnu.${GLIBC_BASELINE}\",\"-pie\"]' \
--c 'qt/*:tools.build:exelinkflags=[\"-target\",\"x86_64-linux-gnu.${GLIBC_BASELINE}\",\"-pie\",\"${OUT_ABS}/compat-statx.o\"]' \
+-c 'qt/*:tools.build:exelinkflags=[\"-target\",\"x86_64-linux-gnu.${GLIBC_BASELINE}\",\"-pie\",\"${OUT_ABS}/compat-glibc-shims.o\"]' \
 -c tools.system.package_manager:mode=check \
 -vv \
 --output-folder=qt/host/build-portable-linux"

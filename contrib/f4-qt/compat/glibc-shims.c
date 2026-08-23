@@ -1,5 +1,5 @@
 /*
- * statx() compatibility shim for a glibc-2.27 baseline built with zig cc.
+ * Compatibility shims for a glibc-2.27 baseline built with zig cc.
  *
  * Why this file exists
  * --------------------
@@ -40,13 +40,20 @@
  * `#else` branch returns -ENOSYS and every caller falls back to stat().
  * So the shim degrades exactly the way the unshimmed build would.
  *
- * Scope: this is a 2.27-baseline workaround for one known upstream
- * pattern, not a general "polyfill anything newer" library. The full
- * glibc 2.27 -> 2.28 symbol delta is seven names (fcntl64, renameat2,
- * statx, thrd_current, thrd_equal, thrd_sleep, thrd_yield); of those,
- * only statx is live for this build. If that ever changes, add the
- * specific symbol here with the same standard of evidence -- do not
- * turn this into a speculative compatibility layer.
+ * Scope: a 2.27-baseline workaround for a known upstream pattern, added
+ * one symbol at a time on evidence. NOT a speculative "polyfill anything
+ * newer" layer -- every entry below exists because a real build failed
+ * on it, and each carries the file and line that failed.
+ *
+ * How many more of these are there? Measure, do not guess. An earlier
+ * note here claimed the risk was a closed set of seven names; that was
+ * the 2.27 -> 2.28 delta only, and it was wrong as an answer to the
+ * question being asked. The real 2.27 -> 2.39 delta is 396 symbols
+ * (tools/glibc-baseline-delta.py computes it). Most are C23 maths,
+ * <stdbit.h> and C11 threads that nothing here touches; the ones that
+ * bite are thin syscall wrappers a library reaches for behind a
+ * kernel-header #ifdef -- statx, close_range, closefrom, renameat2,
+ * execveat, getdents64, gettid, pidfd_*, epoll_pwait2 and similar.
  */
 
 #define _GNU_SOURCE
@@ -79,6 +86,41 @@ int statx(int dirfd, const char *pathname, int flags,
     (void)flags;
     (void)mask;
     (void)statxbuf;
+    errno = ENOSYS;
+    return -1;
+#endif
+}
+
+/*
+ * close_range() entered glibc in 2.34.
+ *
+ * Same shape as statx() exactly: Qt guards the call with `#ifdef
+ * CLOSE_RANGE_CLOEXEC` (qtbase/src/corelib/io/qprocess_unix.cpp:860),
+ * and CLOSE_RANGE_CLOEXEC is a *kernel* UAPI constant while
+ * close_range() is a *glibc* function. Header says yes, 2.27 stub says
+ * no:
+ *
+ *   ld.lld: error: undefined symbol: close_range
+ *   >>> referenced by qprocess_unix.cpp:860
+ *
+ * Two things make the syscall the right implementation here rather than
+ * merely an acceptable one. First, the call site runs in a vfork()ed
+ * child, where Qt's own comment notes it cannot even use opendir()
+ * because that allocates; a raw syscall is async-signal-safe and
+ * allocates nothing. Second, Qt already expects this to fail at
+ * runtime -- its comment says close_range fails with ENOSYS before
+ * kernel 5.9 and EINVAL before 5.11 -- and the fallback immediately
+ * below the call marks descriptors FD_CLOEXEC by hand. So on an old
+ * kernel the shim returns -1 and Qt takes exactly the path it would
+ * have taken with a real glibc 2.34.
+ */
+__attribute__((weak))
+int close_range(unsigned int first, unsigned int last, int flags)
+{
+#ifdef SYS_close_range
+    return (int)syscall(SYS_close_range, first, last, flags);
+#else
+    (void)first; (void)last; (void)flags;
     errno = ENOSYS;
     return -1;
 #endif

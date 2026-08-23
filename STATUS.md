@@ -23,7 +23,7 @@ for this entire stretch of work.
   changes cheaply.
 - Compiler wrappers: `onebin/toolchain/zig-cc`, `zig-c++`.
 
-### The one thing currently blocking — ICU root-caused and **fixed**, not yet CI-verified
+### The one thing currently blocking — `close_range` (glibc 2.34), shimmed; ICU fix confirmed working
 
 The `CMAKE_LIBRARY_ARCHITECTURE` fix worked. Qt now configures and
 **builds**, reaching target 124 of 6627 before the first executable link
@@ -188,6 +188,85 @@ Patches are delivered as `git format-patch` output and must apply with
 before handing anything over (the sandbox remote has gone stale
 mid-session before, and a failed `git am` on a fresh clone is what
 caught it). `make test` after every change. Don't touch `filelist.md`.
+
+<!-- ------------------------------------------------------------------ -->
+
+## ICU fix confirmed; next stop `close_range` — and the "closed set of seven" was wrong, the real delta is 396
+
+The `/usr/include` fix worked. Qt built past ICU to target **1863 of
+6627** (was 397) before failing on a different symbol, in a different
+library, at a different link:
+
+```
+[1863/6627] Linking CXX executable qtbase/bin/qsb
+ld.lld: error: undefined symbol: close_range
+>>> referenced by qprocess_unix.cpp:860
+```
+
+`close_range()` entered glibc in **2.34**. Qt guards it with `#ifdef
+CLOSE_RANGE_CLOEXEC` — a *kernel* UAPI constant standing in for the
+availability of a *glibc* function. Byte for byte the `statx` pattern,
+in a second file.
+
+### Correcting an earlier claim
+
+Two entries ago this said the remaining risk was "a closed list of seven
+symbols" and that only `statx` was live. **That was wrong**, and
+`close_range` is not the counterexample so much as the proof:
+
+- It answered the wrong question. Seven is the 2.27 → **2.28** delta,
+  but the ceiling is not 2.28 — zig's headers describe the *newest*
+  glibc it ships, so the exposure runs 2.27 → **2.39**.
+- The method was wrong too. It diffed `libc.so.6` alone. glibc 2.34
+  merged libpthread, libdl, librt and libresolv *into* libc, so a
+  libc-only diff reports hundreds of symbols as new arrivals when they
+  were merely relocated — and correspondingly hides real arrivals in the
+  libraries it ignored.
+
+Measured properly — union of all eight stub libraries, 2.27 against 2.39
+— the delta is **396 symbols**. `tools/glibc-baseline-delta.py` computes
+it, and the docstring records the trap so the next person does not
+redo the same two mistakes.
+
+The 396 are not 396 problems. Most are C23 maths, `<stdbit.h>` and C11
+threads that nothing in this graph touches. The ones that bite are thin
+syscall wrappers reached for behind a kernel-header `#ifdef`: `statx`,
+`close_range`, `closefrom`, `renameat2`, `execveat`, `getdents64`,
+`gettid`, `pidfd_*`, `epoll_pwait2`. That is a shape to watch for, not a
+number to be reassured by — the honest statement is that more may
+surface, and each one is cheap to shim once seen.
+
+### The shim
+
+`contrib/f4-qt/compat/statx.c` is now `glibc-shims.c` — it holds two
+symbols and was always going to hold more. `close_range` forwards to
+`syscall(SYS_close_range, …)`, weak like its neighbour.
+
+The syscall is the right implementation here, not merely a tolerable
+one, for two reasons taken from Qt's own code. The call site runs in a
+`vfork()`ed child where Qt's comment notes it cannot even use
+`opendir()` because that allocates — a raw syscall allocates nothing and
+is async-signal-safe. And Qt already expects runtime failure: its
+comment says `close_range` fails with `ENOSYS` before kernel 5.9, and
+the loop immediately below marks descriptors `FD_CLOEXEC` by hand. On an
+old kernel the shim returns −1 and Qt takes exactly the path it would
+take against a real glibc 2.34.
+
+Verified against a reconstruction of the real `qsb` link — Qt's actual
+`#ifdef CLOSE_RANGE_CLOEXEC` call site, the referencing TU inside a
+static archive, the object listed three times, `--gc-sections` on.
+Without the shim: both `close_range` and `statx` undefined. With it:
+links, runs (`close_range -> 0`, `statx -> 0 size=3`), and `onebin audit
+--glibc-max 2.27` gives `requires GLIBC_2.2.5`, **PASS Level 1**.
+
+### For the Qt report
+
+This is now two instances of one pattern rather than one incident, which
+makes the upstream case considerably stronger: `statx` behind
+`STATX_BASIC_STATS` and `close_range` behind `CLOSE_RANGE_CLOEXEC`, both
+kernel macros standing in for glibc functions, in a codebase that gets
+it right for `renameat2` with a link-checked feature. The draft report
+should cover both.
 
 <!-- ------------------------------------------------------------------ -->
 
