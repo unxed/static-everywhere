@@ -113,4 +113,62 @@ fi
 # GLIBC_2.4, and X11/Xlib.h (which Qt will need next) resolves too.
 set -- "$@" -idirafter /usr/include
 
+# Host libraries as a last-resort search path -- the exact counterpart of
+# the -idirafter above, and needed for the same reason. zig cc with an
+# explicit -target searches only its own bundled library directories, not
+# the host's /usr/lib/<triple> the way a native gcc/clang does. Conan
+# emits host-contract libraries as bare `-l` names (cpp_info.system_libs,
+# and Qt's own recorded system libraries) precisely because every other
+# compiler finds them without help, so no -L accompanies them.
+#
+# Diagnosed from the failing link of ZoinGallery/libZoinGalleryQml.so:
+# 28 -L flags on the command line, every one a Conan package directory,
+# none of them the host's -- and zig listing all 56 paths it searched for
+# libGL, none of which was /usr/lib/x86_64-linux-gnu:
+#
+#   error: unable to find dynamic system library 'GL' using strategy
+#   'paths_first'. searched paths: <Conan package dirs only>
+#
+# Appended at the very END of the argument list, which is what makes this
+# safe rather than merely convenient: the linker searches -L directories
+# in order, so every Conan directory is tried first and a vendored
+# library still wins over a host copy of the same name. Measured, because
+# the reverse ordering fails silently rather than loudly: with the host
+# path first, a link against a deliberately shadowed `-lz` resolved to
+# the host library and produced a .so with the symbol simply unresolved.
+# With the host path last it resolved to the vendored one. That is the
+# same hazard that made Qt compile against the host's ICU headers, in its
+# link-time form.
+#
+# The triple comes from the caller's own -target rather than being
+# hardcoded, so this wrapper keeps carrying no target-specific knowledge
+# (DESIGN-onebin.md §8). Only /usr/lib/<triple> is proven necessary here;
+# lib64 and lib are included so the wrapper is not silently Debian-only,
+# and every path is guarded by -d so a host without it adds nothing.
+# Appending -L to a compile-only invocation was measured to produce no
+# warning, so this is unconditional and stays simple.
+_onebin_triple=""
+_onebin_want_triple=0
+for _onebin_arg in "$@"; do
+    if [ "$_onebin_want_triple" = 1 ]; then
+        _onebin_triple="$_onebin_arg"
+        _onebin_want_triple=0
+        continue
+    fi
+    case "$_onebin_arg" in
+        -target|--target) _onebin_want_triple=1 ;;
+        --target=*)       _onebin_triple="${_onebin_arg#--target=}" ;;
+    esac
+done
+# x86_64-linux-gnu.2.27 -> x86_64-linux-gnu
+_onebin_triple="${_onebin_triple%%.*}"
+if [ -n "$_onebin_triple" ] && [ -d "/usr/lib/${_onebin_triple}" ]; then
+    set -- "$@" -L"/usr/lib/${_onebin_triple}"
+fi
+for _onebin_libdir in /usr/lib64 /usr/lib; do
+    if [ -d "$_onebin_libdir" ]; then
+        set -- "$@" -L"$_onebin_libdir"
+    fi
+done
+
 exec zig cc "$@"

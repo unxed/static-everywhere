@@ -45,4 +45,33 @@ fi
 # headers still win and the glibc pin is unaffected.
 set -- "$@" -idirafter /usr/include
 
+# Host libraries as a last-resort search path. See zig-cc for the full
+# reasoning: zig cc with -target does not search the host's
+# /usr/lib/<triple>, while Conan emits host-contract libraries as bare
+# -l names with no -L. Appended last so Conan's own directories are
+# searched first and a vendored library still beats a host copy.
+_onebin_triple=""
+_onebin_want_triple=0
+for _onebin_arg in "$@"; do
+    if [ "$_onebin_want_triple" = 1 ]; then
+        _onebin_triple="$_onebin_arg"
+        _onebin_want_triple=0
+        continue
+    fi
+    case "$_onebin_arg" in
+        -target|--target) _onebin_want_triple=1 ;;
+        --target=*)       _onebin_triple="${_onebin_arg#--target=}" ;;
+    esac
+done
+# x86_64-linux-gnu.2.27 -> x86_64-linux-gnu
+_onebin_triple="${_onebin_triple%%.*}"
+if [ -n "$_onebin_triple" ] && [ -d "/usr/lib/${_onebin_triple}" ]; then
+    set -- "$@" -L"/usr/lib/${_onebin_triple}"
+fi
+for _onebin_libdir in /usr/lib64 /usr/lib; do
+    if [ -d "$_onebin_libdir" ]; then
+        set -- "$@" -L"$_onebin_libdir"
+    fi
+done
+
 exec zig c++ "$@"

@@ -25,11 +25,12 @@
 # check whose reason is forgotten gets deleted the first time it is
 # inconvenient.
 #
-# Usage:
-#   preflight-f4-qt.sh              # fast checks only (no network)
-#   preflight-f4-qt.sh --with-scan  # also scan source trees for glibc
-#                                   # symbols newer than the baseline
-#                                   # (needs zig, clones f4/qwindowkit)
+# Needs no network. The host-library link probe is skipped when zig is
+# not on PATH; everything else always runs.
+#
+# The companion check for the other class -- calls to glibc symbols newer
+# than the baseline -- is tools/glibc-source-scan.py, run separately
+# because it needs the source trees checked out.
 
 set -uo pipefail
 
@@ -38,9 +39,6 @@ SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 # shellcheck disable=SC1007
 REPO_ROOT=$(CDPATH= cd -- "${SCRIPT_DIR}/.." && pwd)
 BUILD_SCRIPT="${REPO_ROOT}/tools/build-f4-qt.sh"
-
-WITH_SCAN=0
-[ "${1:-}" = "--with-scan" ] && WITH_SCAN=1
 
 FAILED=0
 pass() { printf '  \033[32mok\033[0m   %s\n' "$1"; }
@@ -173,13 +171,42 @@ then
     FAILED=$((FAILED + 1))
 fi
 
-if [ "$WITH_SCAN" -eq 1 ]; then
-    echo
-    echo "== source scan: symbols newer than the glibc baseline =="
+echo
+echo "== the repository's own test suite =="
+# Added because it was missed. The commit that removed --gallery off left
+# three tests in onebin/tests/t_f4_qt_plan.c asserting the old contract,
+# and they stayed broken until an unrelated change happened to run the
+# suite. A gate that checks the plan but not the tests is half a gate.
+if make -sC "${REPO_ROOT}/onebin" test >/tmp/onebin-test.log 2>&1; then
+    pass "$(tail -n1 /tmp/onebin-test.log | tr -d '\n')"
+else
+    fail "onebin test suite"
+    grep -E '^\s+FAIL' /tmp/onebin-test.log | sed 's/^/       /'
+fi
+
+echo
+echo "== host-contract libraries actually link =="
+if true; then
+    # zig cc with -target searches only its own library directories, while
+    # Conan emits host-contract libraries as bare -l names with no -L. That
+    # cost a run: the final link of libZoinGalleryQml.so could not find
+    # libGL or libX11. The wrappers now append the host paths last; this
+    # proves they still do, against the real compiler rather than by
+    # grepping the wrapper for a flag.
     if ! command -v zig >/dev/null 2>&1; then
-        skip "glibc delta scan" "zig not on PATH"
+        skip "host library link probe" "zig not on PATH"
     else
-        "${SCRIPT_DIR}/glibc-source-scan.py" || FAILED=$((FAILED + 1))
+        probe=$(mktemp -d)
+        echo 'void f(void){}' >"$probe/a.c"
+        if "${REPO_ROOT}/onebin/toolchain/zig-cc" -target x86_64-linux-gnu.2.27 \
+             -shared -fPIC "$probe/a.c" -lGL -lX11 -lxcb -lEGL \
+             -o "$probe/a.so" 2>"$probe/err"; then
+            pass "GL, X11, xcb and EGL link through zig-cc with no explicit -L"
+        else
+            fail "host-contract libraries do not link"
+            head -3 "$probe/err" | sed 's/^/       /'
+        fi
+        rm -rf "$probe"
     fi
 fi
 

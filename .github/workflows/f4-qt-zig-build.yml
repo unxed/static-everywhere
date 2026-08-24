@@ -43,9 +43,6 @@ jobs:
       - name: Checkout static-everywhere
         uses: actions/checkout@v4
 
-      - name: Fast invariant checks
-        run: ./tools/preflight-f4-qt.sh
-
       - name: Fetch the trees that still get compiled
         run: |
           git clone --filter=blob:none --quiet https://github.com/Zoinen/f4 f4-src
@@ -62,6 +59,13 @@ jobs:
             https://ziglang.org/download/0.13.0/zig-linux-x86_64-0.13.0.tar.xz
           tar xf zig.tar.xz
           echo "$PWD/zig-linux-x86_64-0.13.0" >> "$GITHUB_PATH"
+
+      - name: Fast invariant checks
+        # After the zig install, deliberately: the preflight's last check
+        # links against the host's GL/X11/xcb/EGL through the wrappers, and
+        # skips itself if zig is absent. A check that silently skips is
+        # indistinguishable from one that passes.
+        run: ./tools/preflight-f4-qt.sh
 
       - name: Scan for glibc symbols newer than the baseline
         run: |

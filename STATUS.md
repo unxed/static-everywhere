@@ -23,7 +23,7 @@ for this entire stretch of work.
   changes cheaply.
 - Compiler wrappers: `onebin/toolchain/zig-cc`, `zig-c++`.
 
-### The one thing currently blocking — nothing known; a preflight gate now catches this project's two recurring failure classes in seconds
+### The one thing currently blocking — host libraries were not on zig's link search path; fixed in the wrappers, not yet CI-verified
 
 The `CMAKE_LIBRARY_ARCHITECTURE` fix worked. Qt now configures and
 **builds**, reaching target 124 of 6627 before the first executable link
@@ -188,6 +188,78 @@ Patches are delivered as `git format-patch` output and must apply with
 before handing anything over (the sandbox remote has gone stale
 mid-session before, and a failed `git am` on a fresh clone is what
 caught it). `make test` after every change. Don't touch `filelist.md`.
+
+<!-- ------------------------------------------------------------------ -->
+
+## `-lGL` had nowhere to be found: zig searches no host library path, and Conan emits host libraries with no `-L`
+
+qwindowkit is pinned and built, Qt came from cache, disk sat at 57G free.
+The failure moved into f4's own tree, at the link of
+`ZoinGallery/libZoinGalleryQml.so`:
+
+```
+error: unable to find dynamic system library 'GL' using strategy 'paths_first'.
+  searched paths: <56 Conan package directories, and nothing else>
+```
+
+Twenty-eight `-L` flags on that command line, every one a Conan package
+directory, not one of them the host's. Thirty-odd libraries failed the
+same way — `X11`, `xcb`, `EGL`, `Xrandr`, `Xfixes`, the whole X set.
+
+**This is the exact counterpart of the `-idirafter /usr/include` the
+wrappers already carry, in its link-time form.** `zig cc` with an
+explicit `-target` searches only its own bundled library directories, not
+`/usr/lib/<triple>`. Conan emits host-contract libraries as bare `-l`
+names — `cpp_info.system_libs`, and Qt's own recorded system libraries —
+precisely because every other compiler finds them unaided, so no `-L`
+ever accompanies them. The wrapper's own comment had already observed
+half of this: `pkgconf --cflags` returns empty while `--libs` returns
+`-L/usr/lib/...`. The CMake path emits neither.
+
+### Fix, in both wrappers
+
+Append the host library directories at the very **end** of the argument
+list. The end is what makes it safe rather than merely convenient, and
+it was measured rather than assumed:
+
+| order | result |
+| --- | --- |
+| Conan `-L` first, host appended last | links the **vendored** `libz` |
+| host `-L` first | takes the host copy, leaving the symbol unresolved — **silently** |
+
+The second row is the ICU hazard again in link-time form, and it fails
+without saying anything, which is why the host path must come last and
+why it belongs in the wrapper (which appends to the end of argv) rather
+than in `CMAKE_*_LINKER_FLAGS` (which CMake emits before the libraries).
+
+The triple is taken from the caller's own `-target` rather than
+hardcoded, so the wrapper still carries no target-specific knowledge.
+Verified: the original failure links through the wrapper with no explicit
+`-L`, for C and C++; a vendored library still beats a host one; the glibc
+pin is untouched (`requires GLIBC_2.2.5`, PASS Level 1).
+
+### A process miss, found by accident
+
+`make test` came back **3 failed**. Not from this change — from the
+commit that removed `--gallery off`, which left three tests asserting the
+old contract. That commit checked shellcheck, YAML and the rendered plan,
+and did not run the suite. The tests sat broken until an unrelated change
+happened to run it.
+
+The tests are updated to pin the new contract in both directions (no flag
+is fine; `--gallery off` is refused), and — more to the point — **the
+preflight now runs `make test`**. A gate that checks the plan but not the
+tests is half a gate.
+
+The preflight also gained a link probe for this class: it links against
+the host's `GL`, `X11`, `xcb` and `EGL` through the wrappers, proving the
+behaviour against the real compiler instead of grepping the wrapper for a
+flag. It is placed after the zig install in CI on purpose — it skips
+itself when zig is absent, and a check that silently skips looks exactly
+like one that passes.
+
+Both new checks were negative-controlled: removing the host `-L` from the
+wrapper, and breaking a test, are each caught.
 
 <!-- ------------------------------------------------------------------ -->
 
