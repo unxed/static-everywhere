@@ -34,7 +34,8 @@ Usage: tools/build-f4-qt.sh --config linux|windows --src DIR --out DIR [OPTIONS]
   --fetch                 allowed to clone f4 over the network
   --no-fetch              refuse to touch the network (default)
   --print-plan            print every command this invocation would run
-  --gallery public|off    resolve the ZoinGallery private submodule issue (§7.8)
+  --gallery public        fetch the ZoinGallery submodule over https (§7.8);
+                          now the only supported value, and the default
   --toolchain host|zig    which compiler builds the Qt dependency stack (default: host)
                           host: exactly f4's own ci/build-portable-qt-linux.sh --
                                 requires root inside literally Ubuntu 18.04 (their
@@ -113,12 +114,24 @@ if [ "${TOOLCHAIN}" = "zig" ] && [ "${CONFIG}" = "windows" ]; then
     exit 2
 fi
 
-if [ -z "${GALLERY}" ]; then
-    echo "error: ZoinGallery is a private submodule (05-REFERENCE-f4-qt.md §7.8)." >&2
-    echo "       You must resolve this by passing either:" >&2
-    echo "         --gallery public  (if you have SSH access or it was made public)" >&2
-    echo "         --gallery off     (to build with -DF4_NO_GALLERY=ON)" >&2
-    exit 1
+# ZoinGallery is now public (verified by anonymous `git ls-remote`), so
+# --gallery public is the working default and needs no credentials. The
+# submodule URL in f4's .gitmodules is still the SSH form, which is what
+# fails anonymously; the clone step below rewrites it to https.
+#
+# --gallery off is gone. It never worked and could not have: it exported
+# F4_NO_GALLERY as an environment variable, nothing ever read it, and f4
+# has no such CMake option at this pin -- the ZoinGallery check in
+# qt/host/CMakeLists.txt:55 is unconditional. It also should not be made
+# to work. f4-qt is an image viewer; 53 references across main.cpp, two
+# test targets and three QML files are not a feature flag, they are the
+# application. A build with the gallery removed would not be the artifact
+# this reference build exists to reproduce.
+if [ -n "${GALLERY}" ] && [ "${GALLERY}" != "public" ]; then
+    echo "error: --gallery '${GALLERY}' is not supported." >&2
+    echo "       Only --gallery public exists now; ZoinGallery is public and" >&2
+    echo "       is fetched over https. See 05-REFERENCE-f4-qt.md §7.8." >&2
+    exit 2
 fi
 
 plan_step() {
@@ -143,6 +156,14 @@ done < "$DEPS_LOCK"
 if [ "${FETCH}" -eq 1 ]; then
     plan_step "git clone https://github.com/Zoinen/f4 ${SRC}"
     plan_step "git -C ${SRC} checkout ${PIN}"
+    # f4 pins ZoinGallery by SSH URL, which fails without credentials even
+    # though the repository is public. Rewrite it to https and check the
+    # submodule out at the commit f4 pins -- 65d851c5 at PIN 1a03511a,
+    # confirmed fetchable anonymously. Without this, everything below
+    # builds for well over an hour and then f4's own configure aborts with
+    # "ZoinGallery submodule is missing".
+    plan_step "git -C ${SRC} submodule set-url third_party/ZoinGallery https://github.com/Zoinen/ZoinGallery"
+    plan_step "git -C ${SRC} submodule update --init --recursive --depth 1"
 elif [ "${PRINT_PLAN}" -eq 0 ] && [ ! -d "${SRC}" ]; then
     echo "error: source tree '${SRC}' not found and --no-fetch is set." >&2
     echo "       run again with --fetch to clone, or point --src at an existing checkout." >&2
@@ -151,9 +172,6 @@ fi
 
 # 2. Build setup
 export F4_PORTABLE_STATIC=ON
-if [ "${GALLERY}" = "off" ]; then
-    export F4_NO_GALLERY=ON
-fi
 
 plan_step "mkdir -p ${OUT}"
 
@@ -556,6 +574,16 @@ HOOKEOF"
 -c tools.system.package_manager:mode=check \
 -vv \
 --output-folder=qt/host/build-portable-linux"
+
+    # Reclaim the Conan build trees before f4 itself builds. Measured on
+    # the run that filled the disk: 26.8GB of Conan cache, of which
+    # 16.7GB is build folders (b/) and 10.1GB the packages (p/) that are
+    # actually needed from here on. Every dependency is built and packaged
+    # by this point, so the build trees are pure residue -- and the
+    # previous run died at 144G/145G used with 635M free, immediately
+    # after Qt packaged successfully. This also makes the cache that gets
+    # saved at the end of CI smaller and faster.
+    plan_step "cd ${SRC} && env PATH=\"${OUT}/conan-venv/bin:\$PATH\" conan cache clean '*' --source --build --temp"
 
     plan_step "cd ${SRC} && bash ci/build-qwindowkit.sh \"\$PWD/qt/host/build-portable-linux\" Release static"
 

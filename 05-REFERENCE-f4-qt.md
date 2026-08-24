@@ -349,7 +349,19 @@ library for turn out not to need one — and for
 [FUTURE-IDEAS.md §1.3](./FUTURE-IDEAS.md), which argues exactly that and can now
 cite a shipping program instead of a specification.
 
-### 7.8 A private submodule breaks reproducibility for everyone else
+### 7.8 A private submodule breaks reproducibility for everyone else — **resolved upstream**
+
+> **Update.** ZoinGallery is now public. `git ls-remote
+> https://github.com/Zoinen/ZoinGallery` succeeds anonymously, and the
+> exact commit f4 pins at PIN `1a03511a` — `65d851c5` — is fetchable
+> without credentials. The Level-0 objection below no longer stands.
+>
+> One thing still bites: f4's `.gitmodules` names the submodule by its
+> **SSH** URL (`git@github.com:Zoinen/ZoinGallery.git`), which fails for
+> anyone without a key regardless of the repository being public.
+> `tools/build-f4-qt.sh` rewrites it to https before checking out.
+>
+> The rest of this section is kept as the record of why it mattered.
 
 `third_party/ZoinGallery` is pinned as a submodule at
 `git@github.com:Zoinen/ZoinGallery.git`, branch `zoin/f4-integration`. It returns

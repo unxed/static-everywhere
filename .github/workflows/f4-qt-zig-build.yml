@@ -146,7 +146,7 @@ jobs:
           ./tools/build-f4-qt.sh \
             --config linux \
             --toolchain zig \
-            --gallery off \
+            --gallery public \
             --src "$PWD/f4-src" \
             --out "$PWD/out/f4-qt" \
             --no-fetch 2>&1 | tee /tmp/build-output.log

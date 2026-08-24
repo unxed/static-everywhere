@@ -23,7 +23,7 @@ for this entire stretch of work.
   changes cheaply.
 - Compiler wrappers: `onebin/toolchain/zig-cc`, `zig-c++`.
 
-### The one thing currently blocking — the runner ran **out of disk** at ~52%; capacity, not a toolchain bug
+### The one thing currently blocking — **Qt is built**; f4's own configure aborts on the ZoinGallery submodule, fixed but not yet CI-verified
 
 The `CMAKE_LIBRARY_ARCHITECTURE` fix worked. Qt now configures and
 **builds**, reaching target 124 of 6627 before the first executable link
@@ -188,6 +188,84 @@ Patches are delivered as `git format-patch` output and must apply with
 before handing anything over (the sandbox remote has gone stale
 mid-session before, and a failed `git am` on a fresh clone is what
 caught it). `make test` after every change. Don't touch `filelist.md`.
+
+<!-- ------------------------------------------------------------------ -->
+
+## **Qt built and packaged.** f4's own configure then aborted on ZoinGallery — which turns out to be public now
+
+The whole Conan graph completed. `qt/6.11.1: package(): Packaged …` is
+in the log, all 6627 targets, every dependency built and packaged under
+the zig toolchain at a 2.27 baseline. Four toolchain defects and one
+capacity limit stood between the first run and this point.
+
+The failure is now in new territory — f4 itself, at configure:
+
+```
+CMake Error at CMakeLists.txt:56 (message):
+  ZoinGallery submodule is missing.  Run: git submodule update --init --recursive
+```
+
+### `--gallery off` never worked, and should not be made to work
+
+The script accepted `--gallery off` and responded by exporting
+`F4_NO_GALLERY=ON` as an **environment variable**. Nothing reads it. Its
+own help text promised `-DF4_NO_GALLERY=ON`, and the zig path — a
+parallel reimplementation of f4's `ci/build-portable-qt-linux.sh` —
+never passed any such `-D`. Worse, **f4 has no such option at all**:
+`grep -rn F4_NO_GALLERY` across the pinned tree returns nothing, and the
+submodule check at `qt/host/CMakeLists.txt:55` is unconditional.
+
+It should not be implemented either. f4-qt is an image viewer, and the
+gallery is 53 references across `main.cpp`, two test targets and three
+QML files. That is not a feature flag, it is the application; a build
+with it removed would not be the artifact this reference build exists to
+reproduce. The option is removed rather than fixed, and passing it now
+fails immediately with an explanation instead of after an hour of
+building.
+
+### §7.8 is out of date: ZoinGallery is public
+
+`05-REFERENCE-f4-qt.md §7.8` records the private submodule as a Level-0
+reproducibility blocker — an artifact whose sources cannot be obtained
+cannot have a verifiable SBOM. **That is no longer true.** Verified
+anonymously from a clean container: `git ls-remote` succeeds, the branch
+`zoin/f4-integration` is there, and the exact commit f4 pins —
+`65d851c5` at PIN `1a03511a` — fetches without credentials.
+
+What still fails is narrower and easy to miss: f4's `.gitmodules` names
+the submodule by its **SSH** URL, and SSH fails for anyone without a key
+no matter how public the repository is. So the fix is a URL rewrite, not
+an access request:
+
+```
+git -C <src> submodule set-url third_party/ZoinGallery \
+        https://github.com/Zoinen/ZoinGallery
+git -C <src> submodule update --init --recursive --depth 1
+```
+
+Verified end to end on a fresh anonymous clone of f4 at the pin: fails
+as CI did without the rewrite, and with it checks out exactly
+`65d851c5`, satisfying f4's guard. §7.8 has been updated in place.
+
+### Disk, again — 16.7GB of it is residue
+
+The run still ended at **144G used of 145G, 635M free**, even with the
+new preflight. Measured from the artifact's own listing:
+
+| | size |
+| --- | --- |
+| Conan cache total | 26.8 GB |
+| — build folders (`b/`) | **16.7 GB** |
+| — packages (`p/`) | 10.1 GB |
+
+By the time f4 builds, every dependency is built *and packaged*; the
+build trees are pure residue. `conan cache clean '*' --source --build
+--temp` now runs between the Conan install and f4's own build. It also
+shrinks the cache the workflow saves at the end.
+
+Three separate things were wrong here and only one was a bug in the
+usual sense — worth remembering that "the build failed" covered a dead
+option, a stale doc, and a capacity leak at once.
 
 <!-- ------------------------------------------------------------------ -->
 
