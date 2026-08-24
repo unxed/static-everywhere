@@ -590,10 +590,20 @@ HOOKEOF"
 -c 'tools.build:sharedlinkflags=[\"-target\",\"x86_64-linux-gnu.${GLIBC_BASELINE}\"]' \
 -c 'tools.build:exelinkflags=[\"-target\",\"x86_64-linux-gnu.${GLIBC_BASELINE}\",\"-pie\"]' \
 -c 'qt/*:tools.build:exelinkflags=[\"-target\",\"x86_64-linux-gnu.${GLIBC_BASELINE}\",\"-pie\",\"${OUT_ABS}/compat-glibc-shims.o\"]' \
+-cc core.sources:download_cache=\"${OUT_ABS}/sources-backup\" \
+-cc core.sources:download_urls='[\"https://c3i.jfrog.io/artifactory/conan-center-backup-sources/\",\"origin\"]' \
 -c tools.system.package_manager:mode=check \
 -vv \
 --output-folder=qt/host/build-portable-linux"
 
+    # NOT --source. That was here for one run and cost a full CI cycle:
+    # CI caches ~/.conan2/p, which is where the extracted sources live, so
+    # deleting them before the cache is saved forces the *next* run to
+    # re-download every upstream tarball. One of them -- fontconfig from
+    # freedesktop.org -- answered HTTP 418, and the build stopped before
+    # compiling anything. Sources are a small fraction of the cache and
+    # re-fetching them is the fragile part, so they stay.
+    #
     # Reclaim the Conan build trees before f4 itself builds. Measured on
     # the run that filled the disk: 26.8GB of Conan cache, of which
     # 16.7GB is build folders (b/) and 10.1GB the packages (p/) that are
@@ -602,7 +612,7 @@ HOOKEOF"
     # previous run died at 144G/145G used with 635M free, immediately
     # after Qt packaged successfully. This also makes the cache that gets
     # saved at the end of CI smaller and faster.
-    plan_step "cd ${SRC} && env PATH=\"${OUT}/conan-venv/bin:\$PATH\" conan cache clean '*' --source --build --temp"
+    plan_step "cd ${SRC} && env PATH=\"${OUT}/conan-venv/bin:\$PATH\" conan cache clean '*' --build --temp"
 
     plan_step "cd ${SRC} && bash ci/build-qwindowkit.sh \"\$PWD/qt/host/build-portable-linux\" Release static"
 

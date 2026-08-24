@@ -23,7 +23,7 @@ for this entire stretch of work.
   changes cheaply.
 - Compiler wrappers: `onebin/toolchain/zig-cc`, `zig-c++`.
 
-### The one thing currently blocking — the ZoinGallery fix was in the wrong branch of the script and never ran; corrected
+### The one thing currently blocking — an upstream tarball server returned HTTP 418; source caching hardened so it cannot stop a build again
 
 The `CMAKE_LIBRARY_ARCHITECTURE` fix worked. Qt now configures and
 **builds**, reaching target 124 of 6627 before the first executable link
@@ -188,6 +188,68 @@ Patches are delivered as `git format-patch` output and must apply with
 before handing anything over (the sandbox remote has gone stale
 mid-session before, and a failed `git am` on a fresh clone is what
 caught it). `make test` after every change. Don't touch `filelist.md`.
+
+<!-- ------------------------------------------------------------------ -->
+
+## `freedesktop.org` answered **HTTP 418** — and my own `--source` cleanup is what exposed us to it
+
+Failed far earlier than usual, and not on anything we compiled:
+
+```
+fontconfig/2.15.0: WARN: network: Error 418 downloading file
+  https://www.freedesktop.org/software/fontconfig/release/fontconfig-2.15.0.tar.xz
+ConanException: Error 418 downloading file …
+```
+
+418 is what anti-bot layers return. From this sandbox the same URL gives
+**200**, so the block is against the runner IPs rather than the file
+being gone.
+
+### Why it hit us now: my cleanup deleted the sources from the CI cache
+
+The `conan cache clean` added last time was `--source --build --temp`.
+CI caches `~/.conan2/p`, and **that is where extracted sources live**
+(`p/<hash>/s`). So the step deleted them just before the cache was
+saved, and this run had to re-fetch every upstream tarball from ~35
+different servers — something no previous run had ever needed to do.
+One of those servers said no.
+
+`--source` bought nothing: the 16.7GB measured earlier was build folders
+(`p/b/`), not sources. It is removed; `--build --temp` stays.
+
+### Hardening, because that server will do it again
+
+Restoring the previous behaviour only means we do not *normally*
+re-download. A cold cache would hit the same wall. So sources now come
+from a backup chain:
+
+```
+-cc core.sources:download_cache="<out>/sources-backup"
+-cc core.sources:download_urls='["https://c3i.jfrog.io/…-backup-sources/","origin"]'
+```
+
+ConanCenter mirrors third-party source tarballs by sha256, and the
+`origin` keyword keeps the upstream URL as the fallback rather than
+replacing it. The local `sources-backup` folder is added to the CI cache
+paths, so after one run the tarballs are local anyway.
+
+Verified against real Conan 2.29.1, not from documentation. First the
+mirror itself: fetched
+`…/conan-center-backup-sources/63a0658d…` and checked the sha256 against
+`conan-center-index`'s `conandata.yml` for fontconfig 2.15.0 — exact
+match. Then the mechanism, with a throwaway recipe whose `source()` uses
+that same freedesktop URL: Conan logs *sources found in remote backup*
+and never contacts freedesktop; a second run logs *retrieved from local
+download cache*. Finally the wiring, which is the part that has bitten
+twice now — the two `-cc` flags were extracted from
+`--print-plan`'s own output and fed verbatim to `conan source`, so what
+was tested is what the script emits rather than what I meant it to
+emit.
+
+Two of the last three failures have been shell-quoting or
+which-branch-runs mistakes in this script rather than toolchain problems.
+`--print-plan` output is the ground truth for anything added to that
+Conan command line, and it should be exercised, not just eyeballed.
 
 <!-- ------------------------------------------------------------------ -->
 

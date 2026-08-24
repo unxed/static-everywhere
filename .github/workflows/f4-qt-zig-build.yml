@@ -120,6 +120,7 @@ jobs:
           path: |
             ~/.conan2/p
             ~/.cache/ccache
+            out/f4-qt/sources-backup
           key: f4-qt-zig-conan-ccache-${{ hashFiles('tools/build-f4-qt.sh') }}
           restore-keys: |
             f4-qt-zig-conan-ccache-
@@ -411,6 +412,7 @@ jobs:
           path: |
             ~/.conan2/p
             ~/.cache/ccache
+            out/f4-qt/sources-backup
           key: ${{ steps.cache-restore.outputs.cache-primary-key }}
 
       - name: Upload build log and binary
