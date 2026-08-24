@@ -11,7 +11,7 @@ libwebp 1.6.0 - -
 libheif 1.20.1 - -
 libjpeg-turbo 3.0.2 - -
 jasper 4.2.0 - -
-qwindowkit main - -
+qwindowkit 4f683f2e0e4f3a7d6061d0224de9ed30e7c17e0f - https://github.com/stdware/qwindowkit.git
 conan 2.29.1 - -
 cmake 3.31.6 - -
 ninja 1.13.0 - -

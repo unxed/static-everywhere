@@ -191,6 +191,63 @@ caught it). `make test` after every change. Don't touch `filelist.md`.
 
 <!-- ------------------------------------------------------------------ -->
 
+## qwindowkit pinned without touching f4's script — ephemeral URL redirect, plus a check that makes the arrangement fail loudly
+
+The last entry recorded, but did not fix, the one unpinned dependency:
+`ci/build-qwindowkit.sh` does `rm -rf` and then `git clone --branch main
+https://github.com/stdware/qwindowkit.git`. Everything else here is
+pinned, so an upstream commit to somebody else's default branch could
+change what we ship, silently, and an SBOM covering it would be wrong.
+
+Two obvious approaches are both bad. Pre-placing a checkout does not
+survive their `rm -rf`. Patching their script is exactly the brittle
+thing to avoid.
+
+### What was done instead
+
+Build a bare mirror holding **only** the pinned commit, publish it as
+`main`, and redirect their clone to it with `GIT_CONFIG_COUNT` /
+`GIT_CONFIG_KEY_0` / `GIT_CONFIG_VALUE_0`. Those are ephemeral: no global
+git config is touched, nothing on disk is edited, and the variables die
+with the command. Their script is not modified or even read at runtime.
+
+The redirect is transparent in the way that matters, and this was checked
+rather than hoped for: git records the **pre-rewrite** URL as `origin`, so
+qwindowkit's relative submodule URL (`../../stdware/qmsetup.git`) still
+resolves against GitHub. `qmsetup` lands on `a63c44c9` — exactly what the
+pinned tree records for it. `fetch --depth 1 <sha>` keeps the mirror at
+4.1MB.
+
+### The part that keeps it from being fragile
+
+A redirect keyed on a URL string is precisely the kind of thing that
+stops working quietly: if upstream ever changes the URL their script
+clones, the rewrite simply would not apply and we would be back to an
+unpinned dependency with nothing failing. So the redirect is only the
+prevention; the detection is a step immediately after that compares the
+resolved commit against the pin and exits non-zero with an explanation.
+
+Both outcomes exercised, running the plan's own rendered command lines
+verbatim: at the pin it passes silently, and after moving the tree one
+commit back it refuses with the intended message. The first negative
+attempt did not actually move the tree — a `&&` chain swallowed a failed
+`checkout` in a shallow clone — which is worth recording, because a
+negative control that silently does not run looks exactly like one that
+passes.
+
+Two preflight checks added for it. One of those was also wrong at first:
+it grepped for `rev-parse HEAD` and cheerfully accepted `rev-parse HEADX`
+when the control corrupted the line. Now matched against the full
+comparison including the 40-hex pin, and re-verified — three
+corruptions, three catches.
+
+The pin itself, `4f683f2e`, is what `main` resolved to at the time. It is
+recorded in `contrib/f4-qt/deps.lock`, replacing the literal `main` that
+was sitting there, and noted as a snapshot rather than a blessed release
+since upstream tags none.
+
+<!-- ------------------------------------------------------------------ -->
+
 ## Stop paying two hours per symptom: a preflight gate for the two classes that keep recurring
 
 Raised directly in conversation, and correctly: fixing one symptom per

@@ -129,6 +129,23 @@ else
     fail "shim object passed by relative path: $BAD_REL"
 fi
 
+# Cost: would have been a silently unreproducible artifact rather than a
+# failed build -- f4's own script clones qwindowkit from an unpinned
+# branch, so upstream could change what we ship without anything failing.
+if grep -q 'qwk-mirror' "$PLAN" && grep -q 'GIT_CONFIG_KEY_0' "$PLAN"; then
+    pass "qwindowkit is redirected to a pinned mirror"
+else
+    fail "qwindowkit pin missing -- f4's script clones --branch main unpinned"
+fi
+# Matched strictly, against the full comparison rather than a substring:
+# a first attempt grepped for "rev-parse HEAD" and happily accepted
+# "rev-parse HEADX" when the negative control corrupted it.
+if grep -qE 'qwindowkit-src rev-parse HEAD\)" = [0-9a-f]{40}' "$PLAN"; then
+    pass "qwindowkit commit is verified after the build script runs"
+else
+    fail "no post-check that qwindowkit landed on the pinned commit"
+fi
+
 echo
 echo "== every -c/-cc value parses =="
 if ! python3 - "$PLAN" <<'PY'

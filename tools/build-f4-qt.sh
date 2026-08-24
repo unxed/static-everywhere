@@ -13,6 +13,12 @@ PIN="1a03511a5ad97bbd4ec1400078272373b32e9d2c"
 GALLERY=""
 TOOLCHAIN="host"
 GLIBC_BASELINE="2.27"
+# qwindowkit is fetched by f4's own script from an unpinned branch; we pin
+# it (see the mirror steps below and contrib/f4-qt/deps.lock). This is what
+# stdware/qwindowkit's main resolved to when it was pinned -- not a blessed
+# release, since upstream tags none.
+QWK_URL="https://github.com/stdware/qwindowkit.git"
+QWK_PIN="4f683f2e0e4f3a7d6061d0224de9ed30e7c17e0f"
 
 # shellcheck disable=SC1007
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
@@ -614,7 +620,37 @@ HOOKEOF"
     # saved at the end of CI smaller and faster.
     plan_step "cd ${SRC} && env PATH=\"${OUT}/conan-venv/bin:\$PATH\" conan cache clean '*' --build --temp"
 
-    plan_step "cd ${SRC} && bash ci/build-qwindowkit.sh \"\$PWD/qt/host/build-portable-linux\" Release static"
+    # Pin qwindowkit. f4's ci/build-qwindowkit.sh does `rm -rf` and then
+    # `git clone --branch main`, with no pin -- so an upstream commit to
+    # somebody else's default branch can change this artifact at any time
+    # and an SBOM covering it would be wrong. Everything else here is
+    # pinned; this was the one hole.
+    #
+    # It cannot be pinned by pre-placing a checkout, because their script
+    # deletes the directory first, and patching their script would be the
+    # fragile option. Instead: build a tiny bare mirror holding exactly
+    # the pinned commit, publish it as `main`, and redirect their clone to
+    # it with GIT_CONFIG_* environment variables. Those are ephemeral --
+    # no global git config is touched, nothing on disk is edited, and the
+    # variables die with the command.
+    #
+    # The redirect is transparent in the way that matters: git records the
+    # *pre-rewrite* URL as origin, so qwindowkit's relative submodule URL
+    # (../../stdware/qmsetup.git) still resolves against GitHub. Verified:
+    # qmsetup lands on a63c44c9, exactly what the pinned tree records.
+    # `fetch --depth 1 <sha>` keeps the mirror at ~4MB.
+    plan_step "rm -rf ${OUT_ABS}/qwk-mirror && git init -q --bare ${OUT_ABS}/qwk-mirror"
+    plan_step "git -C ${OUT_ABS}/qwk-mirror remote add origin ${QWK_URL}"
+    plan_step "git -C ${OUT_ABS}/qwk-mirror fetch -q --depth 1 origin ${QWK_PIN}"
+    plan_step "git -C ${OUT_ABS}/qwk-mirror update-ref refs/heads/main ${QWK_PIN}"
+    plan_step "cd ${SRC} && env GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=url.${OUT_ABS}/qwk-mirror.insteadOf GIT_CONFIG_VALUE_0=${QWK_URL} bash ci/build-qwindowkit.sh \"\$PWD/qt/host/build-portable-linux\" Release static"
+
+    # The redirect above is the prevention; this is the detection, and it
+    # is what keeps the arrangement from being fragile. If upstream ever
+    # changes the URL their script clones, the rewrite silently stops
+    # applying and we would be back to an unpinned dependency without
+    # noticing. This turns that into a loud failure.
+    plan_step "test \"\$(git -C ${SRC}/build/qwindowkit-src rev-parse HEAD)\" = ${QWK_PIN} || { echo 'error: qwindowkit is not at the pinned commit ${QWK_PIN} -- the GIT_CONFIG_* redirect did not take effect (did upstream change the clone URL?)' >&2; exit 1; }"
 
     plan_step "cd ${SRC} && cmake -S qt/host -B qt/host/build-portable-linux -G Ninja \
 -DCMAKE_TOOLCHAIN_FILE=\"\$PWD/qt/host/build-portable-linux/conan_toolchain.cmake\" \
