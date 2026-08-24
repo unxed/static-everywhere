@@ -215,6 +215,32 @@ if true; then
             fail "the wrappers are not adding a host library search path at all"
             head -3 "$probe/err" | sed 's/^/       /'
         fi
+        # The linker arguments zig's driver refuses. Two have reached a
+        # real build so far, both at the end of a long one; the wrappers
+        # filter them, and this proves the filters still work against the
+        # real compiler. tools/zig-linker-arg-survey.sh lists the rest.
+        probe2=$(mktemp -d)
+        printf 'int main(void){return 0;}\n' >"$probe2/m.c"
+        if "${REPO_ROOT}/onebin/toolchain/zig-cc" -target x86_64-linux-gnu.2.27 \
+             -pie -fPIE "$probe2/m.c" -o "$probe2/m" \
+             -Wl,--exclude-libs,ALL -Wl,-rpath-link,/tmp \
+             2>"$probe2/err"; then
+            pass "linker args zig refuses (--exclude-libs, -rpath-link) are filtered"
+        else
+            fail "a linker argument zig refuses is reaching it"
+            head -2 "$probe2/err" | sed 's/^/       /'
+        fi
+        # ...but only where dropping it cannot change the output. With
+        # something being exported, --exclude-libs matters, so the wrapper
+        # must leave it alone and let zig refuse loudly.
+        if "${REPO_ROOT}/onebin/toolchain/zig-cc" -target x86_64-linux-gnu.2.27 \
+             -pie -fPIE -rdynamic "$probe2/m.c" -o "$probe2/m2" \
+             -Wl,--exclude-libs,ALL 2>/dev/null; then
+            fail "--exclude-libs is dropped even with -rdynamic (silently changes exports)"
+        else
+            pass "--exclude-libs is kept when the link exports symbols"
+        fi
+        rm -rf "$probe2"
         rm -rf "$probe"
     fi
 fi

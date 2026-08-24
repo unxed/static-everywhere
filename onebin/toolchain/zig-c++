@@ -20,6 +20,27 @@ set -- $(for _onebin_arg in "$@"; do
     esac
 done)
 
+# See zig-cc for the full reasoning and the measurement: zig's linker
+# driver rejects -Wl,--exclude-libs, which f4 adds to keep static
+# libraries from re-exporting symbols. Dropping it is a proven no-op for
+# a link with nothing being exported, so the filter is guarded on that
+# rather than applied blindly.
+has_export=0
+for _onebin_arg in "$@"; do
+    case "$_onebin_arg" in
+        -rdynamic|-export-dynamic|-Wl,--export-dynamic|-Wl,-E) has_export=1 ;;
+    esac
+done
+if [ "$has_export" = 0 ]; then
+    # shellcheck disable=SC2046
+    set -- $(for _onebin_arg in "$@"; do
+        case "$_onebin_arg" in
+            -Wl,--exclude-libs,*|-Wl,--exclude-libs=*) ;;
+            *) printf '%s\n' "$_onebin_arg" ;;
+        esac
+    done)
+fi
+
 # See zig-cc for why: -pie and -shared are never simultaneously valid,
 # and per-package Conan conf overrides didn't reliably reach every build
 # system's early configure-time probes. Fixed unconditionally here

@@ -23,7 +23,7 @@ for this entire stretch of work.
   changes cheaply.
 - Compiler wrappers: `onebin/toolchain/zig-cc`, `zig-c++`.
 
-### The one thing currently blocking — nothing known; the preflight's own environment was the last gap, now closed
+### The one thing currently blocking — `--exclude-libs` at the **final link of f4 itself**; filtered, not yet CI-verified
 
 The `CMAKE_LIBRARY_ARCHITECTURE` fix worked. Qt now configures and
 **builds**, reaching target 124 of 6627 before the first executable link
@@ -188,6 +188,65 @@ Patches are delivered as `git format-patch` output and must apply with
 before handing anything over (the sandbox remote has gone stale
 mid-session before, and a failed `git am` on a fresh clone is what
 caught it). `make test` after every change. Don't touch `filelist.md`.
+
+<!-- ------------------------------------------------------------------ -->
+
+## The last target in the build: `f4-qt-host` fails on a linker argument zig refuses
+
+The host library fix worked. Everything compiled and linked, all the way
+to the last target there is:
+
+```
+FAILED: [code=1] bin/Release/f4-qt-host
+error: unsupported linker arg: --exclude-libs
+```
+
+f4 adds it itself (`qt/host/CMakeLists.txt:114`), alongside
+`-static-libstdc++`, to stop static libraries re-exporting their symbols.
+GNU ld and lld both accept it; zig cc's driver parses `-Wl,` arguments
+itself and refuses anything it does not recognise.
+
+Same class as the `-Wl,-rpath-link` the wrappers already filter — which
+means this is the second time it has cost a long build, and that is the
+part worth fixing rather than the flag.
+
+### Dropping it is safe *here*, and the guard says where "here" ends
+
+Measured, with a control, rather than argued: linking a PIE executable
+against a static archive with and without `-Wl,--exclude-libs,ALL`
+produces **byte-identical** `.dynsym` tables. The control — the same link
+with `-rdynamic` — does differ: the archive's symbol is exported without
+the flag and hidden with it.
+
+So the flag only matters when something is being exported, and the
+wrapper keeps that distinction instead of assuming it. It drops
+`--exclude-libs` only when no `-rdynamic` / `-export-dynamic` is present;
+otherwise the flag stays and zig's refusal stands, loudly. Both branches
+are checked in the preflight, and both were negative-controlled —
+removing the filter, and bypassing the guard, are each caught.
+
+### The class, enumerated instead of discovered
+
+`tools/zig-linker-arg-survey.sh` tries 47 linker arguments a CMake,
+libtool, Meson or autotools build might plausibly emit and reports which
+zig refuses. On zig 0.13.0: **16 rejected, 31 accepted**. Two of the 16
+have now reached a real build; the rest are on record before they do. It
+is worth re-running after a zig upgrade, because the set is a property of
+the zig version rather than of this project.
+
+Rejection is not permission to discard, and the tool says so in its own
+output. `--wrap`, `--defsym`, `--dynamic-list`, `-Bsymbolic-functions`
+and `--unresolved-symbols` all change what the link produces; filtering
+any of them would trade a loud failure for a wrong binary. They are
+deliberately **not** filtered.
+
+The survey's first version confidently reported "0 rejected" against a
+hand-run loop's fourteen. Cause: `zig cc … | grep -q` under `set -o
+pipefail` returns zig's own non-zero exit even when grep matched, so
+every rejection registered as an acceptance. Capturing first and testing
+second fixes it. A tool that reports "nothing wrong" because it is broken
+is worse than no tool, and this one only got caught because the expected
+answer was already known.
 
 <!-- ------------------------------------------------------------------ -->
 

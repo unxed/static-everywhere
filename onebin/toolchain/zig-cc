@@ -58,6 +58,46 @@ set -- $(for _onebin_arg in "$@"; do
     esac
 done)
 
+# Found at the final link of f4-qt-host, the last target in the whole
+# build: zig cc's linker driver rejects -Wl,--exclude-libs outright
+# ("error: unsupported linker arg: --exclude-libs") where GNU ld and lld
+# both accept it. f4 adds it itself, alongside -static-libstdc++, to keep
+# static libraries from re-exporting their symbols
+# (qt/host/CMakeLists.txt:114).
+#
+# Dropping it is safe HERE, and only here, because the target is a PIE
+# executable linked without -rdynamic/-export-dynamic. Measured rather
+# than reasoned: linking a PIE executable against a static archive with
+# and without --exclude-libs,ALL produces byte-identical .dynsym tables;
+# the control, the same link with -rdynamic added, does differ (the
+# archive's symbol is exported without the flag and hidden with it). So
+# the flag only ever has an effect when something is exporting, and this
+# guard keeps that distinction rather than assuming it: if a link ever
+# does ask to export, the flag is left in place and zig's own error
+# stands, loudly, instead of us silently changing what gets exported.
+#
+# The wider class is surveyed in tools/zig-linker-arg-survey.sh, which
+# lists every linker argument zig's driver rejects. Most are NOT dropped
+# here on purpose -- --wrap, --defsym, --dynamic-list, -Bsymbolic-functions
+# and --unresolved-symbols all change what the link produces, and silently
+# discarding any of them would trade a loud build failure for a wrong
+# binary.
+has_export=0
+for _onebin_arg in "$@"; do
+    case "$_onebin_arg" in
+        -rdynamic|-export-dynamic|-Wl,--export-dynamic|-Wl,-E) has_export=1 ;;
+    esac
+done
+if [ "$has_export" = 0 ]; then
+    # shellcheck disable=SC2046
+    set -- $(for _onebin_arg in "$@"; do
+        case "$_onebin_arg" in
+            -Wl,--exclude-libs,*|-Wl,--exclude-libs=*) ;;
+            *) printf '%s\n' "$_onebin_arg" ;;
+        esac
+    done)
+fi
+
 # Found first with openssl's providers/legacy.so, then again with
 # elfutils' own `checking for __thread support` configure probe (two
 # unrelated packages, two different build systems -- OpenSSL's own
