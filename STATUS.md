@@ -23,7 +23,7 @@ for this entire stretch of work.
   changes cheaply.
 - Compiler wrappers: `onebin/toolchain/zig-cc`, `zig-c++`.
 
-### The one thing currently blocking — host libraries were not on zig's link search path; fixed in the wrappers, not yet CI-verified
+### The one thing currently blocking — nothing known; the preflight's own environment was the last gap, now closed
 
 The `CMAKE_LIBRARY_ARCHITECTURE` fix worked. Qt now configures and
 **builds**, reaching target 124 of 6627 before the first executable link
@@ -188,6 +188,55 @@ Patches are delivered as `git format-patch` output and must apply with
 before handing anything over (the sandbox remote has gone stale
 mid-session before, and a failed `git am` on a fresh clone is what
 caught it). `make test` after every change. Don't touch `filelist.md`.
+
+<!-- ------------------------------------------------------------------ -->
+
+## The gate paid for itself on its first run — 32 seconds, and the thing it caught was itself
+
+First CI run with the preflight in place. It failed in **32 seconds**
+instead of two hours, which is the entire point of it existing.
+
+What it caught was not the build but the gate's own environment:
+
+```
+== host-contract libraries actually link ==
+  FAIL host-contract libraries do not link
+       error: unable to find dynamic system library 'GL' …
+         /usr/lib/x86_64-linux-gnu/libGL.so
+         /usr/lib/x86_64-linux-gnu/libGL.a
+```
+
+Read that searched-paths list carefully and it is **good news**: the
+wrapper fix works. It looked in exactly the host directory that was
+missing before. What is absent is the unversioned `libGL.so` symlink,
+which lives in the `-dev` packages — installed by the `build` job, not by
+`preflight`.
+
+### Fixed twice over
+
+Four packages added to the preflight job — `libgl-dev`, `libegl-dev`,
+`libx11-dev`, `libxcb1-dev` — one per library the probe links against,
+each confirmed with `dpkg -S` to own the exact file. Not the build job's
+full `xorg-dev` list, because this job exists to be fast.
+
+More usefully, the probe now **distinguishes the two failures**, which
+had looked identical:
+
+| state | what the probe says |
+| --- | --- |
+| links | ok |
+| host dir searched, file absent | "searched but not present — install the -dev packages" |
+| host dir not searched at all | "the wrappers are not adding a host library search path" |
+
+All three exercised locally: as-is, with `libGL.so` moved aside, and with
+the wrapper's append neutered. The distinction matters because only the
+third is a real regression; the second is a missing package, and telling
+them apart is the difference between a five-second fix and re-reading a
+CI log.
+
+Worth stating plainly: a check that fails for the wrong reason is a check
+that will be deleted the first time it is inconvenient. This one now
+explains itself.
 
 <!-- ------------------------------------------------------------------ -->
 

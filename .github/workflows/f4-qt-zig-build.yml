@@ -60,8 +60,25 @@ jobs:
           tar xf zig.tar.xz
           echo "$PWD/zig-linux-x86_64-0.13.0" >> "$GITHUB_PATH"
 
+      - name: Install the four dev packages the link probe needs
+        # The probe links against the host's GL/EGL/X11/xcb, and linking
+        # needs the unversioned .so symlinks, which live in the -dev
+        # packages. The runner image ships only the runtime .so.N, so the
+        # probe's first real CI run failed on exactly that -- and usefully:
+        # the searched-paths output showed /usr/lib/x86_64-linux-gnu/libGL.so
+        # being looked for, which is the wrapper fix working.
+        #
+        # Four packages, one per library, rather than the build job's full
+        # xorg-dev list: this job exists to be fast, and each package here
+        # is the one that owns the exact file the probe links against
+        # (dpkg -S confirms).
+        run: |
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq \
+            libgl-dev libegl-dev libx11-dev libxcb1-dev
+
       - name: Fast invariant checks
-        # After the zig install, deliberately: the preflight's last check
+        # After the zig install and the dev packages, deliberately: the preflight's last check
         # links against the host's GL/X11/xcb/EGL through the wrappers, and
         # skips itself if zig is absent. A check that silently skips is
         # indistinguishable from one that passes.

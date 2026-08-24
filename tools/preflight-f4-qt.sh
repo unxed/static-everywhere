@@ -202,8 +202,17 @@ if true; then
              -shared -fPIC "$probe/a.c" -lGL -lX11 -lxcb -lEGL \
              -o "$probe/a.so" 2>"$probe/err"; then
             pass "GL, X11, xcb and EGL link through zig-cc with no explicit -L"
+        elif grep -q '/usr/lib/' "$probe/err"; then
+            # The two failures look identical until you read the searched
+            # paths. If the host directory is in that list, the wrapper is
+            # doing its job and the machine simply lacks the unversioned
+            # .so symlinks, which live in the -dev packages. Saying which
+            # is which here saves the next person the log-reading.
+            fail "host libraries are searched but not present -- install the -dev packages"
+            printf '       (libgl-dev libegl-dev libx11-dev libxcb1-dev)\n'
+            grep -m1 'searched paths' "$probe/err" | sed 's/^/       /'
         else
-            fail "host-contract libraries do not link"
+            fail "the wrappers are not adding a host library search path at all"
             head -3 "$probe/err" | sed 's/^/       /'
         fi
         rm -rf "$probe"
