@@ -23,7 +23,7 @@ for this entire stretch of work.
   changes cheaply.
 - Compiler wrappers: `onebin/toolchain/zig-cc`, `zig-c++`.
 
-### The one thing currently blocking — an upstream tarball server returned HTTP 418; source caching hardened so it cannot stop a build again
+### The one thing currently blocking — nothing known; a preflight gate now catches this project's two recurring failure classes in seconds
 
 The `CMAKE_LIBRARY_ARCHITECTURE` fix worked. Qt now configures and
 **builds**, reaching target 124 of 6627 before the first executable link
@@ -188,6 +188,91 @@ Patches are delivered as `git format-patch` output and must apply with
 before handing anything over (the sandbox remote has gone stale
 mid-session before, and a failed `git am` on a fresh clone is what
 caught it). `make test` after every change. Don't touch `filelist.md`.
+
+<!-- ------------------------------------------------------------------ -->
+
+## Stop paying two hours per symptom: a preflight gate for the two classes that keep recurring
+
+Raised directly in conversation, and correctly: fixing one symptom per
+two-hour cycle is not a working method. Looking back at what those hours
+actually went on, the failures fall into two classes, and both are
+checkable without compiling anything.
+
+**Class 1 — assertions about the command line this script emits.** Three
+separate cycles were spent on: a step added inside the `--fetch` branch
+when CI passes `--no-fetch`; `conan cache clean --source` deleting the
+sources CI caches, so the next run re-downloaded everything and met an
+HTTP 418; a shim object passed by a relative path that only worked
+because CI happened to supply an absolute `--out`. Every one of those was
+visible in one second of `--print-plan` output.
+
+**Class 2 — glibc symbols newer than the baseline.** `statx` and
+`close_range` cost a full run each. The symbol set is enumerable and the
+sources are on disk, so the collision is findable in seconds.
+
+### `tools/preflight-f4-qt.sh`
+
+Renders the plan **with CI's own flags** and asserts the invariants,
+each one annotated with the failure that motivated it. Then the negative
+control, which is the part that matters: each invariant was broken in
+turn and the preflight re-run.
+
+| broken deliberately | result |
+| --- | --- |
+| submodule step removed | caught |
+| https rewrite removed | caught |
+| `--source` put back in `cache clean` | caught |
+| `CMAKE_*_IMPLICIT_INCLUDE_DIRECTORIES` dropped | caught |
+| shim path made relative | caught |
+| malformed JSON in a `-c` flag | caught |
+
+Six for six. One of the six was a false pass on the first attempt —
+`--print-plan` rewrites the repository root to the literal `<repo>`, so
+an absolute path looked relative and the check fired for the wrong
+reason. Worth noting that only the negative control exposed that; the
+check "passing" told us nothing.
+
+### `tools/glibc-source-scan.py`
+
+Walks source trees for calls to any of the symbols
+`glibc-baseline-delta.py` reports between the baseline and zig's newest
+glibc.
+
+Its negative control is Qt's two real offenders: pointed at
+`qprocess_unix.cpp` and `qfilesystemengine_unix.cpp` it reports exactly
+`close_range`, `statx` and `renameat2` — the two that cost us runs, plus
+the one Qt caught itself.
+
+It first also flagged `stat`, `fstat` and `lstat`, which are in the delta
+because glibc 2.33 began exporting them directly rather than only the
+`__xstat` wrappers. Checked rather than assumed: a program calling them,
+built with `zig cc -target x86_64-linux-gnu.2.27`, links, runs, and
+`readelf` shows one undefined symbol, `__xstat@GLIBC_2.2.5`. zig's
+headers redirect to the old wrapper for old targets. They are filtered,
+with that evidence recorded next to the filter — an unexplained
+exclusion list is how a checker quietly stops checking.
+
+**Run against everything still to be compiled — f4, ZoinGallery,
+qwindowkit — the scan is clean.** 229 files, 336 symbols, no hits. So
+the class that produced the last two toolchain failures has no remaining
+instances in code we have not yet built. That is a real answer to "how
+many more of these are there", replacing the one this file got wrong two
+entries ago.
+
+### Wiring
+
+A `preflight` job the `build` job now `needs:`. Fifteen-minute timeout,
+runs in about one. A bad patch fails before anything is compiled instead
+of at minute ninety.
+
+### Also found, not yet acted on
+
+`ci/build-qwindowkit.sh` clones qwindowkit with `--branch main` and **no
+pin**. Everything else in this build is pinned — `deps.lock`, the f4
+commit, the ZoinGallery submodule — so an upstream commit to somebody
+else's `main` can change or break this artifact at any moment, and an
+SBOM covering it would be wrong. That is f4's script rather than ours,
+which is why it is recorded here rather than patched in passing.
 
 <!-- ------------------------------------------------------------------ -->
 

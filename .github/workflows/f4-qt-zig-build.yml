@@ -24,7 +24,52 @@ on:
         default: ''
 
 jobs:
+  preflight:
+    # Gates the two-hour build on checks that take seconds. Several hours
+    # of this project's CI have been spent discovering mistakes that were
+    # visible in one second of --print-plan output: a step added to the
+    # wrong branch of the script, a Conan flag that deleted the sources CI
+    # caches, an object passed by a relative path. Those are assertions
+    # about the command line the script emits, and asserting them here
+    # means a bad patch fails before anything is compiled.
+    #
+    # --with-scan also checks the source trees for calls to glibc symbols
+    # newer than the 2.27 baseline. statx and close_range each cost a full
+    # two-hour run to find; they are findable in seconds because the
+    # symbol set is enumerable and the sources are on disk.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout static-everywhere
+        uses: actions/checkout@v4
+
+      - name: Fast invariant checks
+        run: ./tools/preflight-f4-qt.sh
+
+      - name: Fetch the trees that still get compiled
+        run: |
+          git clone --filter=blob:none --quiet https://github.com/Zoinen/f4 f4-src
+          PIN=$(grep -m1 '^PIN=' tools/build-f4-qt.sh | sed -E 's/^PIN="([^"]+)"/\1/')
+          git -C f4-src checkout --quiet "$PIN"
+          git -C f4-src -c 'url.https://github.com/.insteadOf=git@github.com:' \
+              submodule update --init --recursive --depth 1
+          git clone --depth 1 --quiet --branch main \
+              https://github.com/stdware/qwindowkit.git qwk-src
+
+      - name: Install zig
+        run: |
+          curl -sSL -o zig.tar.xz \
+            https://ziglang.org/download/0.13.0/zig-linux-x86_64-0.13.0.tar.xz
+          tar xf zig.tar.xz
+          echo "$PWD/zig-linux-x86_64-0.13.0" >> "$GITHUB_PATH"
+
+      - name: Scan for glibc symbols newer than the baseline
+        run: |
+          ./tools/glibc-source-scan.py \
+            f4-src/qt f4-src/third_party/ZoinGallery qwk-src
+
   build:
+    needs: preflight
     runs-on: ubuntu-24.04
     timeout-minutes: 300
 

@@ -1,0 +1,175 @@
+#!/usr/bin/env bash
+# Fast invariant checks for tools/build-f4-qt.sh.
+#
+# Why this exists
+# ---------------
+# A full f4-qt run is roughly two hours. Several of those hours have been
+# spent discovering mistakes that were visible in one second of
+# `--print-plan` output:
+#
+#   - the ZoinGallery checkout was added inside the `--fetch` branch,
+#     while CI calls the script with `--no-fetch`, so it never ran and the
+#     graph rebuilt in full to reproduce the identical error;
+#   - `conan cache clean --source` deleted the extracted sources from the
+#     directory CI caches, so the next run re-downloaded every upstream
+#     tarball and died on an HTTP 418 from freedesktop.org;
+#   - a shim object was passed by a relative path that only resolved
+#     because CI happened to pass an absolute --out.
+#
+# Every one of those is an assertion about *the command line the script
+# emits*, which `--print-plan` prints without building anything. This
+# script makes those assertions explicit, so a bad patch fails in
+# seconds instead of at minute ninety.
+#
+# Each check names the failure that motivated it. That is deliberate: a
+# check whose reason is forgotten gets deleted the first time it is
+# inconvenient.
+#
+# Usage:
+#   preflight-f4-qt.sh              # fast checks only (no network)
+#   preflight-f4-qt.sh --with-scan  # also scan source trees for glibc
+#                                   # symbols newer than the baseline
+#                                   # (needs zig, clones f4/qwindowkit)
+
+set -uo pipefail
+
+# shellcheck disable=SC1007
+SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+# shellcheck disable=SC1007
+REPO_ROOT=$(CDPATH= cd -- "${SCRIPT_DIR}/.." && pwd)
+BUILD_SCRIPT="${REPO_ROOT}/tools/build-f4-qt.sh"
+
+WITH_SCAN=0
+[ "${1:-}" = "--with-scan" ] && WITH_SCAN=1
+
+FAILED=0
+pass() { printf '  \033[32mok\033[0m   %s\n' "$1"; }
+fail() { printf '  \033[31mFAIL\033[0m %s\n' "$1"; FAILED=$((FAILED + 1)); }
+skip() { printf '  --   %s (skipped: %s)\n' "$1" "$2"; }
+
+# The flags CI actually uses. If the workflow changes these, this must
+# change with it -- checking the plan for flags nobody passes is how the
+# --fetch mistake survived review in the first place.
+CI_FLAGS=(--config linux --toolchain zig --gallery public
+          --src ./f4-src --out "$PWD/out/f4-qt" --no-fetch)
+
+PLAN=$(mktemp)
+trap 'rm -f "$PLAN"' EXIT
+
+echo "== rendering the plan with CI's own flags =="
+if ! "$BUILD_SCRIPT" "${CI_FLAGS[@]}" --print-plan >"$PLAN" 2>&1; then
+    echo "  could not render the plan:"
+    sed 's/^/    /' "$PLAN"
+    exit 1
+fi
+printf '  %s steps\n\n' "$(wc -l <"$PLAN")"
+
+echo "== steps that must be present for these flags =="
+
+# Cost: one full CI cycle. The checkout lived in the --fetch branch.
+if grep -q 'submodule update --init' "$PLAN"; then
+    pass "ZoinGallery submodule checkout is in the --no-fetch path"
+else
+    fail "ZoinGallery submodule checkout missing (it must NOT be inside the --fetch branch)"
+fi
+
+# The submodule is pinned by SSH URL upstream; without the rewrite it
+# fails for anyone without a key even though the repo is public.
+if grep -q 'insteadOf' "$PLAN"; then
+    pass "submodule URL is rewritten to https"
+else
+    fail "no https rewrite for the SSH submodule URL"
+fi
+
+if grep -q 'compat-glibc-shims\.o' "$PLAN"; then
+    pass "glibc compat shim object is built and linked"
+else
+    fail "glibc compat shim object missing from the plan"
+fi
+
+echo
+echo "== flags that must have the right shape =="
+
+# Cost: one full CI cycle. Conan re-downloaded every tarball and hit a
+# 418, because CI caches ~/.conan2/p and that is where sources live.
+if grep -q 'cache clean' "$PLAN"; then
+    if grep 'cache clean' "$PLAN" | grep -q -- '--source'; then
+        fail "conan cache clean uses --source (deletes the sources CI caches)"
+    else
+        pass "conan cache clean does not touch sources"
+    fi
+else
+    fail "conan cache clean step missing (build trees are never reclaimed)"
+fi
+
+# Cost: one full CI cycle. CMake could not introspect zig-cc, so it
+# emitted -isystem /usr/include ahead of every vendored include dir and
+# Qt compiled against the host's ICU headers.
+for v in CMAKE_C_IMPLICIT_INCLUDE_DIRECTORIES \
+         CMAKE_CXX_IMPLICIT_INCLUDE_DIRECTORIES \
+         CMAKE_LIBRARY_ARCHITECTURE; do
+    if grep -q "$v" "$PLAN"; then
+        pass "$v is declared to CMake"
+    else
+        fail "$v missing -- CMake cannot work this out for itself under zig-cc"
+    fi
+done
+
+# Cost: would have been a full CI cycle. A relative path in a Conan flag
+# is re-evaluated inside each package's own build folder.
+# --print-plan substitutes the repository root with the literal <repo>
+# for readability, so a genuinely absolute path can look relative here.
+# Both forms count as absolute; anything else does not.
+BAD_REL=$(grep -oE "tools\.build:exelinkflags=[^']*" "$PLAN" \
+          | grep -oE '[^"]*compat-glibc-shims\.o' \
+          | grep -vE '^(/|<repo>/)' || true)
+if [ -z "$BAD_REL" ]; then
+    pass "shim object is passed by absolute path"
+else
+    fail "shim object passed by relative path: $BAD_REL"
+fi
+
+echo
+echo "== every -c/-cc value parses =="
+if ! python3 - "$PLAN" <<'PY'
+import json, re, sys
+plan = open(sys.argv[1]).read()
+bad = 0
+checked = 0
+# -c 'key=value' / -cc key=value, values that look like JSON must parse.
+for m in re.finditer(r"-c{1,2} '?([A-Za-z0-9_.:*/-]+)=([^']*)'?", plan):
+    key, val = m.group(1), m.group(2).strip()
+    if not (val.startswith(("[", "{"))):
+        continue
+    checked += 1
+    try:
+        json.loads(val)
+    except json.JSONDecodeError as e:
+        print(f"  \033[31mFAIL\033[0m {key}: {e}")
+        print(f"       value was: {val[:120]}")
+        bad += 1
+if bad == 0:
+    print(f"  \033[32mok\033[0m   {checked} JSON-valued flags parse")
+sys.exit(1 if bad else 0)
+PY
+then
+    FAILED=$((FAILED + 1))
+fi
+
+if [ "$WITH_SCAN" -eq 1 ]; then
+    echo
+    echo "== source scan: symbols newer than the glibc baseline =="
+    if ! command -v zig >/dev/null 2>&1; then
+        skip "glibc delta scan" "zig not on PATH"
+    else
+        "${SCRIPT_DIR}/glibc-source-scan.py" || FAILED=$((FAILED + 1))
+    fi
+fi
+
+echo
+if [ "$FAILED" -eq 0 ]; then
+    echo "preflight: all checks passed"
+    exit 0
+fi
+echo "preflight: ${FAILED} check(s) failed -- not worth starting a two-hour build"
+exit 1
