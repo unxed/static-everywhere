@@ -156,17 +156,36 @@ done < "$DEPS_LOCK"
 if [ "${FETCH}" -eq 1 ]; then
     plan_step "git clone https://github.com/Zoinen/f4 ${SRC}"
     plan_step "git -C ${SRC} checkout ${PIN}"
-    # f4 pins ZoinGallery by SSH URL, which fails without credentials even
-    # though the repository is public. Rewrite it to https and check the
-    # submodule out at the commit f4 pins -- 65d851c5 at PIN 1a03511a,
-    # confirmed fetchable anonymously. Without this, everything below
-    # builds for well over an hour and then f4's own configure aborts with
-    # "ZoinGallery submodule is missing".
-    plan_step "git -C ${SRC} submodule set-url third_party/ZoinGallery https://github.com/Zoinen/ZoinGallery"
-    plan_step "git -C ${SRC} submodule update --init --recursive --depth 1"
 elif [ "${PRINT_PLAN}" -eq 0 ] && [ ! -d "${SRC}" ]; then
     echo "error: source tree '${SRC}' not found and --no-fetch is set." >&2
     echo "       run again with --fetch to clone, or point --src at an existing checkout." >&2
+    exit 1
+fi
+
+# ZoinGallery, unconditionally -- NOT inside the --fetch branch above.
+# That was the first attempt at this fix and it never ran: CI clones f4 in
+# its own workflow step and calls this script with --no-fetch, so the
+# whole graph rebuilt for well over an hour and then f4's configure
+# aborted with "ZoinGallery submodule is missing" exactly as before. What
+# the script needs is for the submodule to be present in whatever tree it
+# has been handed, however that tree arrived.
+#
+# f4 pins the submodule by SSH URL (git@github.com:Zoinen/ZoinGallery),
+# which fails for anyone without a key even though the repository is
+# public. The rewrite is passed with `git -c` rather than written with
+# `submodule set-url`, so a checkout the caller owns is not left with
+# modified config afterwards. Confirmed anonymously: this checks out
+# 65d851c5, the commit f4 pins at PIN 1a03511a. Re-running is a no-op.
+plan_step "git -C ${SRC} -c url.\"https://github.com/\".insteadOf=\"git@github.com:\" submodule update --init --recursive --depth 1"
+
+# Fail here, not an hour and a half later inside f4's configure. The
+# preceding step is the only thing that can put this file in place, so if
+# it is still absent something changed upstream and every minute spent
+# building Qt afterwards is wasted.
+if [ "${PRINT_PLAN}" -eq 0 ] && [ ! -f "${SRC}/third_party/ZoinGallery/CMakeLists.txt" ]; then
+    echo "error: ZoinGallery submodule is still missing after checkout." >&2
+    echo "       expected ${SRC}/third_party/ZoinGallery/CMakeLists.txt" >&2
+    echo "       see 05-REFERENCE-f4-qt.md §7.8" >&2
     exit 1
 fi
 

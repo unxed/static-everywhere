@@ -23,7 +23,7 @@ for this entire stretch of work.
   changes cheaply.
 - Compiler wrappers: `onebin/toolchain/zig-cc`, `zig-c++`.
 
-### The one thing currently blocking — **Qt is built**; f4's own configure aborts on the ZoinGallery submodule, fixed but not yet CI-verified
+### The one thing currently blocking — the ZoinGallery fix was in the wrong branch of the script and never ran; corrected
 
 The `CMAKE_LIBRARY_ARCHITECTURE` fix worked. Qt now configures and
 **builds**, reaching target 124 of 6627 before the first executable link
@@ -188,6 +188,60 @@ Patches are delivered as `git format-patch` output and must apply with
 before handing anything over (the sandbox remote has gone stale
 mid-session before, and a failed `git am` on a fresh clone is what
 caught it). `make test` after every change. Don't touch `filelist.md`.
+
+<!-- ------------------------------------------------------------------ -->
+
+## Disk fix worked; the ZoinGallery fix did not run at all — it was inside the `--fetch` branch and CI passes `--no-fetch`
+
+Two results, one good and one entirely self-inflicted.
+
+**The disk work landed.** Where the previous run ended at 144G used of
+145G with 635M free, this one reports **89G used, 56G free, 62%** — and
+that is *after* Qt built and packaged. The preflight and
+`conan cache clean` between them recovered roughly 55GB. Disk is no
+longer the constraint.
+
+**The submodule fix never executed.** Identical error to last time:
+
+```
+CMake Error at CMakeLists.txt:56 (message):
+  ZoinGallery submodule is missing.
+```
+
+The cause is embarrassing and worth writing down plainly. The fix was
+added inside `if [ "${FETCH}" -eq 1 ]`, and **CI clones f4 in its own
+workflow step and calls the script with `--no-fetch`** — which the
+workflow has always done, visibly, thirty lines above the invocation I
+was editing. So the entire graph rebuilt for well over an hour to
+produce exactly the error the previous patch claimed to fix.
+
+The verification I did was real but aimed at the wrong thing: the
+submodule checkout itself was tested end to end against a fresh
+anonymous clone and worked. What went untested was whether the branch
+containing it ever runs. **Verifying a step in isolation says nothing
+about whether the pipeline reaches it** — and `--print-plan` would have
+shown the absence in one second, since it prints exactly the steps that
+would execute for the flags given.
+
+### Corrected
+
+- The submodule checkout moved **out** of the `--fetch` branch. What the
+  script needs is the submodule present in whatever tree it was handed,
+  regardless of how that tree arrived.
+- The URL rewrite is now passed with `git -c
+  url."https://github.com/".insteadOf="git@github.com:"` instead of
+  `git submodule set-url`, so a checkout the caller owns is not left
+  with modified config afterwards.
+- A guard immediately after fails with a clear message if
+  `third_party/ZoinGallery/CMakeLists.txt` is still absent — an hour and
+  a half before f4's configure would otherwise say the same thing.
+
+Verified the way the last attempt should have been: `--print-plan` with
+the **CI's own flags** (`--no-fetch`) shows the step present; the printed
+command line was then extracted and executed verbatim against a fresh
+anonymous clone at the pin, checking out `65d851c5`; re-running is a
+no-op; and deleting the submodule directory and re-running the script
+restores it.
 
 <!-- ------------------------------------------------------------------ -->
 
