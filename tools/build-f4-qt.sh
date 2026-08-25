@@ -643,7 +643,28 @@ HOOKEOF"
     plan_step "git -C ${OUT_ABS}/qwk-mirror remote add origin ${QWK_URL}"
     plan_step "git -C ${OUT_ABS}/qwk-mirror fetch -q --depth 1 origin ${QWK_PIN}"
     plan_step "git -C ${OUT_ABS}/qwk-mirror update-ref refs/heads/main ${QWK_PIN}"
-    plan_step "cd ${SRC} && env GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=url.${OUT_ABS}/qwk-mirror.insteadOf GIT_CONFIG_VALUE_0=${QWK_URL} bash ci/build-qwindowkit.sh \"\$PWD/qt/host/build-portable-linux\" Release static"
+    # qwindowkit must be built with the same toolchain as everything
+    # else. f4's ci/build-qwindowkit.sh runs a plain `cmake -S ... -B ...`
+    # with no compiler settings, so CMake picks the host default -- host
+    # g++, and therefore libstdc++ -- while Qt, f4 and every Conan
+    # package here are built by zig c++, which uses libc++. The two only
+    # meet at the very last link of f4-qt-host, which is exactly where a
+    # real CI run failed:
+    #
+    #   ld.lld: error: undefined symbol:
+    #     std::__detail::_List_node_base::_M_hook(...)
+    #     std::_Rb_tree_increment(std::_Rb_tree_node_base*)
+    #   >>> referenced by abstractwindowcontext.cpp.o
+    #
+    # Those are libstdc++'s own out-of-line symbols, and
+    # abstractwindowcontext.cpp is qwindowkit's. CMake honours CC/CXX and
+    # CFLAGS/CXXFLAGS/LDFLAGS on a fresh configure, so setting them on
+    # the invocation fixes it without patching f4's script -- the same
+    # approach already used here to pin qwindowkit via GIT_CONFIG_*.
+    # The -target flags have to be passed explicitly because the wrappers
+    # do not add them; everywhere else they arrive via Conan's
+    # tools.build:cflags/cxxflags.
+    plan_step "cd ${SRC} && env GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=url.${OUT_ABS}/qwk-mirror.insteadOf GIT_CONFIG_VALUE_0=${QWK_URL} CC=${ZIGCC} CXX=${ZIGCXX} CFLAGS=\"-target x86_64-linux-gnu.${GLIBC_BASELINE}\" CXXFLAGS=\"-target x86_64-linux-gnu.${GLIBC_BASELINE}\" LDFLAGS=\"-target x86_64-linux-gnu.${GLIBC_BASELINE}\" bash ci/build-qwindowkit.sh \"\$PWD/qt/host/build-portable-linux\" Release static"
 
     # The redirect above is the prevention; this is the detection, and it
     # is what keeps the arrangement from being fragile. If upstream ever
@@ -657,6 +678,7 @@ HOOKEOF"
 -DCMAKE_BUILD_TYPE=Release \
 -DCMAKE_PREFIX_PATH=\"\$PWD/build/qwindowkit-install\" \
 -DQWindowKit_DIR=\"\$PWD/build/qwindowkit-install/lib/cmake/QWindowKit\" \
+-DCMAKE_PROJECT_INCLUDE=\"${REPO_ROOT}/contrib/f4-qt/link-qt6-opengl.cmake\" \\
 -DBUILD_TESTING=ON -DUSE_QWK=ON -DF4_PORTABLE_STATIC=ON"
     plan_step "cd ${SRC} && cmake --build qt/host/build-portable-linux --config Release --parallel \$(nproc)"
     plan_step "cd ${SRC} && ctest --test-dir qt/host/build-portable-linux -C Release --output-on-failure --timeout 300 -R '^(F4|QtShellController|WindowGeometryPersistence)'"

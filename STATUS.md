@@ -23,132 +23,87 @@ for this entire stretch of work.
   changes cheaply.
 - Compiler wrappers: `onebin/toolchain/zig-cc`, `zig-c++`.
 
-### The one thing currently blocking — `--exclude-libs` at the **final link of f4 itself**; filtered, not yet CI-verified
+### The one thing currently blocking — the **final link of f4-qt-host**, two independent causes, both fixed, not yet CI-verified
 
-The `CMAKE_LIBRARY_ARCHITECTURE` fix worked. Qt now configures and
-**builds**, reaching target 124 of 6627 before the first executable link
-fails:
+**Qt built completely.** The build now reaches the last target there is,
+`f4-qt-host`, and its link fails with two unrelated groups of undefined
+symbols. Both root causes were traced to real evidence and reproduced
+locally against real zig 0.13.0.
 
-```
-[124/6627] Linking CXX executable qtbase/libexec/moc
-ld.lld: error: undefined symbol: statx
-```
-
-Root cause, proven against real zig 0.13.0: **zig's `-target
-x86_64-linux-gnu.<ver>` versions the symbol stubs but not the headers.**
-The headers always describe the newest glibc, so preprocessor-based
-feature detection sees a glibc newer than the one that gets linked.
-`statx()` is glibc 2.28; the baseline is 2.27; Qt guards the call on
-`#ifdef STATX_BASIC_STATS` alone. Compiles, then doesn't link. The same
-build shows the contrast: Qt's `renameat2` guard *is* a link test, so it
-failed correctly and Qt disabled the feature itself.
-
-The remaining risk surface is **closed and small** — the full 2.27→2.28
-symbol delta is seven names (`fcntl64, renameat2, statx, thrd_current,
-thrd_equal, thrd_sleep, thrd_yield`), and nothing but `statx` is live
-for this build.
-
-**Decided and implemented: the shim, not a baseline bump.** Keeping 2.27
-is the point — these builds are supposed to run on old systems, and
-raising the baseline to dodge one symbol trades that away. `statx()` is
-now provided by `contrib/f4-qt/compat/statx.c`, the same thin
-`syscall(SYS_statx, …)` wrapper glibc itself is, compiled ahead of
-`conan install` and appended to `tools.build:exelinkflags`. Verified
-locally against a reconstruction of Qt's actual `moc` link line
-(archive ordering and `--gc-sections` included): links, runs, returns
-real kernel data, `onebin audit --glibc-max 2.27` → `requires
-GLIBC_2.2.5`, **PASS Level 1**.
-
-The shim's first CI run failed after ~20 minutes — **not at Qt**, at
-`openssl`, with `duplicate symbol: statx`. Cause: the object was in the
-*global* `exelinkflags`, and a flag list is not idempotent. openssl
-assembles LDFLAGS from several sources and replayed the whole list three
-times; three `-target`/`-pie` are harmless, three copies of an object
-file are not. It also reuses those flags for `-shared` links, so the
-object reached `providers/legacy.so` despite only ever being added to
-*exe* flags. Fixed two ways (details in the log entry below): the shim
-is now `__attribute__((weak))`, and the object is scoped to `qt/*`
-instead of every package in the graph.
-
-Not yet re-run. The 2.27→2.28 delta remains a closed set of seven
-symbols with only `statx` live, so a next failure should be something
-new.
-
-`xkbcommon` is **passed** — the `-idirafter /usr/include` fix worked, and
-the build now reaches **Qt**, the last and heaviest package. Qt's
-configure refuses:
+**(1) qwindowkit is compiled by the host g++, everything else by zig.**
 
 ```
-ERROR: Feature "opengl_desktop": Forcing to "ON" breaks its condition
-       WrapOpenGL_FOUND = "FALSE"
-ERROR: Feature "egl": Forcing to "ON" breaks its condition
-       EGL_FOUND = "FALSE"
+ld.lld: error: undefined symbol: std::_Rb_tree_increment(std::_Rb_tree_node_base*)
+>>> referenced by abstractwindowcontext.cpp.o
 ```
 
-This project forces `qt/*:with_egl=True`, so a failed detection is fatal
-rather than a silent downgrade. `libgl1-mesa-dev` and `libegl1-mesa-dev`
-*are* installed by the workflow — CMake simply could not find them.
+Those are libstdc++'s own out-of-line symbols, and
+`abstractwindowcontext.cpp` is qwindowkit's. f4's
+`ci/build-qwindowkit.sh` runs a plain `cmake -S … -B …` with no compiler
+settings (line 45), so CMake picks the host default — g++, hence
+libstdc++ — while Qt, f4 and every Conan package are built by `zig c++`,
+which uses libc++. The two only meet at the final link.
 
-Root cause, from Qt's own generated files in the diagnostic artifact:
-`CMakeFiles/<ver>/CMakeCCompiler.cmake` contains
-`set(CMAKE_LIBRARY_ARCHITECTURE "")` — **empty**. CMake builds
-`find_library()`'s search paths from that variable, so with it empty it
-never looks in `/usr/lib/x86_64-linux-gnu`, which is exactly where
-Debian/Ubuntu multiarch puts `libGL.so` and `libEGL.so`. The empty value
-is a second, worse consequence of the long-known broken CMake ABI
-detection under `zig-cc` (the same defect `CMAKE_SIZEOF_VOID_P=8`
-already papers over).
+Fixed by setting `CC`/`CXX`/`CFLAGS`/`CXXFLAGS`/`LDFLAGS` on that
+invocation, which CMake honours on a fresh configure — no patch to f4's
+script, the same approach already used to pin qwindowkit via
+`GIT_CONFIG_*`. The `-target` flags must be passed explicitly there
+because the wrappers do not add them; everywhere else they arrive via
+Conan's `tools.build:cflags`/`cxxflags`.
 
-Fix: added `CMAKE_LIBRARY_ARCHITECTURE=x86_64-linux-gnu` to
-`tools.cmake.cmaketoolchain:extra_variables`.
+Reproduced and verified locally, with a control: a CMake static library
+built by host g++ and linked into a zig-built executable fails with the
+*same* `std::_Rb_tree_increment` / `_Rb_tree_decrement` symbols; built
+with `CC`/`CXX` pointing at the wrappers instead, CMake reports
+`Clang 18.1.6`, the link succeeds, the binary runs, and its highest
+glibc requirement is `GLIBC_2.16` — comfortably under the 2.27 baseline.
 
-**Proven, not inferred.** Reproduced locally with real zig 0.13.0 and a
-two-line CMake project doing `find_library(z)`: with `zig-cc` as the
-compiler the variable came out `''` and the lookup returned `NOTFOUND`
-even though `/usr/lib/x86_64-linux-gnu/libz.so` exists; adding the one
-variable made the same lookup succeed. Testing against the host `gcc`
-first was misleading — gcc's own ABI detection sets the variable and
-silently overrode the `-D`, so the first attempt appeared to prove
-nothing was wrong. Watch for that trap.
+**(2) `Qt6::OpenGL` is missing from the link, and Conan does not declare
+the edge.**
 
-**Independently re-verified in a second, clean sandbox** (see the log
-entry below): both of Qt's error conditions reproduce exactly
-(`OpenGL_FOUND=FALSE`, `EGL_LIBRARY-NOTFOUND`) with the variable unset
-and both resolve with it set. Three follow-on questions were also
-answered locally, so they no longer need a CI cycle each:
+```
+ld.lld: error: undefined symbol: QOpenGLFramebufferObject::texture() const
+>>> referenced by qsgdefaultpainternode.cpp:299 … in archive libQt6Quick.a
+```
 
-- Qt's own `egl`, `opengl` and `glx` feature tests all compile, and a
-  real executable links against `libOpenGL`/`libGLX`/`libEGL`/`libX11`
-  and audits **PASS Level 1** at the 2.27 baseline.
-- The `-I /usr/include` / libc++ conflict that broke far2l's `TTYX`
-  **cannot recur** under the wrappers — `-idirafter` immunises against
-  it structurally. Qt will not hit it.
-- Setting `CMAKE_LIBRARY_ARCHITECTURE` does **not** let host libraries
-  shadow Conan's vendored ones; `CMAKE_PREFIX_PATH` still wins. That
-  closes the concern the fix's own commit message flagged to watch.
+From the generated dependency data in the failing build itself:
 
-**Still not confirmed by a real CI run**, and Qt remains almost entirely
-unexplored past configure: nothing beyond that step has ever run, and it
-is by far the longest package to build. What is now known is that the
-detection failure is genuinely fixed and that the next failure, whatever
-it is, will not be one of the four above.
+```
+set(qt_Qt6_Quick_DEPENDENCIES_RELEASE Qt6::Gui Qt6::Qml Qt6::QmlModels Qt6::Core)
+```
 
-Worth knowing: **real zig can be downloaded into the sandbox**
-(`https://ziglang.org/download/0.13.0/zig-linux-x86_64-0.13.0.tar.xz`,
-~47MB, extracts and runs directly, no install). Two consecutive
-blockers were solved this way in minutes each, after three earlier blind
-guesses cost a ~20-minute CI cycle apiece. `cmake` is present in the
-sandbox too. Reproduce locally before proposing any toolchain change.
+No `Qt6::OpenGL` — although the component exists in the same package and
+`libQt6OpenGL.a` is present. `libQt6Quick.a` really does reference
+symbols that live there. Shared builds never notice, because
+`libQt6Quick.so` carries a `DT_NEEDED` on `libQt6OpenGL.so`; a static
+build has no equivalent, and f4's `qt/host/CMakeLists.txt:25` asks only
+for `Core Gui Qml Quick QuickControls2 Network Svg`. This looks like a
+genuine gap in the ConanCenter qt recipe's component metadata for static
+consumers, and is worth reporting upstream.
 
-**Diagnostics are working.** The collector found `meson-log.txt`
-(solved `xkbcommon`) and Qt's generated `CMakeCCompiler.cmake` (solved
-this one) without either filename being known in advance. One bug was
-found and fixed on its first real run: Conan prints a plain `<pkg>:
-Build folder <path>` line for *every* package, not just failures, so
-matching that collected ~30 build trees into a 65MB artifact; it now
-matches only `WARN: Build folder`. Current artifact: 25MB on disk but
-**4.6MB downloaded** (small text files compress well) — acceptable, no
-further tuning needed unless it grows.
+Fixed without touching f4's sources, via
+`contrib/f4-qt/link-qt6-opengl.cmake` passed as `CMAKE_PROJECT_INCLUDE`:
+CMake runs it right after f4's `project()` call, and
+`cmake_language(DEFER)` postpones the actual `target_link_libraries` to
+the end of that directory scope, once both `find_package(Qt6)` and the
+`f4-qt-host` target exist. Both preconditions are checked and fail
+loudly rather than silently no-op'ing.
+
+The injection mechanism was verified locally **with a negative control**
+before committing: a miniature project whose executable deliberately
+omits a needed static library fails to link on its own (`exit=2`,
+undefined `dep_value`) and links and runs once this exact DEFER
+injection adds the dependency.
+
+Neither fix has seen a CI run yet. They are independent, so the next run
+should clear both or show a genuinely new failure.
+
+Note on `--gallery`: `--gallery off` no longer exists and must not be
+reintroduced. ZoinGallery is not an optional feature of f4-qt — 53
+references across `main.cpp`, two test targets and three QML files — and
+a build without it would not be the artifact this reference build exists
+to reproduce. `--gallery public` is the only mode; it needs no
+credentials.
 
 ### Dead ends — already resolved, do not reopen
 
