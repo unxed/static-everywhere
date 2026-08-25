@@ -79,10 +79,30 @@ else
     fail "no https rewrite for the SSH submodule URL"
 fi
 
-if grep -q 'compat-glibc-shims\.o' "$PLAN"; then
-    pass "glibc compat shim object is built and linked"
+if grep -qE -- '-c [^ ]*compat/glibc-shims[.]c -o [^ ]*compat-glibc-shims[.]o' "$PLAN"; then
+    pass "glibc compat shim object is built"
 else
-    fail "glibc compat shim object missing from the plan"
+    fail "glibc compat shim object is never compiled"
+fi
+
+# Cost: one full CI cycle, at the very last target. The shim was scoped to
+# `qt/*` because a global object broke openssl -- but Qt is only where the
+# call is *compiled*; libQt6Core.a carries the unresolved reference into
+# every downstream link, so f4-qt-host died on `undefined symbol: statx`
+# with everything else already built. Both lists, and both global: a
+# shared library with an unresolved statx links silently and fails at
+# runtime, which is the worse of the two failures.
+for _flags in exelinkflags sharedlinkflags; do
+    if grep -qE "'tools\.build:${_flags}=\[[^']*compat-glibc-shims\.o" "$PLAN"; then
+        pass "shim is in the global tools.build:${_flags}"
+    else
+        fail "shim missing from the global tools.build:${_flags}"
+    fi
+done
+if grep -q "qt/\*:tools.build:exelinkflags" "$PLAN"; then
+    fail "shim is scoped to qt/* again -- that leaves every consumer of libQt6Core.a short"
+else
+    pass "shim is not package-scoped"
 fi
 
 echo
@@ -133,14 +153,14 @@ echo "== compiler-wrapper argv preservation =="
 # spaces; the wrappers must filter their known-bad flags without splitting
 # those definitions into separate linker inputs. The fake-zig regression
 # test exercises both wrappers before the real compiler is needed.
-if WRAPPER_TEST=$(${REPO_ROOT}/tools/test-toolchain-argument-quoting.sh 2>&1); then
+if WRAPPER_TEST=$("${REPO_ROOT}/tools/test-toolchain-argument-quoting.sh" 2>&1); then
     pass "zig-cc and zig-c++ preserve arguments containing spaces"
 else
     fail "compiler wrappers corrupt arguments containing spaces"
     printf '%s\n' "$WRAPPER_TEST" | sed 's/^/       /'
 fi
 
-if HOOK_TEST=$(${REPO_ROOT}/tools/test-qt6-opengl-hook.sh 2>&1); then
+if HOOK_TEST=$("${REPO_ROOT}/tools/test-qt6-opengl-hook.sh" 2>&1); then
     pass "Qt6::OpenGL hook ignores nested CMake projects"
 else
     fail "Qt6::OpenGL hook runs in a nested CMake project"

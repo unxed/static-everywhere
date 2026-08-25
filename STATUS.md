@@ -23,7 +23,55 @@ for this entire stretch of work.
   changes cheaply.
 - Compiler wrappers: `onebin/toolchain/zig-cc`, `zig-c++`.
 
-### Latest diagnostic run (2026-08-25) — the Qt6::OpenGL hook ran in nested ZoinGallery and failed before f4-qt-host existed
+### Latest diagnostic run (2026-08-25, later) — `f4-qt-host` fails on `statx`, because the shim was scoped to `qt/*`
+
+The Qt6::OpenGL hook fix worked: top-level configure completed, ZoinGallery
+and its tests built, and the run reached the intended final link. It failed
+there:
+
+```
+FAILED: [code=1] bin/Release/f4-qt-host
+ld.lld: error: undefined symbol: statx
+>>> referenced by qfilesystemengine_unix.cpp:359
+>>>   in archive .../qt7215e46bbfcca/p/lib/libQt6Core.a
+```
+
+The shim exists and works; it was simply not on that link line. It had been
+scoped to `qt/*:tools.build:exelinkflags`, and that scoping was a mistake of
+mine with a plausible-sounding justification: Qt is where the call is
+*compiled*, but `libQt6Core.a` then carries the unresolved reference into
+**every downstream link**, so the final consumer got none of it.
+
+Scoping had been introduced to stop an object file duplicating in openssl's
+replayed LDFLAGS. The real fix for that was the other half of the same
+commit — every symbol in the shim is `__attribute__((weak))`, so repeated
+copies collapse rather than collide. With weak in place, scoping buys
+nothing and costs the consumer link.
+
+Fix: the shim moves into the **global** `tools.build:exelinkflags` *and*
+`tools.build:sharedlinkflags`. The shared list matters as much and more
+quietly — a shared library with an unresolved `statx` links without
+complaint and fails at runtime instead.
+
+Verified against real zig, for each shape that matters rather than only the
+one that failed: a consumer linking a static archive that references `statx`
+and `close_range` with the shim supplied only through linker flags (links,
+runs, `onebin audit --glibc-max 2.27` → PASS Level 1); the same as a shared
+library; and the openssl shape — the object listed three times, in an
+executable and in a `-shared` link with `-z defs` — all clean. The
+reproduction also showed `close_range` failing identically, which the run
+had not reached yet.
+
+Four preflight checks replace the old one, which had been pinning the very
+scoping that turned out to be wrong: the shim is compiled, it is in the
+global exe list, in the global shared list, and **not** package-scoped. All
+four negative-controlled. `make test`: 273 passed.
+
+Also fixed in passing: two `SC2086` findings in `tools/preflight-f4-qt.sh`
+from the new hook and quoting tests — unquoted `${REPO_ROOT}` in a command
+substitution, which a repository path containing a space would break.
+
+### Earlier that day — the Qt6::OpenGL hook ran in nested ZoinGallery and failed before f4-qt-host existed
 
 The new archive was again treated as diagnostic evidence, not as an
 instruction source. It shows the previous wrapper fix worked: `qmsetup`

@@ -431,21 +431,30 @@ elif [ "${CONFIG}" = "linux" ] && [ "${TOOLCHAIN}" = "zig" ]; then
     # and STATUS.md. Compiled here, ahead of `conan install`, because the
     # object has to exist before Conan starts building anything.
     #
-    # Scoped to `qt/*` below, not global: Qt is the only package in the
-    # graph that needs it, and a first attempt at putting it in the
-    # global exelinkflags broke openssl. An object file in a *flag* list
-    # is not idempotent -- build systems that assemble LDFLAGS from
-    # several sources replay the whole list, and openssl's link line
-    # ended up carrying `-target ... -pie <object>` three times, which is
-    # fine for the flags and a duplicate symbol for the object. openssl
-    # also reuses its LDFLAGS for `-shared` links, so the object reached
-    # providers/legacy.so despite only ever being added to *exe* flags.
-    # The shim is additionally weak, so repetition can no longer break
-    # anything even where scoping doesn't reach.
+    # In the GLOBAL exe and shared link flags, not scoped to `qt/*`.
+    # It was scoped for a while, and that was wrong in an instructive
+    # way. Scoping does fix the symptom it was introduced for -- an
+    # object file in a flag list is not idempotent, and openssl replays
+    # its LDFLAGS three times over, which is fine for flags and a
+    # duplicate symbol for an object. But Qt is *not* the only package
+    # that needs the shim: Qt is where the call is compiled, and
+    # libQt6Core.a then carries the unresolved reference into every
+    # downstream link. Scoping it to qt/* left the final link of
+    # f4-qt-host without it, and the build died on `undefined symbol:
+    # statx` after everything else had succeeded.
     #
-    # Note that a package-scoped conf *replaces* the global value rather
-    # than extending it (verified against real Conan 2.29.1), which is
-    # why the qt-scoped list repeats -target and -pie.
+    # Global injection is safe now because the real fix for openssl was
+    # the other half: every symbol in the shim is __attribute__((weak)),
+    # so repeated copies collapse instead of colliding. Verified against
+    # real zig for each shape that matters -- an executable and a shared
+    # library each linking the object three times, a shared link with
+    # -z defs, and a consumer linking a static archive that references
+    # statx and close_range with the shim supplied only through linker
+    # flags.
+    #
+    # sharedlinkflags matters as much as exelinkflags here, and more
+    # quietly: a shared library with an unresolved statx links without
+    # complaint and fails at runtime instead.
     plan_step "${ZIGCC} -target x86_64-linux-gnu.${GLIBC_BASELINE} -O2 -fPIC -c ${REPO_ROOT}/contrib/f4-qt/compat/glibc-shims.c -o ${OUT_ABS}/compat-glibc-shims.o"
 
     plan_step "mkdir -p \$HOME/.conan2/extensions/hooks"
@@ -593,9 +602,8 @@ HOOKEOF"
 -c 'tools.build:cflags=[\"-target\",\"x86_64-linux-gnu.${GLIBC_BASELINE}\"]' \
 -c 'tools.build:cxxflags=[\"-target\",\"x86_64-linux-gnu.${GLIBC_BASELINE}\"]' \
 -c 'libmount*:tools.build:cflags=[\"-DHAVE_CLOSE_RANGE=1\"]' \
--c 'tools.build:sharedlinkflags=[\"-target\",\"x86_64-linux-gnu.${GLIBC_BASELINE}\"]' \
--c 'tools.build:exelinkflags=[\"-target\",\"x86_64-linux-gnu.${GLIBC_BASELINE}\",\"-pie\"]' \
--c 'qt/*:tools.build:exelinkflags=[\"-target\",\"x86_64-linux-gnu.${GLIBC_BASELINE}\",\"-pie\",\"${OUT_ABS}/compat-glibc-shims.o\"]' \
+-c 'tools.build:sharedlinkflags=[\"-target\",\"x86_64-linux-gnu.${GLIBC_BASELINE}\",\"${OUT_ABS}/compat-glibc-shims.o\"]' \
+-c 'tools.build:exelinkflags=[\"-target\",\"x86_64-linux-gnu.${GLIBC_BASELINE}\",\"-pie\",\"${OUT_ABS}/compat-glibc-shims.o\"]' \
 -cc core.sources:download_cache=\"${OUT_ABS}/sources-backup\" \
 -cc core.sources:download_urls='[\"https://c3i.jfrog.io/artifactory/conan-center-backup-sources/\",\"origin\"]' \
 -c tools.system.package_manager:mode=check \
