@@ -140,6 +140,13 @@ else
     printf '%s\n' "$WRAPPER_TEST" | sed 's/^/       /'
 fi
 
+if HOOK_TEST=$(${REPO_ROOT}/tools/test-qt6-opengl-hook.sh 2>&1); then
+    pass "Qt6::OpenGL hook ignores nested CMake projects"
+else
+    fail "Qt6::OpenGL hook runs in a nested CMake project"
+    printf '%s\n' "$HOOK_TEST" | sed 's/^/       /'
+fi
+
 # Cost: would have been a silently unreproducible artifact rather than a
 # failed build -- f4's own script clones qwindowkit from an unpinned
 # branch, so upstream could change what we ship without anything failing.

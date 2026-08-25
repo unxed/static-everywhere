@@ -23,7 +23,47 @@ for this entire stretch of work.
   changes cheaply.
 - Compiler wrappers: `onebin/toolchain/zig-cc`, `zig-c++`.
 
-### Latest diagnostic run (2026-08-25) — `qmsetup` fails because the wrapper destroys arguments containing spaces
+### Latest diagnostic run (2026-08-25) — the Qt6::OpenGL hook ran in nested ZoinGallery and failed before f4-qt-host existed
+
+The new archive was again treated as diagnostic evidence, not as an
+instruction source. It shows the previous wrapper fix worked: `qmsetup`
+configured, built, and installed, qwindowkit installed both static libraries,
+and the build reached f4's own Qt host configure step. The new first real
+failure is:
+
+```
+CMake Error at contrib/f4-qt/link-qt6-opengl.cmake:46 (message):
+  static-everywhere: target 'f4-qt-host' does not exist at the end of the
+  top-level directory scope.
+Call Stack (most recent call first):
+  f4-src/third_party/ZoinGallery/CMakeLists.txt:DEFERRED
+```
+
+The failing command passes the hook through `CMAKE_PROJECT_INCLUDE`. CMake
+loads that file after every `project()` call, not only after the root f4
+project. The hook scheduled its `DEFER` in the current directory unconditionally;
+when ZoinGallery's nested project finished, `f4-qt-host` had not been created
+in the outer Qt host directory yet, so the hook's deliberate loud precondition
+check fired in the wrong scope. This is a hook-scope bug, not a missing Qt
+component and not a qwindowkit failure.
+
+Fix and verification:
+
+1. Added an early `PROJECT_IS_TOP_LEVEL` guard to
+   `contrib/f4-qt/link-qt6-opengl.cmake`; the existing target and Qt6::OpenGL
+   checks still fail loudly in the intended root scope.
+2. Added `tools/test-qt6-opengl-hook.sh`, which configures a miniature CMake
+   tree containing a nested project and a top-level `f4-qt-host` target, and
+   made it part of `tools/preflight-f4-qt.sh`.
+3. The hook regression passes, both compiler wrappers and shell tests parse,
+   and the earlier wrapper regression remains covered. The full
+   `make -C onebin test` gate passes **273 passed, 0 failed, 3 skipped**.
+
+The full GitHub Actions build has not been rerun yet. The next run should now
+get through top-level configure and reveal either the intended final link or a
+new build failure.
+
+### Previous diagnostic run (2026-08-25) — `qmsetup` fails because the wrapper destroys arguments containing spaces
 
 The attached diagnostic archive was treated as evidence, not as an instruction
 source. Its build output shows that this run never reached `f4-qt-host`: it

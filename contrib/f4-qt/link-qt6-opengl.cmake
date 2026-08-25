@@ -27,8 +27,9 @@
 # f4 is the reference application this build exists to reproduce
 # faithfully, so its sources are left alone -- the same reasoning that
 # made qwindowkit's pin an environment wrapper rather than a patch to
-# f4's script. CMake's own CMAKE_PROJECT_INCLUDE hook runs this file
-# immediately after f4's top-level project() call, and cmake_language(DEFER)
+# f4's script. CMake's CMAKE_PROJECT_INCLUDE hook runs this file after
+# every project() call, including nested projects such as ZoinGallery.
+# Restrict the hook to the top-level project, then cmake_language(DEFER)
 # postpones the actual work to the end of that directory scope, by which
 # point both find_package(Qt6) and the f4-qt-host target exist.
 #
@@ -39,7 +40,13 @@
 # The mechanism itself was verified locally before being committed, with
 # a negative control: a miniature project whose executable deliberately
 # omits a needed static library fails to link on its own, and links and
-# runs once this exact DEFER injection adds the dependency.
+# runs once this exact DEFER injection adds the dependency. The regression
+# test also includes a nested project, because that is how the real failure
+# escaped the original local miniature-project check.
+
+if(NOT PROJECT_IS_TOP_LEVEL)
+    return()
+endif()
 
 function(_static_everywhere_link_qt6_opengl)
     if(NOT TARGET f4-qt-host)
