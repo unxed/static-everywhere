@@ -23,7 +23,68 @@ for this entire stretch of work.
   changes cheaply.
 - Compiler wrappers: `onebin/toolchain/zig-cc`, `zig-c++`.
 
-### Latest diagnostic run (2026-08-25, later) — `f4-qt-host` fails on `statx`, because the shim was scoped to `qt/*`
+### Latest diagnostic run (2026-08-25, later still) — Qt6::OpenGL was linked into one target instead of into the graph
+
+The shim fix worked; `statx` is gone and `f4-qt-host` links. The run now
+fails on **f4's own test executables**:
+
+```
+FAILED: [code=1] F4PanelSplitterTests
+FAILED: [code=1] F4OperationsQueueTests
+FAILED: [code=1] F4DocumentSurfaceTests
+ld.lld: error: undefined symbol: QOpenGLPaintDevice::QOpenGLPaintDevice(QSize const&)
+>>> referenced by qsgdefaultpainternode.cpp:97 … in archive … libQt6Quick.a
+```
+
+Fourteen distinct undefined symbols, every one from `Qt6::OpenGL`
+(`QOpenGLPaintDevice`, `QOpenGLFramebufferObject`,
+`QOpenGLFramebufferObjectFormat`), all referenced from `libQt6Quick.a`.
+
+The diagnosis in `contrib/f4-qt/link-qt6-opengl.cmake` was right the first
+time and the fix was aimed one level too low. Conan's Qt recipe declares
+`set(qt_Qt6_Quick_DEPENDENCIES_RELEASE Qt6::Gui Qt6::Qml Qt6::QmlModels
+Qt6::Core)` — no `Qt6::OpenGL` — so the defect is a **missing edge in the
+dependency graph**. The hook did `target_link_libraries(f4-qt-host PRIVATE
+Qt6::OpenGL)`, which repairs the app and nothing else. Every other consumer
+of Qt6::Quick — three test executables here, and any future plugin or QML
+module — needs the identical archive.
+
+Fix: append `Qt6::OpenGL` to `Qt6::Quick`'s own
+`INTERFACE_LINK_LIBRARIES`, so every consumer inherits it. Link interfaces
+resolve at generate time, so this also reaches targets already created in
+nested subdirectories. The precondition check changes with it, from "does
+`f4-qt-host` exist" to "does `Qt6::Quick` exist" — the app's name was never
+the thing this depends on.
+
+Demonstrated rather than asserted, in a miniature project shaped like the
+real thing (a static library whose symbol lives in another, an imported
+target that fails to declare the edge, and **two** consumers):
+
+| hook | link errors |
+| --- | --- |
+| none | 2 |
+| naming `f4-qt-host` | 1 |
+| repairing `Qt6::Quick`'s interface | 0 |
+
+`tools/test-qt6-opengl-hook.sh` is rewritten around that project and now
+**builds** it rather than grepping configure output for a message — the
+previous version passed a hook that linked the wrong target, because the
+message is printed either way. It also has a negative control: without the
+hook the probe must fail to link, so the test cannot silently degrade into
+one that proves nothing.
+
+Two mistakes of mine surfaced while writing it, both worth recording:
+
+- The first negative control for the nested-project guard **passed with
+  the guard deleted**. Cause: the probe declared `Qt6::Quick` before the
+  nested `project()`, so the unguarded hook found the target already there
+  and had nothing to trip over. The nested project now comes first, which
+  is the real ordering, and deleting the guard is caught.
+- The preflight's shim-compile check failed on my own typo — the source is
+  `glibc-shims.c` and only the object is `compat-glibc-shims.o`. It failed
+  honestly, which is the point of writing checks that can.
+
+### Previous run — `f4-qt-host` failed on `statx`, because the shim was scoped to `qt/*`
 
 The Qt6::OpenGL hook fix worked: top-level configure completed, ZoinGallery
 and its tests built, and the run reached the intended final link. It failed
