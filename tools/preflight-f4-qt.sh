@@ -127,6 +127,19 @@ else
     fail "shim object passed by relative path: $BAD_REL"
 fi
 
+echo
+echo "== compiler-wrapper argv preservation =="
+# Cost: a full qwindowkit build. qmsetup passes -D definitions containing
+# spaces; the wrappers must filter their known-bad flags without splitting
+# those definitions into separate linker inputs. The fake-zig regression
+# test exercises both wrappers before the real compiler is needed.
+if WRAPPER_TEST=$(${REPO_ROOT}/tools/test-toolchain-argument-quoting.sh 2>&1); then
+    pass "zig-cc and zig-c++ preserve arguments containing spaces"
+else
+    fail "compiler wrappers corrupt arguments containing spaces"
+    printf '%s\n' "$WRAPPER_TEST" | sed 's/^/       /'
+fi
+
 # Cost: would have been a silently unreproducible artifact rather than a
 # failed build -- f4's own script clones qwindowkit from an unpinned
 # branch, so upstream could change what we ship without anything failing.

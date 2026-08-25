@@ -7,39 +7,17 @@ if ! command -v zig >/dev/null 2>&1; then
     exit 127
 fi
 
-# See zig-cc for why: Conan's AutotoolsDeps generator adds one
-# -Wl,-rpath-link,<dep-lib-dir> per dependency regardless of whether it's
-# built shared or static; this project only ever builds dependencies
-# statically, so the hint is meaningless, but zig's linker driver rejects
-# it outright rather than ignoring it the way a full gcc/clang would.
-# shellcheck disable=SC2046
-set -- $(for _onebin_arg in "$@"; do
-    case "$_onebin_arg" in
-        -Wl,-rpath-link,*) ;;
-        *) printf '%s\n' "$_onebin_arg" ;;
-    esac
-done)
-
-# See zig-cc for the full reasoning and the measurement: zig's linker
-# driver rejects -Wl,--exclude-libs, which f4 adds to keep static
-# libraries from re-exporting symbols. Dropping it is a proven no-op for
-# a link with nothing being exported, so the filter is guarded on that
-# rather than applied blindly.
+# See zig-cc for why these filters exist: Conan's AutotoolsDeps generator adds
+# -Wl,-rpath-link,<dep-lib-dir> per dependency, while f4 adds
+# -Wl,--exclude-libs at its final link. Zig rejects both spellings. Dropping
+# --exclude-libs is guarded on whether the link exports symbols, as measured
+# in the original investigation.
 has_export=0
 for _onebin_arg in "$@"; do
     case "$_onebin_arg" in
         -rdynamic|-export-dynamic|-Wl,--export-dynamic|-Wl,-E) has_export=1 ;;
     esac
 done
-if [ "$has_export" = 0 ]; then
-    # shellcheck disable=SC2046
-    set -- $(for _onebin_arg in "$@"; do
-        case "$_onebin_arg" in
-            -Wl,--exclude-libs,*|-Wl,--exclude-libs=*) ;;
-            *) printf '%s\n' "$_onebin_arg" ;;
-        esac
-    done)
-fi
 
 # See zig-cc for why: -pie and -shared are never simultaneously valid,
 # and per-package Conan conf overrides didn't reliably reach every build
@@ -51,12 +29,51 @@ for _onebin_arg in "$@"; do
         has_shared=1
     fi
 done
-if [ "$has_shared" = 1 ]; then
-    # shellcheck disable=SC2046
-    set -- $(for _onebin_arg in "$@"; do
-        [ "$_onebin_arg" = "-pie" ] || printf '%s\n' "$_onebin_arg"
-    done)
-fi
+
+# Never use `set -- $(...)` here. CMake and qmsetup pass definitions such as
+# -DTOOL_DESC="QMSetup Core Utility Command, Version 1.1.1.0" as one argv
+# element. A command substitution would split that element at its spaces.
+# Emit shell-quoted words and evaluate only that generated, quoted argv so
+# filtering preserves every argument's exact value and order.
+_onebin_shell_quote() {
+    case "$1" in
+        ''|*[!A-Za-z0-9_./:=+,-]*)
+            _onebin_quoted=$(printf '%s' "$1" | sed "s/'/'\\\\''/g")
+            printf "'%s'" "$_onebin_quoted"
+            ;;
+        *)
+            printf '%s' "$1"
+            ;;
+    esac
+}
+
+_onebin_emit_filtered_args() {
+    for _onebin_arg in "$@"; do
+        _onebin_keep=1
+        case "$_onebin_arg" in
+            -Wl,-rpath-link,*)
+                _onebin_keep=0
+                ;;
+            -Wl,--exclude-libs,*|-Wl,--exclude-libs=*)
+                if [ "$has_export" = 0 ]; then
+                    _onebin_keep=0
+                fi
+                ;;
+            -pie)
+                if [ "$has_shared" = 1 ]; then
+                    _onebin_keep=0
+                fi
+                ;;
+        esac
+        if [ "$_onebin_keep" = 1 ]; then
+            printf ' '
+            _onebin_shell_quote "$_onebin_arg"
+        fi
+    done
+}
+
+_onebin_filtered_args=$(_onebin_emit_filtered_args "$@")
+eval "set --${_onebin_filtered_args}"
 
 
 # See zig-cc for the full reasoning: zig cc with -target does not

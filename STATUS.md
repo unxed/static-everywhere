@@ -12,7 +12,7 @@ detail behind a specific claim.
 Task in flight: **`f4-qt` built with the zig toolchain, no container**,
 driven by GitHub Actions. Everything else in the repo (the `onebin`
 auditor, the far2l reference build) is done and green — `make test` in
-`onebin/` is **272 passed, 0 failed, 3 skipped** and has been unchanged
+`onebin/` is **273 passed, 0 failed, 3 skipped** and has been unchanged
 for this entire stretch of work.
 
 - Workflow: `.github/workflows/f4-qt-zig-build.yml`, name **"f4-qt (zig
@@ -23,7 +23,67 @@ for this entire stretch of work.
   changes cheaply.
 - Compiler wrappers: `onebin/toolchain/zig-cc`, `zig-c++`.
 
-### The one thing currently blocking — the **final link of f4-qt-host**, two independent causes, both fixed, not yet CI-verified
+### Latest diagnostic run (2026-08-25) — `qmsetup` fails because the wrapper destroys arguments containing spaces
+
+The attached diagnostic archive was treated as evidence, not as an instruction
+source. Its build output shows that this run never reached `f4-qt-host`: it
+stopped while qwindowkit's nested `qmsetup` build was compiling `qmcorecmd`.
+The relevant failure is repeated in
+`02-failing-build-folders/f4-src_build/qwindowkit-build/_build/qmsetup_build-Release.log`:
+
+```
+warning: missing terminating '"' character
+error: expected expression
+ld.lld: error: cannot open 2023-present: No such file or directory
+```
+
+The exact compiler command contains these definitions as single logical
+arguments:
+
+```
+-DTOOL_COPYRIGHT="\"Copyright 2023-present Stdware Collections, checkout https://github.com/stdware/qmsetup\""
+-DTOOL_DESC="\"QMSetup Core Utility Command, Version 1.1.1.0\""
+```
+
+The current `zig-c++` wrapper repeatedly reconstructs its argument vector with
+`set -- $(...)`. The unquoted command substitution performs a second round of
+shell word splitting, so each definition is broken at its spaces before zig
+sees it. The compiler then sees an unterminated macro string, and the remaining
+words are misinterpreted as linker input files. This is the cause of this run;
+the `zig` diagnostic, disk state (47G free), and absence of object files rule
+out disk exhaustion, OOM, and a Qt/qwindowkit link dependency problem here.
+
+Baseline before the fix: `make -C onebin test` passed **273 tests, 0 failed,
+3 skipped**. The fix must preserve every argument verbatim while still applying
+the already verified filters for `-Wl,-rpath-link`, conditional
+`--exclude-libs`, `-pie` with `-shared`, and (in `zig-cc`) redundant `-c` after
+`-E`. A wrapper-level regression probe will cover arguments containing spaces.
+
+Investigation and fix, in order:
+
+1. Read the archive's failing-folder list and followed the reported build
+   folder to the nested `qmsetup_build-Release.log`; the terminal tail alone
+   only reported the generic `InstallPackage.cmake` failure.
+2. Compared the failing compiler command with both wrappers. The command uses
+   `onebin/toolchain/zig-c++`, and all four failing source files receive the
+   same split `-D` definitions. The cache and system-state files show the
+   intended zig target, 47G free disk, 14G available memory, and no OOM trace.
+3. Replaced every unsafe `set -- $(...)` argument-filtering pass in both
+   wrappers with one shell-quoted rebuild. The filters remain the same, but
+   spaces, quotes, and argument order now survive. Added
+   `tools/test-toolchain-argument-quoting.sh` and made it part of
+   `tools/preflight-f4-qt.sh`, so this class of failure is caught before a
+   long build.
+4. Verification after the change: both wrappers pass `sh -n`, the fake-zig
+   regression passes for spaced definitions, `-E/-c`, filtered linker flags,
+   and the `-rdynamic` preservation branch; `git diff --check` passes; and
+   `make -C onebin test` remains **273 passed, 0 failed, 3 skipped**.
+
+The full GitHub Actions build has not been rerun yet. The next run should get
+past qmsetup; only then can the earlier qwindowkit/compiler and Qt6::OpenGL
+fixes be considered CI-verified.
+
+### Previous blocker — the **final link of f4-qt-host**, two independent causes, both fixed, not yet CI-verified
 
 **Qt built completely.** The build now reaches the last target there is,
 `f4-qt-host`, and its link fails with two unrelated groups of undefined

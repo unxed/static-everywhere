@@ -19,10 +19,9 @@ fi
 # -c silences -E and the "preprocessed" gperf template gets fed to the
 # C *parser* instead, which fails on the file's gperf-only syntax
 # ("%{", "%struct-type", "%%"). Drop a redundant -c whenever -E is also
-# present, so zig cc's behavior matches GCC's and matches what the
-# caller actually asked for. Safe to do with plain word-splitting here
-# (no quoting of the intermediate list): every argument this project's
-# builds pass through this wrapper is a flag or a path with no embedded
+# present, so zig cc's behavior matches GCC's and matches what the caller
+# actually asked for. The filter is applied below together with the other
+# argument filters, where the original argv is rebuilt without losing
 # whitespace.
 has_e=0
 for _onebin_arg in "$@"; do
@@ -30,33 +29,6 @@ for _onebin_arg in "$@"; do
         has_e=1
     fi
 done
-if [ "$has_e" = 1 ]; then
-    # shellcheck disable=SC2046
-    set -- $(for _onebin_arg in "$@"; do
-        [ "$_onebin_arg" = "-c" ] || printf '%s\n' "$_onebin_arg"
-    done)
-fi
-
-# Found building elfutils via autotools: Conan's AutotoolsDeps generator
-# adds one -Wl,-rpath-link,<dep-lib-dir> per dependency (a linker hint
-# for resolving *shared*-library dependencies transitively at link
-# time), regardless of whether those dependencies are actually built
-# shared or static -- this whole project only ever builds Profile
-# H/S dependencies statically, so the hint is meaningless here even when
-# present, but zig cc's own linker driver rejects it outright
-# ("error: unsupported linker arg: -rpath-link") where a full gcc/clang
-# would just accept and ignore it as a no-op for static-only links.
-# Confirmed directly from elfutils' own config.log, not guessed: the
-# exact failing compiler invocation is right there. Filter these out
-# rather than fight Conan's generator -- there can be more than one
-# (one per dependency), so filter every occurrence, not just the first.
-# shellcheck disable=SC2046
-set -- $(for _onebin_arg in "$@"; do
-    case "$_onebin_arg" in
-        -Wl,-rpath-link,*) ;;
-        *) printf '%s\n' "$_onebin_arg" ;;
-    esac
-done)
 
 # Found at the final link of f4-qt-host, the last target in the whole
 # build: zig cc's linker driver rejects -Wl,--exclude-libs outright
@@ -88,46 +60,66 @@ for _onebin_arg in "$@"; do
         -rdynamic|-export-dynamic|-Wl,--export-dynamic|-Wl,-E) has_export=1 ;;
     esac
 done
-if [ "$has_export" = 0 ]; then
-    # shellcheck disable=SC2046
-    set -- $(for _onebin_arg in "$@"; do
-        case "$_onebin_arg" in
-            -Wl,--exclude-libs,*|-Wl,--exclude-libs=*) ;;
-            *) printf '%s\n' "$_onebin_arg" ;;
-        esac
-    done)
-fi
-
-# Found first with openssl's providers/legacy.so, then again with
-# elfutils' own `checking for __thread support` configure probe (two
-# unrelated packages, two different build systems -- OpenSSL's own
-# Configure/Makefile vs. plain GNU autotools): whenever -shared is also
-# present, this project's own global -pie (added for hardening on real
-# executables) collides with it ("error: dynamic libraries cannot be
-# position independent executables"). A per-package Conan conf override
-# (tools.build:exelinkflags scoped to just that package) fixed this for
-# openssl but, confirmed directly from elfutils' own config.log, did NOT
-# take effect for elfutils' early configure-time probe -- evidently
-# different build systems pull LDFLAGS from Conan's generated files at
-# different points, and package-scoped conf overrides don't reliably
-# reach all of them. -pie and -shared are never simultaneously valid
-# for any package this project could ever build (the combination isn't
-# meaningful ELF, not just inconvenient here), so fixing it here,
-# unconditionally, for every future package that might hit the same
-# combination, is both more reliable and simpler than chasing exactly
-# which Conan generator each build system's LDFLAGS actually come from.
+# Found first with openssl's providers/legacy.so, then again with elfutils'
+# own `checking for __thread support` configure probe: whenever -shared is
+# also present, this project's global -pie collides with it. The filter is
+# applied below, together with the other filters.
 has_shared=0
 for _onebin_arg in "$@"; do
     if [ "$_onebin_arg" = "-shared" ]; then
         has_shared=1
     fi
 done
-if [ "$has_shared" = 1 ]; then
-    # shellcheck disable=SC2046
-    set -- $(for _onebin_arg in "$@"; do
-        [ "$_onebin_arg" = "-pie" ] || printf '%s\n' "$_onebin_arg"
-    done)
-fi
+
+# Never use `set -- $(...)` here. CMake and qmsetup pass definitions such as
+# -DTOOL_DESC="QMSetup Core Utility Command, Version 1.1.1.0" as one argv
+# element. A command substitution would split that element at its spaces.
+# Emit shell-quoted words and evaluate only that generated, quoted argv so
+# filtering preserves every argument's exact value and order.
+_onebin_shell_quote() {
+    case "$1" in
+        ''|*[!A-Za-z0-9_./:=+,-]*)
+            _onebin_quoted=$(printf '%s' "$1" | sed "s/'/'\\\\''/g")
+            printf "'%s'" "$_onebin_quoted"
+            ;;
+        *)
+            printf '%s' "$1"
+            ;;
+    esac
+}
+
+_onebin_emit_filtered_args() {
+    for _onebin_arg in "$@"; do
+        _onebin_keep=1
+        case "$_onebin_arg" in
+            -c)
+                if [ "$has_e" = 1 ]; then
+                    _onebin_keep=0
+                fi
+                ;;
+            -Wl,-rpath-link,*)
+                _onebin_keep=0
+                ;;
+            -Wl,--exclude-libs,*|-Wl,--exclude-libs=*)
+                if [ "$has_export" = 0 ]; then
+                    _onebin_keep=0
+                fi
+                ;;
+            -pie)
+                if [ "$has_shared" = 1 ]; then
+                    _onebin_keep=0
+                fi
+                ;;
+        esac
+        if [ "$_onebin_keep" = 1 ]; then
+            printf ' '
+            _onebin_shell_quote "$_onebin_arg"
+        fi
+    done
+}
+
+_onebin_filtered_args=$(_onebin_emit_filtered_args "$@")
+eval "set --${_onebin_filtered_args}"
 
 
 # Host headers as a last-resort search path. zig cc with an explicit
