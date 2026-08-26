@@ -23,7 +23,88 @@ for this entire stretch of work.
   changes cheaply.
 - Compiler wrappers: `onebin/toolchain/zig-cc`, `zig-c++`.
 
-### Latest diagnostic run (2026-08-25, later still) — Qt6::OpenGL was linked into one target instead of into the graph
+### Latest diagnostic run (2026-08-26) — everything builds and links; eight of nine tests abort before `main()`
+
+The Qt6::OpenGL edge fix worked. **Nothing failed to compile or link** —
+the diagnostic collector's own output says so: `no object files named in
+any error line of the build log`. The run got all the way to `ctest`:
+
+```
+qt.qpa.plugin: Could not find the Qt platform plugin "offscreen" in ""
+This application failed to start because no Qt platform plugin could be initialized.
+11% tests passed, 8 tests failed out of 9
+```
+
+Only `QtShellControllerTest` — the one with no GUI — survived.
+
+### The same seam as Qt6::OpenGL, one layer further out
+
+A static Qt has no plugin `.so` to discover at runtime. Qt's answer is
+`Q_IMPORT_PLUGIN`: a translation unit compiled into the executable that
+references the plugin's static registration. Qt's own CMake does this
+automatically — `qt_import_plugins`, driven by `Qt6GuiPlugins.cmake`,
+which every consumer of a static `Qt6::Gui` gets for free.
+
+Conan's CMakeDeps replaces Qt's package files with its own, and that
+machinery does not survive the substitution — exactly like the missing
+`Qt6::Quick -> Qt6::OpenGL` edge. **This is now twice from the same seam**,
+and it is worth naming as a class rather than two incidents: anything
+Qt's own CMake would have done for a static build silently stops
+happening under Conan, and only a static build notices.
+
+f4 is not at fault: under `F4_PORTABLE_STATIC` it deploys no plugins,
+correctly, because with Qt's own CMake it would not have to.
+
+### Fix
+
+`contrib/f4-qt/import-qt-static-plugins.cmake` generates the
+`Q_IMPORT_PLUGIN` translation unit and attaches it to **`Qt6::Gui`'s
+`INTERFACE_SOURCES`**, which is the same mechanism Qt's own
+`qt_import_plugins` uses. Every consumer compiles it — app, tests, and
+anything added later. The lesson from the OpenGL hook is applied up
+front this time: fix the interface, not a named target.
+
+Two plugins, each with a reason:
+
+- **offscreen** — what f4's tests and the smoke step both set
+  (`QT_QPA_PLATFORM=offscreen`), and the one whose absence produced this
+  failure. Conan ships `libqoffscreen.a` but declares **no component for
+  it**, so it is picked up from the package folder by `find_library`.
+- **xcb** — what the application actually uses on a desktop. Conan does
+  declare `Qt6::QXcbIntegrationPlugin`. Without it the binary would pass
+  CI and then fail to open a window on a user's machine, which is the
+  worse failure because nothing here would catch it.
+
+Image-format and style plugins are deliberately not imported: nothing has
+failed for want of them, and the mechanism now in place makes adding one
+a line rather than an investigation.
+
+`CMAKE_PROJECT_INCLUDE` now points at `contrib/f4-qt/project-include.cmake`,
+a one-line aggregator. A list would work on CMake 3.29+ and this build
+pins 3.31.6, but an older CMake silently ignores the extra entries, and a
+hook that quietly does not run is the failure mode this whole file is
+about.
+
+### Test
+
+`tools/test-qt-static-plugins.sh` mocks Qt rather than building it — the
+subject is the CMake plumbing, and a real static Qt costs two hours. The
+mock supplies a `QtPlugin` header so the generated file genuinely
+compiles, and a stand-in `libqoffscreen.a` in Conan's package layout so
+`find_library` runs the real path.
+
+It asserts the imports by looking for the symbols **in the produced
+binaries**, not by reading a CMake property: the property being set is a
+different claim from the translation unit being compiled into each
+executable. Both consumers are checked, because in the real failure it
+was the tests, not the app, that could not start.
+
+Negative-controlled three ways — attaching to one target instead of the
+interface, dropping the offscreen import, and removing the top-level
+guard — all caught. It also exercises the aggregator, so a hook silently
+dropped from `CMAKE_PROJECT_INCLUDE` fails here.
+
+### Previous run — Qt6::OpenGL was linked into one target instead of into the graph
 
 The shim fix worked; `statx` is gone and `f4-qt-host` links. The run now
 fails on **f4's own test executables**:

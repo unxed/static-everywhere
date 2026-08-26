@@ -167,6 +167,17 @@ else
     printf '%s\n' "$HOOK_TEST" | sed 's/^/       /'
 fi
 
+# Cost: a two-hour run that compiled and linked everything and then had
+# eight of nine tests abort before main(), because a static Qt has no
+# plugin .so to discover and Conan's generator drops Qt's own
+# qt_import_plugins machinery.
+if PLUGIN_TEST=$("${REPO_ROOT}/tools/test-qt-static-plugins.sh" 2>&1); then
+    pass "static Qt plugin imports reach every consumer of Qt6::Gui"
+else
+    fail "static Qt plugin import regression"
+    printf '%s\n' "$PLUGIN_TEST" | sed 's/^/       /'
+fi
+
 # Cost: would have been a silently unreproducible artifact rather than a
 # failed build -- f4's own script clones qwindowkit from an unpinned
 # branch, so upstream could change what we ship without anything failing.

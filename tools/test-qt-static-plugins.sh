@@ -1,0 +1,137 @@
+#!/usr/bin/env bash
+# Regression test for the CMAKE_PROJECT_INCLUDE hooks, entered through
+# contrib/f4-qt/project-include.cmake.
+#
+# The failure it guards against is not a link error but a runtime one --
+# every GUI test aborting with "Could not find the Qt platform plugin
+# offscreen" before running a line of its own code. That is invisible to
+# any check that only builds, so this test asserts the two things that
+# actually make the difference:
+#
+#   1. the generated Q_IMPORT_PLUGIN translation unit is compiled into
+#      EVERY consumer of Qt6::Gui, not just the application -- the same
+#      mistake the Qt6::OpenGL hook made in its first version;
+#   2. the plugin archives reach the link line.
+#
+# Qt is mocked rather than built: the point under test is the CMake
+# plumbing, and a real static Qt takes two hours. The mock supplies a
+# QtPlugin header so the generated file genuinely compiles, and a stand-in
+# libqoffscreen.a in a package layout matching Conan's, so find_library
+# exercises the real code path.
+set -euo pipefail
+
+# shellcheck disable=SC1007
+SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+# shellcheck disable=SC1007
+REPO_ROOT=$(CDPATH= cd -- "${SCRIPT_DIR}/.." && pwd)
+PROBE=$(mktemp -d)
+trap 'rm -rf "$PROBE"' EXIT
+
+mkdir -p "$PROBE/src/nested" "$PROBE/fakeqt/plugins/platforms" "$PROBE/fakeqt/include"
+
+# A QtPlugin header just real enough that Q_IMPORT_PLUGIN compiles and
+# leaves a symbol behind we can check for.
+cat >"$PROBE/fakeqt/include/QtPlugin" <<'HDR'
+#pragma once
+#define Q_IMPORT_PLUGIN(NAME) extern "C" int se_imported_##NAME(void) { return 1; }
+HDR
+
+cat >"$PROBE/src/CMakeLists.txt" <<'CMAKE'
+cmake_minimum_required(VERSION 3.21)
+project(plugin_import_regression CXX)
+
+# Nested project first: CMAKE_PROJECT_INCLUDE fires after it too, at a
+# point where the Qt targets do not exist yet. Same ordering that caught
+# a missing top-level guard in the Qt6::OpenGL hook.
+add_subdirectory(nested)
+
+set(qt_PACKAGE_FOLDER_RELEASE "${FAKE_QT}")
+
+# Static Qt: Core is a STATIC IMPORTED target, which is how the hook tells
+# a static build from a shared one.
+file(WRITE "${CMAKE_BINARY_DIR}/core.cpp" "int qt_core(){return 0;}\n")
+add_library(qt6core_impl STATIC "${CMAKE_BINARY_DIR}/core.cpp")
+add_library(Qt6::Core STATIC IMPORTED)
+set_property(TARGET Qt6::Core PROPERTY
+             IMPORTED_LOCATION "$<TARGET_FILE:qt6core_impl>")
+
+# Qt6::Quick and Qt6::OpenGL exist so the sibling hook in the aggregator
+# is satisfied too -- this way one probe exercises the real entry point,
+# contrib/f4-qt/project-include.cmake, rather than a hook in isolation.
+file(WRITE "${CMAKE_BINARY_DIR}/gl.cpp" "int qt_opengl(){return 0;}\n")
+add_library(qt6opengl STATIC "${CMAKE_BINARY_DIR}/gl.cpp")
+add_library(Qt6::OpenGL INTERFACE IMPORTED)
+set_property(TARGET Qt6::OpenGL PROPERTY INTERFACE_LINK_LIBRARIES qt6opengl)
+add_library(Qt6::Quick INTERFACE IMPORTED)
+
+add_library(Qt6::Gui INTERFACE IMPORTED)
+set_property(TARGET Qt6::Gui PROPERTY
+             INTERFACE_INCLUDE_DIRECTORIES "${FAKE_QT}/include")
+
+file(WRITE "${CMAKE_BINARY_DIR}/xcb.cpp" "int xcb_plugin(){return 0;}\n")
+add_library(qt6xcb STATIC "${CMAKE_BINARY_DIR}/xcb.cpp")
+add_library(Qt6::QXcbIntegrationPlugin INTERFACE IMPORTED)
+set_property(TARGET Qt6::QXcbIntegrationPlugin PROPERTY
+             INTERFACE_LINK_LIBRARIES qt6xcb)
+
+file(WRITE "${CMAKE_BINARY_DIR}/m.cpp" "int main(){return 0;}\n")
+add_executable(f4-qt-host "${CMAKE_BINARY_DIR}/m.cpp")
+target_link_libraries(f4-qt-host PRIVATE Qt6::Gui)
+
+# The consumer that matters: in the real failure it was f4's tests, not
+# the app, that could not start.
+add_executable(F4SomeTest "${CMAKE_BINARY_DIR}/m.cpp")
+target_link_libraries(F4SomeTest PRIVATE Qt6::Gui)
+CMAKE
+printf '%s\n' \
+    'cmake_minimum_required(VERSION 3.21)' \
+    'project(nested_gallery NONE)' \
+    >"$PROBE/src/nested/CMakeLists.txt"
+
+# A stand-in for the archive Conan ships but declares no component for.
+printf 'int qoffscreen_plugin(void){return 0;}\n' >"$PROBE/off.c"
+cc -c "$PROBE/off.c" -o "$PROBE/off.o"
+ar rcs "$PROBE/fakeqt/plugins/platforms/libqoffscreen.a" "$PROBE/off.o"
+
+fail() {
+    printf '%s\n' "$1" >&2
+    sed 's/^/  /' "$2" >&2
+    exit 1
+}
+
+cmake -S "$PROBE/src" -B "$PROBE/build" -G Ninja \
+    -DFAKE_QT="$PROBE/fakeqt" \
+    -DCMAKE_PROJECT_INCLUDE="$REPO_ROOT/contrib/f4-qt/project-include.cmake" \
+    >"$PROBE/configure.log" 2>&1 \
+    || fail 'configure failed' "$PROBE/configure.log"
+
+grep -Fq -- 'static-everywhere: imported static Qt platform plugins' \
+    "$PROBE/configure.log" \
+    || fail 'the plugin hook did not run in the top-level scope' \
+            "$PROBE/configure.log"
+
+# The aggregator must run BOTH hooks; passing a list to CMAKE_PROJECT_INCLUDE
+# on an older CMake silently drops the extra files, which is exactly the
+# failure mode the single entry point exists to remove.
+grep -Fq -- "static-everywhere: added Qt6::OpenGL to Qt6::Quick's link interface" \
+    "$PROBE/configure.log" \
+    || fail 'the aggregator did not run the Qt6::OpenGL hook' \
+            "$PROBE/configure.log"
+
+cmake --build "$PROBE/build" >"$PROBE/build.log" 2>&1 \
+    || fail 'the probe failed to build with the plugin imports' "$PROBE/build.log"
+
+# Both plugins imported, and imported into BOTH consumers. Checking the
+# symbol in the produced binaries rather than the CMake property is
+# deliberate: the property being set is not the same claim as the
+# translation unit being compiled into each executable.
+for exe in f4-qt-host F4SomeTest; do
+    for plugin in QXcbIntegrationPlugin QOffscreenIntegrationPlugin; do
+        nm -A "$PROBE/build/$exe" 2>/dev/null \
+            | grep -q "se_imported_${plugin}" \
+            || fail "${exe} does not carry the import for ${plugin}" \
+                    "$PROBE/build.log"
+    done
+done
+
+printf 'static Qt plugin import: both plugins in both consumers: pass\n'

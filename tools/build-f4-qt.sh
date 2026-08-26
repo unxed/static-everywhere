@@ -686,7 +686,7 @@ HOOKEOF"
 -DCMAKE_BUILD_TYPE=Release \
 -DCMAKE_PREFIX_PATH=\"\$PWD/build/qwindowkit-install\" \
 -DQWindowKit_DIR=\"\$PWD/build/qwindowkit-install/lib/cmake/QWindowKit\" \
--DCMAKE_PROJECT_INCLUDE=\"${REPO_ROOT}/contrib/f4-qt/link-qt6-opengl.cmake\" \\
+-DCMAKE_PROJECT_INCLUDE=\"${REPO_ROOT}/contrib/f4-qt/project-include.cmake\" \\
 -DBUILD_TESTING=ON -DUSE_QWK=ON -DF4_PORTABLE_STATIC=ON"
     plan_step "cd ${SRC} && cmake --build qt/host/build-portable-linux --config Release --parallel \$(nproc)"
     plan_step "cd ${SRC} && ctest --test-dir qt/host/build-portable-linux -C Release --output-on-failure --timeout 300 -R '^(F4|QtShellController|WindowGeometryPersistence)'"
