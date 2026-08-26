@@ -23,6 +23,62 @@ for this entire stretch of work.
   changes cheaply.
 - Compiler wrappers: `onebin/toolchain/zig-cc`, `zig-c++`.
 
+### Latest diagnostic run (2026-08-26, night) — plugin archives are not leaves; consume Qt's metadata, derive nothing
+
+The cycle fix held; the import unit compiles only into executables and the
+plugin archives are on the link line. The final link then failed twice
+over, one failure per guess I had made:
+
+```
+ld.lld: error: undefined symbol: qInitResources_QuickControls2Impl_raw_qml_0()
+>>>  in archive …/qml/QtQuick/Controls/impl/libqtquickcontrols2implplugin.a
+ld.lld: error: undefined symbol: qt_static_plugin_QIcoPlugin()
+>>>  referenced by static_everywhere_qt_plugin_import.cpp:7
+```
+
+- **A QML plugin archive is not self-contained.** It references its
+  module's backing library — and in this Qt build the module's *resources*
+  are compiled into that backing library too (`libQt6QuickControls2Impl.a`
+  is 20.9MB; the package contains **zero** separate resource objects —
+  `qInitResources|_resources_|objects-Release|.rcc` all grep to nothing).
+  I linked the plugin and nothing else.
+- **The ico plugin's class is `QICOPlugin`, not `QIcoPlugin`.** I derived
+  the `Q_IMPORT_PLUGIN` name from Conan's component name. Wrong the moment
+  Qt's own naming disagrees.
+
+### The class fix: both answers were already in the package
+
+Qt ships its own machine-readable metadata next to every archive, and the
+hook now consumes it instead of deriving anything:
+
+- **The class name comes out of the archive itself.** The defining symbol
+  is a mangled C++ function `_Z<len>qt_static_plugin_<Class>v`, and the
+  Itanium length prefix makes extraction *exact*. That matters: a greedy
+  `[A-Za-z0-9_]+` swallows the trailing mangling and yields `<Class>v` —
+  the mock's first run produced precisely that off-by-suffix, same family
+  of mistake as `QIcoPlugin`, caught before CI this time because the mock
+  now uses genuinely mangled symbols.
+- **The dependency closure comes from the plugin's `.prl`.** Every one of
+  the 54 QML plugins and every `plugins/` archive has one;
+  `QMAKE_PRL_LIBS` is parsed with `$$[QT_INSTALL_*]` tokens and any stale
+  build-machine prefix remapped onto this package. Missing `.prl` or an
+  unparseable class is fatal with the payload printed.
+
+One helper now serves platform, image and QML plugins uniformly; the
+Conan component targets are no longer a source of names, only an extra
+dependency carrier for xcb.
+
+Mock upgraded to match reality's sharp edges: mangled symbols, a backing
+library reachable only through the `.prl`, and the ico directory
+deliberately named against its class. Negative controls: prl parsing
+removed and greedy extractor restored are each caught. `make test` 273,
+preflight green.
+
+**The rule this leaves behind, stated once:** for anything Qt installs,
+Qt also installs the authoritative description — symbol tables, `.prl`,
+`qmldir`, `qmlimportscanner`. Every failure in this file's history came
+from substituting a derivation for that description. Read, never derive.
+
 ### Latest diagnostic run (2026-08-26, evening) — ninja dependency cycle through the generated plugin-import unit; the missing half of Qt's own mechanism
 
 Everything up to and including qwindowkit built; the pin post-check passed

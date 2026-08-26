@@ -29,7 +29,7 @@ trap 'rm -rf "$PROBE"' EXIT
 
 mkdir -p "$PROBE/src/nested" "$PROBE/fakeqt/plugins/platforms" \
          "$PROBE/fakeqt/include" "$PROBE/fakeqt/libexec" \
-         "$PROBE/fakeqt/qml/QtQuick" "$PROBE/src/qml"
+         "$PROBE/fakeqt/qml/QtQuick" "$PROBE/src/qml" "$PROBE/fakeqt/lib"
 
 # A stand-in qmlimportscanner emitting the real output shape, including a
 # header-only module with no plugin (which must be skipped, not fatal).
@@ -68,9 +68,16 @@ SCANNER
 chmod +x "$PROBE/fakeqt/libexec/qmlimportscanner"
 sed -i "s|PLUGINDIR|$PROBE/fakeqt/qml/QtQuick|; s|TREEDIR|$PROBE/src|" \
     "$PROBE/fakeqt/libexec/qmlimportscanner"
-printf 'int se_plugin_impl_QtQuick2Plugin(void){return 0;}\n' >"$PROBE/qq.c"
-cc -c "$PROBE/qq.c" -o "$PROBE/qq.o"
+printf 'extern "C" int qt_backing_quick(void){return 0;}\n' >"$PROBE/bq.cpp"
+c++ -c "$PROBE/bq.cpp" -o "$PROBE/bq.o"
+ar rcs "$PROBE/fakeqt/lib/libQt6BackingQuick.a" "$PROBE/bq.o"
+printf 'struct QStaticPluginShim { int v; };
+extern "C" int qt_backing_quick(void);
+QStaticPluginShim qt_static_plugin_QtQuick2Plugin(){ return { qt_backing_quick() }; }\n' >"$PROBE/qq.cpp"
+c++ -c "$PROBE/qq.cpp" -o "$PROBE/qq.o"
 ar rcs "$PROBE/fakeqt/qml/QtQuick/libqtquick2plugin.a" "$PROBE/qq.o"
+printf 'QMAKE_PRL_LIBS = $$[QT_INSTALL_LIBS]/libQt6BackingQuick.a\n' \
+    >"$PROBE/fakeqt/qml/QtQuick/libqtquick2plugin.prl"
 printf 'import QtQuick\n' >"$PROBE/src/qml/Main.qml"
 
 # A QtPlugin header just real enough that Q_IMPORT_PLUGIN compiles and
@@ -83,10 +90,15 @@ printf 'import QtQuick\n' >"$PROBE/src/qml/Main.qml"
 # nothing referenced the archive at all.
 cat >"$PROBE/fakeqt/include/QtPlugin" <<'HDR'
 #pragma once
+// Mirrors the real Q_IMPORT_PLUGIN closely enough to matter: it
+// references a MANGLED C++ function qt_static_plugin_<Class>() defined in
+// the plugin archive, which is both what makes a missing archive an
+// undefined symbol and what the hook's name extraction parses.
+struct QStaticPluginShim { int v; };
 #define Q_IMPORT_PLUGIN(NAME)                                   \
-    extern "C" int se_plugin_impl_##NAME(void);                 \
+    QStaticPluginShim qt_static_plugin_##NAME();                \
     extern "C" int se_imported_##NAME(void)                     \
-    { return se_plugin_impl_##NAME(); }
+    { return qt_static_plugin_##NAME().v; }
 HDR
 
 cat >"$PROBE/src/CMakeLists.txt" <<'CMAKE'
@@ -131,7 +143,7 @@ add_library(qt6xcb STATIC "${CMAKE_BINARY_DIR}/xcb.cpp")
 add_library(Qt6::QXcbIntegrationPlugin INTERFACE IMPORTED)
 set_property(TARGET Qt6::QXcbIntegrationPlugin PROPERTY
              INTERFACE_LINK_LIBRARIES qt6xcb)
-foreach(_p QSvgPlugin QSvgIconPlugin QGifPlugin QIcoPlugin)
+foreach(_p QSvgPlugin QSvgIconPlugin QGifPlugin QICOPlugin)
   add_library(Qt6::${_p} INTERFACE IMPORTED)
   set_property(TARGET Qt6::${_p} PROPERTY INTERFACE_LINK_LIBRARIES qt6xcb)
 endforeach()
@@ -160,10 +172,34 @@ printf '%s\n' \
     'project(nested_gallery NONE)' \
     >"$PROBE/src/nested/CMakeLists.txt"
 
-# A stand-in for the archive Conan ships but declares no component for.
-printf 'int se_plugin_impl_QOffscreenIntegrationPlugin(void){return 0;}\n' >"$PROBE/off.c"
-cc -c "$PROBE/off.c" -o "$PROBE/off.o"
-ar rcs "$PROBE/fakeqt/plugins/platforms/libqoffscreen.a" "$PROBE/off.o"
+# Archives shaped like the real thing. Each carries the real source of
+# truth for its class name -- the qt_static_plugin_<Class> symbol, read
+# out of the binary -- with a deliberately WRONG-looking file/dir name for
+# ico (real class QICOPlugin, not QIcoPlugin), which is the exact mismatch
+# that killed a run when the name was derived instead of read. Each also
+# references a symbol from its module's backing library, declared only in
+# the sibling .prl -- the qInitResources_* shape.
+mkdir -p "$PROBE/fakeqt/plugins/imageformats" "$PROBE/fakeqt/plugins/iconengines" \
+         "$PROBE/fakeqt/lib"
+make_plugin() {  # $1 subdir  $2 archive-base  $3 class
+    printf 'extern "C" int qt_backing_%s(void){return 0;}\n' "$2" >"$PROBE/b_$2.cpp"
+    c++ -c "$PROBE/b_$2.cpp" -o "$PROBE/b_$2.o"
+    ar rcs "$PROBE/fakeqt/lib/libQt6Backing_$2.a" "$PROBE/b_$2.o"
+    printf 'struct QStaticPluginShim { int v; };
+extern "C" int qt_backing_%s(void);
+QStaticPluginShim qt_static_plugin_%s(){ return { qt_backing_%s() }; }\n' \
+        "$2" "$3" "$2" >"$PROBE/p_$2.cpp"
+    c++ -c "$PROBE/p_$2.cpp" -o "$PROBE/p_$2.o"
+    ar rcs "$PROBE/fakeqt/plugins/$1/lib$2.a" "$PROBE/p_$2.o"
+    printf 'QMAKE_PRL_TARGET = lib%s.a\nQMAKE_PRL_LIBS = $$[QT_INSTALL_LIBS]/libQt6Backing_%s.a -lm\n' \
+        "$2" "$2" >"$PROBE/fakeqt/plugins/$1/lib$2.prl"
+}
+make_plugin platforms   qxcb       QXcbIntegrationPlugin
+make_plugin platforms   qoffscreen QOffscreenIntegrationPlugin
+make_plugin imageformats qsvg      QSvgPlugin
+make_plugin imageformats qgif      QGifPlugin
+make_plugin imageformats qico      QICOPlugin
+make_plugin iconengines qsvgicon   QSvgIconPlugin
 
 fail() {
     printf '%s\n' "$1" >&2
@@ -199,7 +235,7 @@ cmake --build "$PROBE/build" >"$PROBE/build.log" 2>&1 \
 # translation unit being compiled into each executable.
 for exe in f4-qt-host F4SomeTest; do
     for plugin in QXcbIntegrationPlugin QOffscreenIntegrationPlugin \
-                  QSvgPlugin QSvgIconPlugin QGifPlugin QIcoPlugin \
+                  QSvgPlugin QSvgIconPlugin QGifPlugin QICOPlugin \
                   QtQuick2Plugin; do
         nm -A "$PROBE/build/$exe" 2>/dev/null \
             | grep -q "se_imported_${plugin}" \
