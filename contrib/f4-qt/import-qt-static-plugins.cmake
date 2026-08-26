@@ -197,6 +197,7 @@ function(_static_everywhere_import_qt_plugins)
             "(${_json_err}). Raw output follows:\n${_scan_json}")
     endif()
     set(_qml_plugin_count 0)
+    set(_seen_classnames "")
     math(EXPR _last "${_n_imports} - 1")
     foreach(_i RANGE 0 ${_last})
         string(JSON _entry GET "${_scan_json}" ${_i})
@@ -207,6 +208,24 @@ function(_static_everywhere_import_qt_plugins)
         if(_no_cls OR _no_plug OR _no_path)
             continue()
         endif()
+        # Only plugins that live in the Qt package. The scanner also
+        # reports the tree's own modules (F4QtHost, ZoinGallery, ZGStyle,
+        # QWindowKit); those are built and linked by this very build, and
+        # their reported paths point at source or build directories where
+        # no archive exists yet -- treating them like Qt's would abort
+        # configure on a file that is not supposed to be there.
+        string(FIND "${_path}" "${qt_PACKAGE_FOLDER_RELEASE}/qml" _in_qt)
+        if(NOT _in_qt EQUAL 0)
+            continue()
+        endif()
+        # The scanner can report one module several times (two root paths,
+        # repeated imports). Q_IMPORT_PLUGIN expands to a definition, so a
+        # duplicate is a redefinition error in the generated file, not a
+        # harmless repeat.
+        if("${_cls}" IN_LIST _seen_classnames)
+            continue()
+        endif()
+        list(APPEND _seen_classnames "${_cls}")
         find_library(_se_qmlplug_${_plug} NAMES "${_plug}"
                      PATHS "${_path}" NO_DEFAULT_PATH)
         if(NOT _se_qmlplug_${_plug})

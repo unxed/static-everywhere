@@ -47,12 +47,27 @@ cat <<'JSON'
   {
     "name": "QtQuick.Layouts.headeronly",
     "type": "module"
+  },
+  {
+    "classname": "QtQuick2Plugin",
+    "name": "QtQuick",
+    "path": "PLUGINDIR",
+    "plugin": "qtquick2plugin",
+    "type": "module"
+  },
+  {
+    "classname": "ZoinGalleryQmlPlugin",
+    "name": "ZoinGallery",
+    "path": "TREEDIR",
+    "plugin": "zoingalleryqmlplugin",
+    "type": "module"
   }
 ]
 JSON
 SCANNER
 chmod +x "$PROBE/fakeqt/libexec/qmlimportscanner"
-sed -i "s|PLUGINDIR|$PROBE/fakeqt/qml/QtQuick|" "$PROBE/fakeqt/libexec/qmlimportscanner"
+sed -i "s|PLUGINDIR|$PROBE/fakeqt/qml/QtQuick|; s|TREEDIR|$PROBE/src|" \
+    "$PROBE/fakeqt/libexec/qmlimportscanner"
 printf 'int se_plugin_impl_QtQuick2Plugin(void){return 0;}\n' >"$PROBE/qq.c"
 cc -c "$PROBE/qq.c" -o "$PROBE/qq.o"
 ar rcs "$PROBE/fakeqt/qml/QtQuick/libqtquick2plugin.a" "$PROBE/qq.o"

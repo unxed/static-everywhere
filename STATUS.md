@@ -134,6 +134,41 @@ could not be verified against a real Qt package — a mismatch must stop at
 f4's configure with the output in hand, not resurface as a runtime QML
 error at the end of a long run.
 
+### Thought ahead once more before the next run, and found two certain breaks in my own hook
+
+Asked directly before starting CI: is there anything left that can be
+computed rather than discovered. Walking the hook through f4's real
+configure step by step turned up two bugs that would have failed the very
+next run, plus one risk that f4's own policy floor already retires:
+
+- **Duplicate `Q_IMPORT_PLUGIN`.** The scanner can report one module
+  several times — two root paths, repeated imports — and
+  `Q_IMPORT_PLUGIN` expands to a *definition*, so a duplicate is a
+  redefinition error in the generated file, ten minutes into the run.
+  Deduplicated by classname.
+- **In-tree modules with a reported path.** The scanner also reports the
+  tree's own modules (`F4QtHost`, `ZoinGallery`, `ZGStyle`, `QWindowKit`),
+  whose paths point at source or build directories where no archive exists
+  yet; the hook's own loud-failure policy would have aborted configure on
+  a file that is not supposed to be there. Now only paths under the Qt
+  package's `qml/` are imported — those modules are built and linked by
+  this very build.
+- **`file(GENERATE)` visibility across directories** — checked and
+  retired rather than fixed: `CMP0118` governs whether the GENERATED mark
+  is global, f4 requires CMake 3.23 and ZoinGallery 3.21, both past the
+  3.20 boundary, so subdirectory consumers see the generated file.
+
+Also confirmed while checking: neither f4 nor qwindowkit contains a single
+`Q_IMPORT_PLUGIN` of its own, so this hook is the only importer of Qt's
+modules, and the in-tree QML modules go through `qt_add_qml_module`, which
+past runs show working. Whether their *runtime* registration holds is the
+genuinely open question the smoke step exists to answer — it could not be
+settled from here.
+
+The mock scanner now emits a duplicate entry and an in-tree-shaped entry,
+and both new behaviours are negative-controlled: dedup removed and path
+filter removed are each caught.
+
 ### A mock that proved nothing
 
 Worth recording, because the test looked fine. The first mock defined
