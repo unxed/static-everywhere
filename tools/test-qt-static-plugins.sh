@@ -164,6 +164,19 @@ target_link_libraries(f4-qt-host PRIVATE Qt6::Gui ZoinCore)
 
 # The consumer that matters: in the real failure it was f4's tests, not
 # the app, that could not start.
+# An in-tree QML module plugin, the shape qt6_add_qml_module produces for
+# ZoinGallery and F4QtHost: a real target in this build, no archive on
+# disk at configure time, marked with Qt's own QT_PLUGIN_CLASS_NAME. Run
+# 2026-08-26/night4 failed exactly here -- the binaries started and ran,
+# and QML then said `module "ZoinGallery" is not installed` 43 times.
+file(WRITE "${CMAKE_BINARY_DIR}/intree.cpp"
+"struct QStaticPluginShim { int v; };
+QStaticPluginShim qt_static_plugin_ZoinGalleryPlugin(){ return { 7 }; }\n")
+add_library(ZoinGalleryQmlplugin STATIC "${CMAKE_BINARY_DIR}/intree.cpp")
+set_property(TARGET ZoinGalleryQmlplugin PROPERTY
+             QT_PLUGIN_CLASS_NAME "ZoinGalleryPlugin")
+
+
 add_executable(F4SomeTest "${CMAKE_BINARY_DIR}/m.cpp")
 target_link_libraries(F4SomeTest PRIVATE Qt6::Gui ZoinCore)
 CMAKE
@@ -242,7 +255,7 @@ cmake --build "$PROBE/build" >"$PROBE/build.log" 2>&1 \
 for exe in f4-qt-host F4SomeTest; do
     for plugin in QXcbIntegrationPlugin QOffscreenIntegrationPlugin \
                   QSvgPlugin QSvgIconPlugin QGifPlugin QICOPlugin \
-                  QtQuick2Plugin; do
+                  QtQuick2Plugin ZoinGalleryPlugin; do
         nm -A "$PROBE/build/$exe" 2>/dev/null \
             | grep -q "se_imported_${plugin}" \
             || fail "${exe} does not carry the import for ${plugin}" \

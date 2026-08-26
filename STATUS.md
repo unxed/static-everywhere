@@ -23,6 +23,67 @@ for this entire stretch of work.
   changes cheaply.
 - Compiler wrappers: `onebin/toolchain/zig-cc`, `zig-c++`.
 
+### Latest diagnostic run (2026-08-26, night #4) — the binaries **run**; QML says `module "ZoinGallery" is not installed`
+
+The biggest step yet, and the failure moved out of the toolchain
+entirely. Everything links, every test binary **starts and executes**,
+and four of nine tests now pass (one before). What fails is QML at
+runtime:
+
+```
+module "ZoinGallery" is not installed   (43 times)
+QQmlApplicationEngine failed to load component   (27 times)
+5 tests failed out of 9
+```
+
+### What was missing, and why my earlier exclusion was half right
+
+`qt6_add_qml_module` creates a plugin target per module —
+`ZoinGalleryQml` → `ZoinGalleryQmlplugin`, and likewise f4's `F4QtHost`.
+In a static build the module is only reachable once that plugin is
+imported.
+
+The archive-import loop skips in-tree modules, and that part was correct:
+it imports archives *out of the Qt package*, and an in-tree module has no
+archive at configure time because this very build produces it. Skipping
+the archive was right. **Skipping the registration was the gap** — the
+plugin target exists, it just was never named in the generated
+`Q_IMPORT_PLUGIN` unit nor linked.
+
+Nothing was ever excluded from the *build*: the gallery compiles and
+links throughout. Worth stating plainly because "excluded" is easy to
+misread, and dropping the gallery would defeat the purpose of the
+artifact.
+
+### Fix, read rather than derived
+
+Qt marks every plugin target it creates with **`QT_PLUGIN_CLASS_NAME`** —
+the same property `qt_import_plugins` consumes. The hook now walks the
+build's directory tree, collects every target carrying it, emits
+`Q_IMPORT_PLUGIN` for each, and links them to every executable. That
+picks up f4's module, ZoinGallery's, and anything either adds later, with
+no name list to fall out of date — the fourth instance of the same seam,
+handled by the same rule as the last three.
+
+They are linked **straight to the executables**, not through `Qt6::Gui`:
+these plugins link `Qt6::Gui` themselves, so putting them in Gui's
+interface would close a cycle — the failure of two runs ago, avoided by
+design this time rather than rediscovered.
+
+The mock gained an in-tree plugin target of exactly that shape (a real
+target, no archive on disk, marked with `QT_PLUGIN_CLASS_NAME`), and both
+halves are negative-controlled: import not emitted, and plugin not linked
+to executables. Two of my own slips were caught locally on the way —
+`while` loops closed with `endforeach()`, and a stale test anchor.
+
+### Still open, and now genuinely narrow
+
+`QQmlApplicationEngine failed to load component` may or may not survive
+this fix: the 27 occurrences are downstream of the 43 missing-module
+errors, but only a run can say whether anything else remains. The other
+named unknowns are unchanged: fonts under `offscreen`, and both `onebin
+audit` profiles on real binaries.
+
 ### Latest diagnostic run (2026-08-26, night #3) — 190 `cannot open $[QT_INSTALL_PREFIX]/...`; my token list was the old mistake in a new costume
 
 ```
