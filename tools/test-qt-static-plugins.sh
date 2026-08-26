@@ -136,14 +136,24 @@ foreach(_p QSvgPlugin QSvgIconPlugin QGifPlugin QIcoPlugin)
   set_property(TARGET Qt6::${_p} PROPERTY INTERFACE_LINK_LIBRARIES qt6xcb)
 endforeach()
 
+# A static library between Qt6::Gui and the executables, linked by both --
+# the shape ZoinGalleryCore has in the real tree. The run this test failed
+# to prevent died on a ninja dependency cycle precisely because the
+# generated import unit was compiled into this kind of target; and even
+# without the cycle, an executable and a pulled archive member both
+# carrying the registration object is a duplicate definition.
+file(WRITE "${CMAKE_BINARY_DIR}/core.cxx" "int zoin_core(){return 0;}\n")
+add_library(ZoinCore STATIC "${CMAKE_BINARY_DIR}/core.cxx")
+target_link_libraries(ZoinCore PRIVATE Qt6::Gui)
+
 file(WRITE "${CMAKE_BINARY_DIR}/m.cpp" "int main(){return 0;}\n")
 add_executable(f4-qt-host "${CMAKE_BINARY_DIR}/m.cpp")
-target_link_libraries(f4-qt-host PRIVATE Qt6::Gui)
+target_link_libraries(f4-qt-host PRIVATE Qt6::Gui ZoinCore)
 
 # The consumer that matters: in the real failure it was f4's tests, not
 # the app, that could not start.
 add_executable(F4SomeTest "${CMAKE_BINARY_DIR}/m.cpp")
-target_link_libraries(F4SomeTest PRIVATE Qt6::Gui)
+target_link_libraries(F4SomeTest PRIVATE Qt6::Gui ZoinCore)
 CMAKE
 printf '%s\n' \
     'cmake_minimum_required(VERSION 3.21)' \
@@ -197,5 +207,12 @@ for exe in f4-qt-host F4SomeTest; do
                     "$PROBE/build.log"
     done
 done
+
+# The import unit must NOT be compiled into static libraries. That is the
+# real tree's failure mode, and the reason the hook restricts its
+# INTERFACE_SOURCES entry to EXECUTABLE targets the way Qt itself does.
+if nm "$PROBE/build/libZoinCore.a" 2>/dev/null | grep -q 'se_imported_'; then
+    fail 'the import unit was compiled into a static library' "$PROBE/build.log"
+fi
 
 printf 'static Qt plugin import: both plugins in both consumers: pass\n'

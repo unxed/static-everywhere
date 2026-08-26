@@ -247,12 +247,21 @@ function(_static_everywhere_import_qt_plugins)
 #include <QtPlugin>
 ${_imports}")
 
-    # INTERFACE_SOURCES is how Qt's own qt_import_plugins does this: the
-    # translation unit is compiled into every consumer of Qt6::Gui, which
-    # is what makes the registration run in tests, in the app, and in
-    # anything added later. Verified separately that a source attached to
-    # an imported target's interface does reach two distinct consumers.
-    set_property(TARGET Qt6::Gui APPEND PROPERTY INTERFACE_SOURCES "${_gen}")
+    # INTERFACE_SOURCES is how Qt's own machinery does this -- but only
+    # half of it, and the other half is not optional. Qt wraps the entry
+    # in a generator expression restricting it to EXECUTABLE targets, and
+    # a real run showed why. Unrestricted, the unit compiled into
+    # ZoinGalleryCore.a -- a static library between Qt6::Gui and the
+    # executables -- and ninja stopped on a dependency cycle: the library
+    # owns an object of the generated file, the generated file's ordering
+    # ties to the autogen timestamps of the test targets, and the tests
+    # link the library. Even without AUTOMOC in the loop it would be
+    # wrong: an executable and a pulled archive member each carrying the
+    # same registration object is a duplicate definition at link.
+    # Executables are where plugin registration belongs, and they are the
+    # only place Qt itself puts it.
+    set_property(TARGET Qt6::Gui APPEND PROPERTY INTERFACE_SOURCES
+        "$<$<STREQUAL:$<TARGET_PROPERTY:TYPE>,EXECUTABLE>:${_gen}>")
     set_property(TARGET Qt6::Gui APPEND PROPERTY INTERFACE_LINK_LIBRARIES ${_libs})
 
     message(STATUS

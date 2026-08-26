@@ -23,6 +23,62 @@ for this entire stretch of work.
   changes cheaply.
 - Compiler wrappers: `onebin/toolchain/zig-cc`, `zig-c++`.
 
+### Latest diagnostic run (2026-08-26, evening) — ninja dependency cycle through the generated plugin-import unit; the missing half of Qt's own mechanism
+
+Everything up to and including qwindowkit built; the pin post-check passed
+in the log. f4's build then stopped before compiling anything of its own:
+
+```
+ninja: error: dependency cycle:
+  ZoinGallery/libZoinGalleryCore.a
+  -> ZoinGalleryCore.dir/__/static_everywhere_qt_plugin_import.cpp.o
+  -> static_everywhere_qt_plugin_import.cpp
+  -> cmake_object_order_depends_target_ZoinGalleryDecodeLifecycleTests
+  -> ZoinGalleryDecodeLifecycleTests_autogen timestamps
+  -> ZoinGallery/libZoinGalleryCore.a
+```
+
+The import unit was compiled into **`ZoinGalleryCore.a`** — a static
+library sitting between `Qt6::Gui` and the executables. Its object of the
+generated file ties, through CMake's ordering for shared generated
+sources under AUTOMOC, to the autogen timestamps of the test targets, and
+the tests link the library. Cycle.
+
+The root mistake is precise and worth stating precisely: **I took half of
+Qt's mechanism.** `qt_import_plugins` does attach the unit via
+`INTERFACE_SOURCES` — but wrapped in
+`$<$<STREQUAL:$<TARGET_PROPERTY:TYPE>,EXECUTABLE>:…>`, restricting it to
+executables. I copied the attachment and dropped the restriction. Even
+without AUTOMOC in the loop the unrestricted form is wrong: an executable
+and a pulled archive member each carrying the same registration object is
+a duplicate definition at link. Executables are where plugin registration
+belongs, and they are the only place Qt itself puts it. The genex is now
+in the hook.
+
+### The class, not the incident
+
+Asked, correctly, to stop treating these one at a time. The pattern
+across this failure and the two before it: **the mock did not contain the
+target shape that broke.** First it lacked a second executable (the tests
+failed, the app linked); now it lacked a static library between Gui and
+the consumers (the shape `ZoinGalleryCore` has).
+
+So the rule the test now encodes: the probe carries the real tree's
+*shape catalogue* — a nested `project()`, a static intermediate library
+linked by everything, two executables — and asserts per shape: the import
+unit present in each executable, and **absent from the static library's
+archive**, checked with `nm` on the produced artifacts. Removing the
+executable-only genex is negative-controlled and caught. When upstream
+adds a new shape (a shared plugin consumer, a module library), the first
+step is to add it to this probe, not to wait for its failure.
+
+What this cannot pre-compute, stated so the next run's risks are named
+rather than implied: runtime registration of the in-tree QML modules
+(`qt_add_qml_module` machinery — the smoke step's grep exists for
+exactly this), fontconfig finding fonts under `offscreen`, and both
+`onebin audit` profiles against the real binaries. Those need the
+artifact to exist.
+
 ### Latest diagnostic run (2026-08-26) — everything builds and links; eight of nine tests abort before `main()`
 
 The Qt6::OpenGL edge fix worked. **Nothing failed to compile or link** —
