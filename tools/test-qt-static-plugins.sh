@@ -27,13 +27,51 @@ REPO_ROOT=$(CDPATH= cd -- "${SCRIPT_DIR}/.." && pwd)
 PROBE=$(mktemp -d)
 trap 'rm -rf "$PROBE"' EXIT
 
-mkdir -p "$PROBE/src/nested" "$PROBE/fakeqt/plugins/platforms" "$PROBE/fakeqt/include"
+mkdir -p "$PROBE/src/nested" "$PROBE/fakeqt/plugins/platforms" \
+         "$PROBE/fakeqt/include" "$PROBE/fakeqt/libexec" \
+         "$PROBE/fakeqt/qml/QtQuick" "$PROBE/src/qml"
+
+# A stand-in qmlimportscanner emitting the real output shape, including a
+# header-only module with no plugin (which must be skipped, not fatal).
+cat >"$PROBE/fakeqt/libexec/qmlimportscanner" <<SCANNER
+#!/bin/sh
+cat <<'JSON'
+[
+  {
+    "classname": "QtQuick2Plugin",
+    "name": "QtQuick",
+    "path": "PLUGINDIR",
+    "plugin": "qtquick2plugin",
+    "type": "module"
+  },
+  {
+    "name": "QtQuick.Layouts.headeronly",
+    "type": "module"
+  }
+]
+JSON
+SCANNER
+chmod +x "$PROBE/fakeqt/libexec/qmlimportscanner"
+sed -i "s|PLUGINDIR|$PROBE/fakeqt/qml/QtQuick|" "$PROBE/fakeqt/libexec/qmlimportscanner"
+printf 'int se_plugin_impl_QtQuick2Plugin(void){return 0;}\n' >"$PROBE/qq.c"
+cc -c "$PROBE/qq.c" -o "$PROBE/qq.o"
+ar rcs "$PROBE/fakeqt/qml/QtQuick/libqtquick2plugin.a" "$PROBE/qq.o"
+printf 'import QtQuick\n' >"$PROBE/src/qml/Main.qml"
 
 # A QtPlugin header just real enough that Q_IMPORT_PLUGIN compiles and
 # leaves a symbol behind we can check for.
+# The real Q_IMPORT_PLUGIN references the plugin's registration symbol,
+# which lives in the plugin archive -- so a plugin imported but not linked
+# is an undefined symbol. The mock reproduces that dependency; a first
+# version merely defined a symbol locally, and its negative control for
+# "archive dropped from the link line" passed a broken hook because
+# nothing referenced the archive at all.
 cat >"$PROBE/fakeqt/include/QtPlugin" <<'HDR'
 #pragma once
-#define Q_IMPORT_PLUGIN(NAME) extern "C" int se_imported_##NAME(void) { return 1; }
+#define Q_IMPORT_PLUGIN(NAME)                                   \
+    extern "C" int se_plugin_impl_##NAME(void);                 \
+    extern "C" int se_imported_##NAME(void)                     \
+    { return se_plugin_impl_##NAME(); }
 HDR
 
 cat >"$PROBE/src/CMakeLists.txt" <<'CMAKE'
@@ -68,11 +106,20 @@ add_library(Qt6::Gui INTERFACE IMPORTED)
 set_property(TARGET Qt6::Gui PROPERTY
              INTERFACE_INCLUDE_DIRECTORIES "${FAKE_QT}/include")
 
-file(WRITE "${CMAKE_BINARY_DIR}/xcb.cpp" "int xcb_plugin(){return 0;}\n")
+file(WRITE "${CMAKE_BINARY_DIR}/xcb.cpp"
+"extern \"C\" int se_plugin_impl_QXcbIntegrationPlugin(){return 0;}
+extern \"C\" int se_plugin_impl_QSvgPlugin(){return 0;}
+extern \"C\" int se_plugin_impl_QSvgIconPlugin(){return 0;}
+extern \"C\" int se_plugin_impl_QGifPlugin(){return 0;}
+extern \"C\" int se_plugin_impl_QIcoPlugin(){return 0;}\n")
 add_library(qt6xcb STATIC "${CMAKE_BINARY_DIR}/xcb.cpp")
 add_library(Qt6::QXcbIntegrationPlugin INTERFACE IMPORTED)
 set_property(TARGET Qt6::QXcbIntegrationPlugin PROPERTY
              INTERFACE_LINK_LIBRARIES qt6xcb)
+foreach(_p QSvgPlugin QSvgIconPlugin QGifPlugin QIcoPlugin)
+  add_library(Qt6::${_p} INTERFACE IMPORTED)
+  set_property(TARGET Qt6::${_p} PROPERTY INTERFACE_LINK_LIBRARIES qt6xcb)
+endforeach()
 
 file(WRITE "${CMAKE_BINARY_DIR}/m.cpp" "int main(){return 0;}\n")
 add_executable(f4-qt-host "${CMAKE_BINARY_DIR}/m.cpp")
@@ -89,7 +136,7 @@ printf '%s\n' \
     >"$PROBE/src/nested/CMakeLists.txt"
 
 # A stand-in for the archive Conan ships but declares no component for.
-printf 'int qoffscreen_plugin(void){return 0;}\n' >"$PROBE/off.c"
+printf 'int se_plugin_impl_QOffscreenIntegrationPlugin(void){return 0;}\n' >"$PROBE/off.c"
 cc -c "$PROBE/off.c" -o "$PROBE/off.o"
 ar rcs "$PROBE/fakeqt/plugins/platforms/libqoffscreen.a" "$PROBE/off.o"
 
@@ -105,7 +152,7 @@ cmake -S "$PROBE/src" -B "$PROBE/build" -G Ninja \
     >"$PROBE/configure.log" 2>&1 \
     || fail 'configure failed' "$PROBE/configure.log"
 
-grep -Fq -- 'static-everywhere: imported static Qt platform plugins' \
+grep -Fq -- "static-everywhere: imported static Qt plugins into Qt6::Gui's" \
     "$PROBE/configure.log" \
     || fail 'the plugin hook did not run in the top-level scope' \
             "$PROBE/configure.log"
@@ -126,7 +173,9 @@ cmake --build "$PROBE/build" >"$PROBE/build.log" 2>&1 \
 # deliberate: the property being set is not the same claim as the
 # translation unit being compiled into each executable.
 for exe in f4-qt-host F4SomeTest; do
-    for plugin in QXcbIntegrationPlugin QOffscreenIntegrationPlugin; do
+    for plugin in QXcbIntegrationPlugin QOffscreenIntegrationPlugin \
+                  QSvgPlugin QSvgIconPlugin QGifPlugin QIcoPlugin \
+                  QtQuick2Plugin; do
         nm -A "$PROBE/build/$exe" 2>/dev/null \
             | grep -q "se_imported_${plugin}" \
             || fail "${exe} does not carry the import for ${plugin}" \

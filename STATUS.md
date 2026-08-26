@@ -75,9 +75,75 @@ Two plugins, each with a reason:
   CI and then fail to open a window on a user's machine, which is the
   worse failure because nothing here would catch it.
 
-Image-format and style plugins are deliberately not imported: nothing has
-failed for want of them, and the mechanism now in place makes adding one
-a line rather than an investigation.
+### Not waiting for the next two-hour run to name the rest
+
+The first draft of this deferred image-format plugins on the grounds that
+nothing had failed for want of them. Challenged in conversation, and the
+challenge was right: the candidate set is finite, sits in the artifact
+already collected, and what f4 uses is readable in its sources. Waiting
+for a failure only works when there is going to be one.
+
+The package ships **23 plugin archives** under `plugins/` and **54** more
+under `qml/`. Going through them against f4's sources:
+
+- **gif, ico, svg, svgicon — imported.** ZoinGallery's `QtDecoder`
+  enumerates `QImageReader::supportedImageFormats()` and decodes whatever
+  Qt reports (`Decoders/QtDecoder.cpp:13`). Without these archives Qt
+  reports fewer formats and f4 quietly stops opening those files. Nothing
+  crashes; no test fails. **CI would never have told us** — for an image
+  viewer that is worse than the abort that started this entry, and it is
+  the case that waiting could not have found.
+- **jpeg, png, webp, tiff, heif — nothing to do.** Qt builds jpeg and png
+  into Qt6Gui with system libraries (there is no `qjpeg`/`qpng` archive in
+  the package at all), and the rest come from ZoinGallery's own decoders.
+- **sqlite, TLS backends — left out, checked not assumed.** No
+  `QSqlDatabase` anywhere; the only `https` strings are comments and a map
+  URL handed to the desktop browser. No `QNetworkAccessManager`, no
+  `QSslSocket`.
+- **QML module plugins — imported, and this was the next failure.** f4's
+  QML imports 16 modules across 38 files and pulls more transitively, so
+  hand-listing was never an option. The smoke step's existing grep for
+  `QQmlApplicationEngine failed to load component` is exactly this
+  failure, waiting to happen.
+
+### Third time from the same seam
+
+Qt's answer for QML is `qt_import_qml_plugins()`, which runs
+`qmlimportscanner` and imports what it reports. That macro lives in
+`Qt6QmlMacros.cmake`, which Conan's package does not ship — **but
+`qmlimportscanner` itself is in the package**, at `libexec/`. So the hook
+uses Qt's own tool and supplies only the small part around it.
+
+Checked directly in the artifact's file listing, which makes the pattern
+hard to argue with:
+
+| file | in the package |
+| --- | --- |
+| `Qt6GuiPlugins.cmake` | **no** — cost the platform plugins |
+| `Qt6QmlMacros.cmake` | **no** — costs the QML plugins |
+| `qmlimportscanner` | yes |
+
+Together with the missing `Qt6::Quick -> Qt6::OpenGL` edge, that is three
+instances of one thing: **anything Qt's own CMake would have done for a
+static build silently stops happening under Conan's generated package,
+and only a static build notices.**
+
+The scanner's JSON is parsed strictly and every unexpected shape is fatal
+with the payload printed, because this is the one assumption here that
+could not be verified against a real Qt package — a mismatch must stop at
+f4's configure with the output in hand, not resurface as a runtime QML
+error at the end of a long run.
+
+### A mock that proved nothing
+
+Worth recording, because the test looked fine. The first mock defined
+`Q_IMPORT_PLUGIN(NAME)` as a locally-defined symbol, so nothing referenced
+the plugin archives — and the negative control for "archive dropped from
+the link line" **passed a deliberately broken hook**. The real macro
+references the plugin's registration symbol, which is what makes a missing
+archive an undefined symbol. The mock now reproduces that dependency, and
+all three controls catch: QML import dropped, svg import dropped, QML
+archive not linked.
 
 `CMAKE_PROJECT_INCLUDE` now points at `contrib/f4-qt/project-include.cmake`,
 a one-line aggregator. A list would work on CMake 3.29+ and this build
