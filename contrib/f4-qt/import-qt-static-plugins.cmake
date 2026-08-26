@@ -88,40 +88,23 @@ endif()
 #     and no separate resource objects exist anywhere in the package).
 #     Qt ships the full closure next to every plugin in its .prl file;
 #     parse that instead of hand-wiring dependencies.
-function(_se_import_plugin_archive archive imports_var libs_var)
-    # The defining symbol is a mangled C++ function,
-    # _Z<len>qt_static_plugin_<Class>v, and the Itanium length prefix is
-    # what makes extraction exact: a greedy [A-Za-z0-9_]+ would swallow
-    # the trailing mangling and yield "<Class>v" -- the mock's first run
-    # produced exactly that off-by-suffix, which is the same family of
-    # mistake as deriving QIcoPlugin from a component name.
-    file(STRINGS "${archive}" _syms REGEX "_Z[0-9]+qt_static_plugin_")
-    string(REGEX MATCH "_Z([0-9]+)qt_static_plugin_" _m "${_syms}")
-    if(NOT _m)
-        message(FATAL_ERROR
-            "static-everywhere: no mangled qt_static_plugin_<Class> symbol "
-            "in ${archive}. Without it Q_IMPORT_PLUGIN cannot reference the "
-            "plugin, so this is not a Qt static plugin archive at all.")
-    endif()
-    set(_len "${CMAKE_MATCH_1}")
-    string(FIND "${_syms}" "${_m}" _at)
-    string(LENGTH "_Z${_len}" _pfx)
-    math(EXPR _at "${_at} + ${_pfx}")
-    string(SUBSTRING "${_syms}" ${_at} ${_len} _full)
-    string(REPLACE "qt_static_plugin_" "" _cls "${_full}")
-    if(NOT _cls MATCHES "^[A-Za-z_][A-Za-z0-9_]*$")
-        message(FATAL_ERROR
-            "static-everywhere: extracted plugin class '${_cls}' from "
-            "${archive} is not an identifier -- the symbol parse went wrong; "
-            "raw match context: ${_syms}")
-    endif()
 
-    set(_new_imports "Q_IMPORT_PLUGIN(${_cls})\n")
-    set(_new_libs "${archive}")
-
+# The dependency closure Qt records next to every static archive.
+# `required` distinguishes the two callers, and the distinction is real
+# rather than cosmetic. For a plugin being imported, a missing .prl means
+# its backing library and resources will not be linked and the build dies
+# on qInitResources_* -- fatal. For the bulk declaration of module
+# archives, plenty of Qt libraries ship no .prl at all, and demanding one
+# aborts configure over nothing.
+function(_se_prl_closure archive out_var required)
+    set(_out "")
     get_filename_component(_dir "${archive}" DIRECTORY)
     get_filename_component(_base "${archive}" NAME_WE)
     set(_prl "${_dir}/${_base}.prl")
+    if(NOT EXISTS "${_prl}" AND NOT required)
+        set(${out_var} "" PARENT_SCOPE)
+        return()
+    endif()
     if(NOT EXISTS "${_prl}")
         message(FATAL_ERROR
             "static-everywhere: ${_prl} not found. Qt records every static "
@@ -185,7 +168,7 @@ function(_se_import_plugin_archive archive imports_var libs_var)
             string(REGEX REPLACE "^-l" "" _bare "${_it}")
             if(_bare MATCHES "::")
                 if(TARGET "${_bare}")
-                    list(APPEND _new_libs "${_bare}")
+                    list(APPEND _out "${_bare}")
                 endif()
                 continue()
             endif()
@@ -199,12 +182,113 @@ function(_se_import_plugin_archive archive imports_var libs_var)
             if(_it MATCHES "^/" AND NOT EXISTS "${_it}")
                 continue()
             endif()
-            list(APPEND _new_libs "${_it}")
+            list(APPEND _out "${_it}")
         endforeach()
     endif()
 
+    set(${out_var} ${_out} PARENT_SCOPE)
+endfunction()
+
+function(_se_import_plugin_archive archive imports_var libs_var)
+    # The defining symbol is a mangled C++ function,
+    # _Z<len>qt_static_plugin_<Class>v, and the Itanium length prefix is
+    # what makes extraction exact: a greedy [A-Za-z0-9_]+ would swallow
+    # the trailing mangling and yield "<Class>v" -- the mock's first run
+    # produced exactly that off-by-suffix, which is the same family of
+    # mistake as deriving QIcoPlugin from a component name.
+    file(STRINGS "${archive}" _syms REGEX "_Z[0-9]+qt_static_plugin_")
+    string(REGEX MATCH "_Z([0-9]+)qt_static_plugin_" _m "${_syms}")
+    if(NOT _m)
+        message(FATAL_ERROR
+            "static-everywhere: no mangled qt_static_plugin_<Class> symbol "
+            "in ${archive}. Without it Q_IMPORT_PLUGIN cannot reference the "
+            "plugin, so this is not a Qt static plugin archive at all.")
+    endif()
+    set(_len "${CMAKE_MATCH_1}")
+    string(FIND "${_syms}" "${_m}" _at)
+    string(LENGTH "_Z${_len}" _pfx)
+    math(EXPR _at "${_at} + ${_pfx}")
+    string(SUBSTRING "${_syms}" ${_at} ${_len} _full)
+    string(REPLACE "qt_static_plugin_" "" _cls "${_full}")
+    if(NOT _cls MATCHES "^[A-Za-z_][A-Za-z0-9_]*$")
+        message(FATAL_ERROR
+            "static-everywhere: extracted plugin class '${_cls}' from "
+            "${archive} is not an identifier -- the symbol parse went wrong; "
+            "raw match context: ${_syms}")
+    endif()
+
+    set(_new_imports "Q_IMPORT_PLUGIN(${_cls})\n")
+    set(_new_libs "${archive}")
+
+    _se_prl_closure("${archive}" _prl_closure TRUE)
+    list(APPEND _new_libs ${_prl_closure})
+
     set(${imports_var} "${${imports_var}}${_new_imports}" PARENT_SCOPE)
     set(${libs_var} ${${libs_var}} ${_new_libs} PARENT_SCOPE)
+endfunction()
+
+
+# Declare the Qt6::<name> targets Qt's own package files reference and
+# Conan's generated ones do not.
+#
+# Qt records, for every QML module, the link target its plugin defines.
+# qt6_import_qml_plugins looks that target up and -- if it is absent --
+# warns and moves on, which is how a build links cleanly and then reports
+# `module "QtQuick" is not installed` at runtime. Conan's CMakeDeps
+# publishes its own component set instead of Qt's, so 31 of these were
+# missing in one run.
+#
+# Rather than guess the names, take them from what is on disk: every
+# plugin archive under qml/, and every Qt module archive under lib/. Both
+# spellings are declared, because Qt asks for a module by its lowercase
+# name (Qt6::quicktooling) while the archive is CamelCase
+# (libQt6QuickTooling.a). Each target carries its .prl closure through the
+# same parser used everywhere else in this file, so a plugin's backing
+# library and resources come with it.
+#
+# Existing targets are never touched: where Conan already declares a
+# component, Conan's version wins.
+function(_se_declare_missing_qt_targets)
+    set(_declared 0)
+    file(GLOB_RECURSE _qml_archives
+         "${qt_PACKAGE_FOLDER_RELEASE}/qml/*.a")
+    file(GLOB _lib_archives
+         "${qt_PACKAGE_FOLDER_RELEASE}/lib/libQt6*.a")
+    foreach(_a IN LISTS _qml_archives _lib_archives)
+        get_filename_component(_base "${_a}" NAME_WE)
+        string(REGEX REPLACE "^lib" "" _base "${_base}")
+        set(_names "${_base}")
+        # libQt6QuickTooling.a -> QuickTooling and quicktooling
+        string(REGEX REPLACE "^Qt6" "" _mod "${_base}")
+        if(NOT _mod STREQUAL _base)
+            string(TOLOWER "${_mod}" _mod_lower)
+            list(APPEND _names "${_mod}" "${_mod_lower}")
+        endif()
+        string(TOLOWER "${_base}" _base_lower)
+        list(APPEND _names "${_base_lower}")
+        list(REMOVE_DUPLICATES _names)
+
+        set(_closure "")
+        foreach(_n IN LISTS _names)
+            if(TARGET "Qt6::${_n}")
+                continue()
+            endif()
+            if(NOT _closure)
+                _se_prl_closure("${_a}" _closure FALSE)
+            endif()
+            add_library("Qt6::${_n}" STATIC IMPORTED)
+            set_target_properties("Qt6::${_n}" PROPERTIES
+                IMPORTED_LOCATION "${_a}")
+            if(_closure)
+                set_property(TARGET "Qt6::${_n}" PROPERTY
+                             INTERFACE_LINK_LIBRARIES ${_closure})
+            endif()
+            math(EXPR _declared "${_declared} + 1")
+        endforeach()
+    endforeach()
+    message(STATUS
+        "static-everywhere: declared ${_declared} Qt6::* targets Conan's "
+        "generator omits, so Qt's own qt6_import_qml_plugins can link them")
 endfunction()
 
 function(_static_everywhere_import_qt_plugins)
@@ -256,175 +340,31 @@ function(_static_everywhere_import_qt_plugins)
         list(APPEND _libs Qt6::QXcbIntegrationPlugin)
     endif()
 
-        # QML module plugins. A static Qt needs these imported exactly as the
-    # platform plugin does, and there are 54 archives under the package's
-    # qml/ tree -- f4's own sources import 16 modules directly and pull
-    # more transitively, so hand-listing them is not an option.
+        # Everything QML is Qt's own job, and it does it: the package ships
+    # Qt6QmlMacros.cmake, and qt6_import_qml_plugins runs automatically
+    # from _qt_internal_finalize_executable for every executable.
     #
-    # Qt solves this with qt_import_qml_plugins(), which runs
-    # qmlimportscanner and imports what it reports. That macro lives in
-    # Qt6QmlMacros.cmake, which Conan's package does not ship -- but
-    # qmlimportscanner itself IS in the package, so use Qt's own tool and
-    # supply only the small part around it.
+    # An earlier version of this file reimplemented that -- driving
+    # qmlimportscanner by hand and registering the tree's own module
+    # plugins -- on the belief that Conan had dropped Qt's machinery.
+    # That belief came from grepping the diagnostic artifact's package
+    # listing, which the collector deliberately prunes of */lib/cmake/*.
+    # Absence from the listing was read as absence from the package. The
+    # reimplementation duplicated Qt's work and then failed on its own
+    # terms, trying to link a MODULE_LIBRARY into an executable.
     #
-    # This is the third instance of one seam: Qt6GuiPlugins.cmake missing
-    # cost the platform plugins, the Qt6::Quick -> Qt6::OpenGL edge cost a
-    # run, and Qt6QmlMacros.cmake missing costs this.
-    find_program(_se_qmlscanner qmlimportscanner
-        PATHS "${qt_PACKAGE_FOLDER_RELEASE}/libexec"
-              "${Qt6_PACKAGE_FOLDER_RELEASE}/libexec"
-        NO_DEFAULT_PATH)
-    if(NOT _se_qmlscanner)
-        message(FATAL_ERROR
-            "static-everywhere: qmlimportscanner not found in the Qt package. "
-            "Without it the QML module plugins cannot be determined, and a "
-            "static build fails at runtime with 'QQmlApplicationEngine failed "
-            "to load component'.")
-    endif()
-
-    set(_qml_roots "")
-    foreach(_dir "${CMAKE_SOURCE_DIR}/qml"
-                 "${CMAKE_SOURCE_DIR}/../../third_party/ZoinGallery")
-        if(IS_DIRECTORY "${_dir}")
-            list(APPEND _qml_roots -rootPath "${_dir}")
-        endif()
-    endforeach()
-    if(NOT _qml_roots)
-        message(FATAL_ERROR
-            "static-everywhere: found no QML source directory to scan. The "
-            "paths in contrib/f4-qt/import-qt-static-plugins.cmake are "
-            "relative to f4's layout; if that moved, update them.")
-    endif()
-
-    execute_process(
-        COMMAND "${_se_qmlscanner}" ${_qml_roots}
-                -importPath "${qt_PACKAGE_FOLDER_RELEASE}/qml"
-        OUTPUT_VARIABLE _scan_json
-        ERROR_VARIABLE _scan_err
-        RESULT_VARIABLE _scan_rc)
-    if(NOT _scan_rc EQUAL 0)
-        message(FATAL_ERROR
-            "static-everywhere: qmlimportscanner failed (${_scan_rc}):\n${_scan_err}")
-    endif()
-
-    # Strictly parsed, and loud on anything unexpected. The JSON shape is
-    # qmlimportscanner's own and could change between Qt versions; a
-    # mismatch must stop here with the payload in hand, not resurface as a
-    # runtime QML load error two hours later.
-    string(JSON _n_imports ERROR_VARIABLE _json_err LENGTH "${_scan_json}")
-    if(_json_err)
-        message(FATAL_ERROR
-            "static-everywhere: could not parse qmlimportscanner output "
-            "(${_json_err}). Raw output follows:\n${_scan_json}")
-    endif()
-    set(_qml_plugin_count 0)
-    set(_seen_classnames "")
-    math(EXPR _last "${_n_imports} - 1")
-    foreach(_i RANGE 0 ${_last})
-        string(JSON _entry GET "${_scan_json}" ${_i})
-        string(JSON _cls ERROR_VARIABLE _no_cls GET "${_entry}" classname)
-        string(JSON _plug ERROR_VARIABLE _no_plug GET "${_entry}" plugin)
-        string(JSON _path ERROR_VARIABLE _no_path GET "${_entry}" path)
-        # Entries without a plugin are header-only modules; skip quietly.
-        if(_no_cls OR _no_plug OR _no_path)
-            continue()
-        endif()
-        # Only plugins that live in the Qt package. The scanner also
-        # reports the tree's own modules (F4QtHost, ZoinGallery, ZGStyle,
-        # QWindowKit); those are built and linked by this very build, and
-        # their reported paths point at source or build directories where
-        # no archive exists yet -- treating them like Qt's would abort
-        # configure on a file that is not supposed to be there.
-        string(FIND "${_path}" "${qt_PACKAGE_FOLDER_RELEASE}/qml" _in_qt)
-        if(NOT _in_qt EQUAL 0)
-            continue()
-        endif()
-        # The scanner can report one module several times (two root paths,
-        # repeated imports). Q_IMPORT_PLUGIN expands to a definition, so a
-        # duplicate is a redefinition error in the generated file, not a
-        # harmless repeat. The scanner's classname is used only for this
-        # dedup key; the imported name comes from the archive itself.
-        if("${_cls}" IN_LIST _seen_classnames)
-            continue()
-        endif()
-        list(APPEND _seen_classnames "${_cls}")
-        find_library(_se_qmlplug_${_plug} NAMES "${_plug}"
-                     PATHS "${_path}" NO_DEFAULT_PATH)
-        if(NOT _se_qmlplug_${_plug})
-            message(FATAL_ERROR
-                "static-everywhere: qmlimportscanner reports module plugin "
-                "'${_plug}' in '${_path}' but no archive was found there. A "
-                "missing QML plugin does not fail the link; it fails at "
-                "startup with 'QQmlApplicationEngine failed to load "
-                "component'.")
-        endif()
-        _se_import_plugin_archive("${_se_qmlplug_${_plug}}" _imports _libs)
-        math(EXPR _qml_plugin_count "${_qml_plugin_count} + 1")
-    endforeach()
-
-    # The tree's OWN QML modules. qt6_add_qml_module creates a plugin
-    # target per module (ZoinGalleryQml -> ZoinGalleryQmlplugin, and
-    # likewise for f4's F4QtHost), and in a static build the module is
-    # only reachable once that plugin is imported. Without it QML reports
-    # `module "ZoinGallery" is not installed` -- 43 times in run
-    # 2026-08-26/night4, with five test binaries failing on it while the
-    # binaries themselves started and ran.
+    # What Qt's machinery cannot do by itself is the one thing left here:
+    # it skips any plugin whose Qt6::<name> link target does not exist,
+    # and says so 31 times before carrying on --
     #
-    # These were skipped by the loop above, correctly: that loop imports
-    # archives out of the Qt package, and an in-tree module has no archive
-    # at configure time because this very build produces it. Skipping the
-    # archive was right; skipping the registration was the gap.
+    #   The qml plugin 'qtquick2plugin' is a dependency of 'f4-qt-host',
+    #   but the link target it defines (Qt6::qtquick2plugin) does not
+    #   exist in the current scope. The plugin will not be linked.
     #
-    # Read, do not derive: Qt marks every plugin target it creates with
-    # QT_PLUGIN_CLASS_NAME, which is the same property qt_import_plugins
-    # consumes. Enumerating targets that carry it picks up f4's module,
-    # ZoinGallery's, and anything either adds later, with no name list to
-    # fall out of date.
-    #
-    # Linked straight to the executables rather than through Qt6::Gui:
-    # these plugins link Qt6::Gui themselves, so putting them in Gui's
-    # interface would close a cycle.
-    set(_dirs "${CMAKE_SOURCE_DIR}")
-    set(_intree_plugins "")
-    while(_dirs)
-        list(POP_FRONT _dirs _d)
-        get_property(_subs DIRECTORY "${_d}" PROPERTY SUBDIRECTORIES)
-        list(APPEND _dirs ${_subs})
-        get_property(_tgts DIRECTORY "${_d}" PROPERTY BUILDSYSTEM_TARGETS)
-        foreach(_t IN LISTS _tgts)
-            get_target_property(_pcls "${_t}" QT_PLUGIN_CLASS_NAME)
-            if(_pcls)
-                list(APPEND _intree_plugins "${_t}")
-                string(APPEND _imports "Q_IMPORT_PLUGIN(${_pcls})\n")
-            endif()
-        endforeach()
-    endwhile()
-
-    if(_intree_plugins)
-        set(_dirs "${CMAKE_SOURCE_DIR}")
-        set(_exes "")
-        while(_dirs)
-            list(POP_FRONT _dirs _d)
-            get_property(_subs DIRECTORY "${_d}" PROPERTY SUBDIRECTORIES)
-            list(APPEND _dirs ${_subs})
-            get_property(_tgts DIRECTORY "${_d}" PROPERTY BUILDSYSTEM_TARGETS)
-            foreach(_t IN LISTS _tgts)
-                get_target_property(_ty "${_t}" TYPE)
-                if(_ty STREQUAL "EXECUTABLE")
-                    list(APPEND _exes "${_t}")
-                endif()
-            endforeach()
-        endwhile()
-        # Every executable compiles the same generated unit, so every
-        # executable must be able to resolve every class named in it.
-        foreach(_e IN LISTS _exes)
-            foreach(_pl IN LISTS _intree_plugins)
-                if(NOT _e STREQUAL _pl)
-                    target_link_libraries("${_e}" PRIVATE "${_pl}")
-                endif()
-            endforeach()
-        endforeach()
-    endif()
+    # -- because Conan's CMakeDeps declares its own component set and not
+    # the per-plugin targets Qt's own package files reference. So supply
+    # the targets and let Qt do the importing.
+    _se_declare_missing_qt_targets()
 
     set(_gen "${CMAKE_BINARY_DIR}/static_everywhere_qt_plugin_import.cpp")
     file(GENERATE OUTPUT "${_gen}" CONTENT

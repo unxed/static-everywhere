@@ -23,6 +23,79 @@ for this entire stretch of work.
   changes cheaply.
 - Compiler wrappers: `onebin/toolchain/zig-cc`, `zig-c++`.
 
+### Latest diagnostic run (2026-08-26, night #5) — **my premise was wrong**: Qt's machinery is present and running; it was skipping 31 plugins silently
+
+```
+CMake Error: Target "ZoinGalleryQmlplugin" of type MODULE_LIBRARY may not be
+  linked into another target.
+CMake Warning at …/p/lib/cmake/Qt6Qml/Qt6QmlMacros.cmake:4813:
+  The qml plugin 'qtquick2plugin' is a dependency of 'f4-qt-host', but the
+  link target it defines (Qt6::qtquick2plugin) does not exist in the
+  current scope. The plugin will not be linked.        [31 times]
+```
+
+### The correction, and how I got it wrong
+
+Four entries of this file rest on "Conan's CMakeDeps drops Qt's own CMake
+machinery". **That is false.** `Qt6QmlMacros.cmake` is right there in the
+package — the error stack quotes it by path — and
+`qt6_import_qml_plugins` has been running automatically out of
+`_qt_internal_finalize_executable` for every executable, in this run and
+the previous one.
+
+The mistake has a precise cause worth recording: I grepped the diagnostic
+artifact's package listing for those files, found nothing, and concluded
+they were absent. **The collector deliberately prunes `*/lib/cmake/*`** —
+a rule I wrote myself, to keep the artifact small. I read absence from a
+listing as absence from the package. An artifact designed to be small is
+not evidence of what a package does not contain.
+
+So the fourth "instance of the same seam" was not that at all, and the
+in-tree registration I added last run was reimplementing work Qt already
+does — which then failed on its own terms, because Qt makes an in-tree
+QML plugin a `MODULE_LIBRARY`, and CMake will not link one into anything.
+
+### What is actually wrong, and the one-mechanism fix
+
+Qt's import path works; it just gives up quietly on any plugin whose
+`Qt6::<name>` link target does not exist, because Conan's generator
+publishes its own component set rather than the per-plugin targets Qt's
+package files reference. Thirty-one warnings, no error, and a binary that
+links and then says `module "QtQuick" is not installed`.
+
+So: **supply the targets and let Qt do the importing.** The hook now
+declares an imported target for every plugin archive under `qml/` and
+every module archive under `lib/`, taking names from what is on disk
+rather than from a list, in both spellings Qt uses — it asks for
+`Qt6::quicktooling` while the archive is `libQt6QuickTooling.a`. Each
+target carries its `.prl` closure through the same parser used elsewhere
+here. Existing targets are never overwritten: where Conan declares a
+component, Conan's version wins.
+
+The hand-rolled QML import and the in-tree registration are both deleted.
+What remains in this file is only what nothing else does: the platform
+and image-format plugins.
+
+`.prl` strictness became a parameter in the process, and the distinction
+is real rather than cosmetic — for a plugin being imported a missing
+`.prl` is fatal (its backing library and resources would not link), while
+for the bulk declaration plenty of Qt libraries ship none and demanding
+one would abort configure over nothing.
+
+### Test
+
+The mock now carries a `MODULE`-type in-tree plugin (the type that made
+CMake refuse), a `libQt6QuickTooling.a` with no `.prl` beside it, and a
+deferred check for both spellings of its target. Negative controls:
+declaration removed, and module-name spellings removed — both caught.
+
+Two of my own errors surfaced while writing it, both silent-pass
+failures, which is the kind worth naming: a negative control aimed at the
+wrong line (the lowercase spelling comes from a different branch than I
+targeted), and an insertion into the probe that never applied because the
+anchor did not match — so the check I thought I was testing did not exist
+at all, and the control "passed".
+
 ### Latest diagnostic run (2026-08-26, night #4) — the binaries **run**; QML says `module "ZoinGallery" is not installed`
 
 The biggest step yet, and the failure moved out of the toolchain

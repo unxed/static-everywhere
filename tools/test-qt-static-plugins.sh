@@ -2,6 +2,12 @@
 # Regression test for the CMAKE_PROJECT_INCLUDE hooks, entered through
 # contrib/f4-qt/project-include.cmake.
 #
+# Scope note, because it moved: QML plugins are NOT asserted here. Qt's
+# own qt6_import_qml_plugins handles them, from Qt6QmlMacros.cmake in the
+# package -- the hook's job for QML is only to declare the Qt6::<name>
+# targets Conan omits, so Qt's lookup succeeds. What this test still owns
+# is the platform and image plugins, which nothing else imports.
+#
 # The failure it guards against is not a link error but a runtime one --
 # every GUI test aborting with "Could not find the Qt platform plugin
 # offscreen" before running a line of its own code. That is invisible to
@@ -68,6 +74,12 @@ SCANNER
 chmod +x "$PROBE/fakeqt/libexec/qmlimportscanner"
 sed -i "s|PLUGINDIR|$PROBE/fakeqt/qml/QtQuick|; s|TREEDIR|$PROBE/src|" \
     "$PROBE/fakeqt/libexec/qmlimportscanner"
+# A Qt module archive with no .prl beside it: the bulk declaration must
+# tolerate that, while a plugin import still requires one.
+printf 'extern "C" int qt_quicktooling(void){return 0;}\n' >"$PROBE/qtool.cpp"
+c++ -c "$PROBE/qtool.cpp" -o "$PROBE/qtool.o"
+ar rcs "$PROBE/fakeqt/lib/libQt6QuickTooling.a" "$PROBE/qtool.o"
+
 printf 'extern "C" int qt_backing_quick(void){return 0;}\n' >"$PROBE/bq.cpp"
 c++ -c "$PROBE/bq.cpp" -o "$PROBE/bq.o"
 ar rcs "$PROBE/fakeqt/lib/libQt6BackingQuick.a" "$PROBE/bq.o"
@@ -164,6 +176,22 @@ target_link_libraries(f4-qt-host PRIVATE Qt6::Gui ZoinCore)
 
 # The consumer that matters: in the real failure it was f4's tests, not
 # the app, that could not start.
+# Qt asks for a module by its lowercase name (Qt6::quicktooling) while the
+# archive on disk is CamelCase (libQt6QuickTooling.a). That mismatch is why
+# 31 plugins were skipped in run 2026-08-26/night5, so the probe carries an
+# archive of exactly that shape and checks the lookup Qt itself performs.
+# Deferred, so it runs after the hook's own deferred call.
+function(_probe_check_module_targets)
+  foreach(_want Qt6::quicktooling Qt6::QuickTooling)
+    if(NOT TARGET ${_want})
+      message(FATAL_ERROR "probe: ${_want} was not declared")
+    endif()
+  endforeach()
+endfunction()
+cmake_language(DEFER DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+               CALL _probe_check_module_targets)
+
+
 # An in-tree QML module plugin, the shape qt6_add_qml_module produces for
 # ZoinGallery and F4QtHost: a real target in this build, no archive on
 # disk at configure time, marked with Qt's own QT_PLUGIN_CLASS_NAME. Run
@@ -172,7 +200,10 @@ target_link_libraries(f4-qt-host PRIVATE Qt6::Gui ZoinCore)
 file(WRITE "${CMAKE_BINARY_DIR}/intree.cpp"
 "struct QStaticPluginShim { int v; };
 QStaticPluginShim qt_static_plugin_ZoinGalleryPlugin(){ return { 7 }; }\n")
-add_library(ZoinGalleryQmlplugin STATIC "${CMAKE_BINARY_DIR}/intree.cpp")
+# MODULE, not STATIC -- this is the type Qt gives an in-tree QML plugin,
+# and it cannot be linked into another target at all. A previous version
+# of the hook tried to and CMake refused.
+add_library(ZoinGalleryQmlplugin MODULE "${CMAKE_BINARY_DIR}/intree.cpp")
 set_property(TARGET ZoinGalleryQmlplugin PROPERTY
              QT_PLUGIN_CLASS_NAME "ZoinGalleryPlugin")
 
@@ -240,6 +271,12 @@ grep -Fq -- "static-everywhere: imported static Qt plugins into Qt6::Gui's" \
 # The aggregator must run BOTH hooks; passing a list to CMAKE_PROJECT_INCLUDE
 # on an older CMake silently drops the extra files, which is exactly the
 # failure mode the single entry point exists to remove.
+# Qt's own qt6_import_qml_plugins needs these targets to exist; without
+# them it warns and silently does not link the plugin.
+grep -Fq -- 'static-everywhere: declared' "$PROBE/configure.log" \
+    || fail 'the missing-Qt6-target declaration did not run' \
+            "$PROBE/configure.log"
+
 grep -Fq -- "static-everywhere: added Qt6::OpenGL to Qt6::Quick's link interface" \
     "$PROBE/configure.log" \
     || fail 'the aggregator did not run the Qt6::OpenGL hook' \
@@ -254,8 +291,7 @@ cmake --build "$PROBE/build" >"$PROBE/build.log" 2>&1 \
 # translation unit being compiled into each executable.
 for exe in f4-qt-host F4SomeTest; do
     for plugin in QXcbIntegrationPlugin QOffscreenIntegrationPlugin \
-                  QSvgPlugin QSvgIconPlugin QGifPlugin QICOPlugin \
-                  QtQuick2Plugin ZoinGalleryPlugin; do
+                  QSvgPlugin QSvgIconPlugin QGifPlugin QICOPlugin; do
         nm -A "$PROBE/build/$exe" 2>/dev/null \
             | grep -q "se_imported_${plugin}" \
             || fail "${exe} does not carry the import for ${plugin}" \
