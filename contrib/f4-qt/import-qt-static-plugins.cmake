@@ -140,7 +140,33 @@ function(_se_import_plugin_archive archive imports_var libs_var)
         string(REPLACE "$$[QT_INSTALL_QML]" "${qt_PACKAGE_FOLDER_RELEASE}/qml" _prl_libs "${_prl_libs}")
         string(REGEX REPLACE "/[^ ;]*/p/lib/" "${qt_PACKAGE_FOLDER_RELEASE}/lib/" _prl_libs "${_prl_libs}")
         separate_arguments(_prl_items UNIX_COMMAND "${_prl_libs}")
-        list(APPEND _new_libs ${_prl_items})
+        # Three kinds of token live in a Conan-built Qt's QMAKE_PRL_LIBS,
+        # and only two of them are for us. Qt's own archives arrive as
+        # $$[QT_INSTALL_*] paths (resolved above); system libraries as
+        # plain -lGL/-lm (fine as-is); and then Conan's toolchain leaks
+        # its build-time target names into qmake's link line --
+        # `-lCONAN_LIB::double-conversion_double-conversion_RELEASE` and
+        # kin. CMake treats any `::` token in a link interface as a
+        # target and stops the generate step on the first one it cannot
+        # find, which is how run 2026-08-26/night2 died.
+        #
+        # Dropping them is correct, not merely convenient: every
+        # executable here already links the full Qt component set, whose
+        # Conan dependencies carry those very libraries; the .prl entries
+        # record what Qt's *own* build linked, and for third-party deps
+        # that information is redundant on our side of the seam. If one
+        # ever were genuinely missing, the link would fail loudly on an
+        # undefined symbol -- unlike this, which failed on bookkeeping.
+        foreach(_it IN LISTS _prl_items)
+            string(REGEX REPLACE "^-l" "" _bare "${_it}")
+            if(_bare MATCHES "::")
+                if(TARGET "${_bare}")
+                    list(APPEND _new_libs "${_bare}")
+                endif()
+                continue()
+            endif()
+            list(APPEND _new_libs "${_it}")
+        endforeach()
     endif()
 
     set(${imports_var} "${${imports_var}}${_new_imports}" PARENT_SCOPE)

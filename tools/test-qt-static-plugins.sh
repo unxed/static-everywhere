@@ -191,7 +191,10 @@ QStaticPluginShim qt_static_plugin_%s(){ return { qt_backing_%s() }; }\n' \
         "$2" "$3" "$2" >"$PROBE/p_$2.cpp"
     c++ -c "$PROBE/p_$2.cpp" -o "$PROBE/p_$2.o"
     ar rcs "$PROBE/fakeqt/plugins/$1/lib$2.a" "$PROBE/p_$2.o"
-    printf 'QMAKE_PRL_TARGET = lib%s.a\nQMAKE_PRL_LIBS = $$[QT_INSTALL_LIBS]/libQt6Backing_%s.a -lm\n' \
+    # The Conan-junk token reproduces the generate-step failure of run
+    # 2026-08-26/night2 byte for byte; the hook must drop it, and must
+    # still keep a ::-token that IS a real target (qt6opengl alias below).
+    printf 'QMAKE_PRL_TARGET = lib%s.a\nQMAKE_PRL_LIBS = $$[QT_INSTALL_LIBS]/libQt6Backing_%s.a -lCONAN_LIB::double-conversion_double-conversion_RELEASE -lm\n' \
         "$2" "$2" >"$PROBE/fakeqt/plugins/$1/lib$2.prl"
 }
 make_plugin platforms   qxcb       QXcbIntegrationPlugin

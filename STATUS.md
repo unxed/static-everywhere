@@ -23,6 +23,42 @@ for this entire stretch of work.
   changes cheaply.
 - Compiler wrappers: `onebin/toolchain/zig-cc`, `zig-c++`.
 
+### Latest diagnostic run (2026-08-26, night #2) — Conan's build-time target names leak into Qt's `.prl` files; filtered as a grammar class
+
+The metadata-driven hook worked up to the generate step, which then died
+on bookkeeping rather than on a link:
+
+```
+CMake Error: The link interface of target "Qt6::Gui" contains:
+    -lCONAN_LIB::double-conversion_double-conversion_RELEASE
+  but the target was not found.
+```
+
+A Conan-built Qt's `QMAKE_PRL_LIBS` holds three kinds of token: Qt's own
+archives as `$$[QT_INSTALL_*]` paths (already resolved), system libraries
+as plain `-lGL`/`-lm` (fine as-is), and **Conan's toolchain leaking its
+build-time target names into qmake's link line**. CMake treats any `::`
+token in a link interface as a target and stops on the first one it
+cannot find.
+
+Dropped as a class — any `::` token that is not an existing target —
+not as a name. And dropping is *correct*, not merely convenient: every
+executable already links the full Qt component set, whose Conan
+dependencies carry those very libraries; the `.prl` entries record what
+Qt's **own** build linked, and for third-party deps that information is
+redundant on our side of the seam. If one ever were genuinely missing,
+the link would fail loudly on an undefined symbol — unlike this, which
+failed on bookkeeping. A `::` token that *is* a real target is kept.
+
+The mock's `.prl` now carries the junk token byte for byte, reproducing
+the failure; filter removed is caught by the negative control. With this,
+the `.prl` grammar — the one external format this hook parses — has a
+guard per token *kind* rather than per observed name, which is as far as
+foresight reaches without the files themselves: the artifact ships
+listings, not contents. Everything else pre-computable remains done; the
+named unknowns (in-tree QML at runtime, fonts under offscreen, both
+audits on real binaries) still require the artifact to exist.
+
 ### Latest diagnostic run (2026-08-26, night) — plugin archives are not leaves; consume Qt's metadata, derive nothing
 
 The cycle fix held; the import unit compiles only into executables and the
