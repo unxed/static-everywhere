@@ -23,6 +23,49 @@ for this entire stretch of work.
   changes cheaply.
 - Compiler wrappers: `onebin/toolchain/zig-cc`, `zig-c++`.
 
+### Latest diagnostic run (2026-08-26, night #3) — 190 `cannot open $[QT_INSTALL_PREFIX]/...`; my token list was the old mistake in a new costume
+
+```
+ld.lld: error: cannot open $[QT_INSTALL_PREFIX]/lib/objects-Release/
+  QuickEffects_resources_21/.qt/rcc/qrc_multieffect_shaders18_init.cpp.o:
+  No such file or directory
+```
+
+190 of them, and **two independent defects behind them**:
+
+1. **The token was never resolved.** I substituted `$$[QT_INSTALL_*]`
+   tokens *by name* — LIBS, PLUGINS, QML. `QT_INSTALL_PREFIX` was not on
+   my list, so it sailed through verbatim into the link line. Having
+   written "read, never derive" one run earlier, I had enumerated names
+   again; the same mistake wearing a different hat.
+2. **The files do not exist.** `objects-Release` appears **zero** times
+   in the package listing — Conan's recipe does not ship Qt's resource
+   object trees, yet the `.prl` files reference them.
+
+### Fix, per defect and per class
+
+- Every `$$[QT_INSTALL_*]` token of the kind is now mapped, and anything
+  still matching `$$[...]` afterwards is **fatal with its own name
+  printed**. An unknown token can no longer pass through silently — which
+  is the property my name-list lacked, not the extra names.
+- **Existence gate on every absolute path.** A path that does not exist
+  is a hard `cannot open` from ld.lld: unrecoverable and uninformative.
+  Dropping it either works, or fails later on an undefined symbol — the
+  diagnosable failure. This covers the whole family of package-relative
+  references the recipe prunes, not just `objects-Release`.
+
+The mock's `.prl` now carries both reproductions in one line — the
+Conan-junk `::` token from night #2 and an unmapped-token path to a
+nonexistent `objects-Release` object from night #3 — and both negative
+controls catch: existence gate removed, PREFIX mapping removed.
+
+**Three failures in a row have now come from the `.prl` grammar**, which
+is worth naming as the class: it is the one file format here written by a
+*different build system* (qmake) about a *different machine*, and every
+part of it is suspect — token syntax, path validity, and the identity of
+what the tokens name. All three now have guards that fail loudly rather
+than pass through.
+
 ### Latest diagnostic run (2026-08-26, night #2) — Conan's build-time target names leak into Qt's `.prl` files; filtered as a grammar class
 
 The metadata-driven hook worked up to the generate step, which then died

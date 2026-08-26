@@ -191,10 +191,13 @@ QStaticPluginShim qt_static_plugin_%s(){ return { qt_backing_%s() }; }\n' \
         "$2" "$3" "$2" >"$PROBE/p_$2.cpp"
     c++ -c "$PROBE/p_$2.cpp" -o "$PROBE/p_$2.o"
     ar rcs "$PROBE/fakeqt/plugins/$1/lib$2.a" "$PROBE/p_$2.o"
-    # The Conan-junk token reproduces the generate-step failure of run
-    # 2026-08-26/night2 byte for byte; the hook must drop it, and must
-    # still keep a ::-token that IS a real target (qt6opengl alias below).
-    printf 'QMAKE_PRL_TARGET = lib%s.a\nQMAKE_PRL_LIBS = $$[QT_INSTALL_LIBS]/libQt6Backing_%s.a -lCONAN_LIB::double-conversion_double-conversion_RELEASE -lm\n' \
+    # Two reproductions in one .prl. The Conan-junk :: token repeats the
+    # generate-step failure of run 2026-08-26/night2. The
+    # $$[QT_INSTALL_PREFIX] objects-Release path repeats night #3: the
+    # token was unmapped AND the file does not exist, which is how 190
+    # `cannot open $[QT_INSTALL_PREFIX]/...` errors happened. The hook
+    # must resolve the token and then drop the path for not existing.
+    printf 'QMAKE_PRL_TARGET = lib%s.a\nQMAKE_PRL_LIBS = $$[QT_INSTALL_LIBS]/libQt6Backing_%s.a $$[QT_INSTALL_PREFIX]/lib/objects-Release/Gone_resources_1/.qt/rcc/qrc_gone_init.cpp.o -lCONAN_LIB::double-conversion_double-conversion_RELEASE -lm\n' \
         "$2" "$2" >"$PROBE/fakeqt/plugins/$1/lib$2.prl"
 }
 make_plugin platforms   qxcb       QXcbIntegrationPlugin

@@ -132,13 +132,37 @@ function(_se_import_plugin_archive archive imports_var libs_var)
     file(STRINGS "${_prl}" _prl_libs REGEX "^QMAKE_PRL_LIBS[ \t]*=")
     if(_prl_libs)
         string(REGEX REPLACE "^QMAKE_PRL_LIBS[ \t]*=[ \t]*" "" _prl_libs "${_prl_libs}")
-        # Qt writes install locations as $$[QT_INSTALL_*] tokens; resolve
-        # them against this package. Any stale absolute prefix from the
-        # machine that built the package is remapped the same way.
-        string(REPLACE "$$[QT_INSTALL_LIBS]" "${qt_PACKAGE_FOLDER_RELEASE}/lib" _prl_libs "${_prl_libs}")
-        string(REPLACE "$$[QT_INSTALL_PLUGINS]" "${qt_PACKAGE_FOLDER_RELEASE}/plugins" _prl_libs "${_prl_libs}")
-        string(REPLACE "$$[QT_INSTALL_QML]" "${qt_PACKAGE_FOLDER_RELEASE}/qml" _prl_libs "${_prl_libs}")
-        string(REGEX REPLACE "/[^ ;]*/p/lib/" "${qt_PACKAGE_FOLDER_RELEASE}/lib/" _prl_libs "${_prl_libs}")
+        # Qt writes install locations as $$[QT_INSTALL_*] tokens. The
+        # first version of this substituted three of them BY NAME, which
+        # is the same derive-instead-of-read mistake in another costume:
+        # QT_INSTALL_PREFIX was not on the list, sailed through
+        # unresolved, and 190 link errors later ld.lld was trying to open
+        # files literally named `$[QT_INSTALL_PREFIX]/lib/...`.
+        #
+        # Now every token of the kind is mapped, and -- the part that
+        # matters -- anything left matching $$[...] afterwards is FATAL.
+        # An unknown token can no longer pass through silently; it stops
+        # here with its own name printed.
+        set(_qt_pfx "${qt_PACKAGE_FOLDER_RELEASE}")
+        string(REPLACE "$$[QT_INSTALL_PREFIX]"     "${_qt_pfx}"          _prl_libs "${_prl_libs}")
+        string(REPLACE "$$[QT_INSTALL_LIBS]"       "${_qt_pfx}/lib"      _prl_libs "${_prl_libs}")
+        string(REPLACE "$$[QT_INSTALL_PLUGINS]"    "${_qt_pfx}/plugins"  _prl_libs "${_prl_libs}")
+        string(REPLACE "$$[QT_INSTALL_QML]"        "${_qt_pfx}/qml"      _prl_libs "${_prl_libs}")
+        string(REPLACE "$$[QT_INSTALL_ARCHDATA]"   "${_qt_pfx}"          _prl_libs "${_prl_libs}")
+        string(REPLACE "$$[QT_INSTALL_DATA]"       "${_qt_pfx}"          _prl_libs "${_prl_libs}")
+        string(REPLACE "$$[QT_INSTALL_BINS]"       "${_qt_pfx}/bin"      _prl_libs "${_prl_libs}")
+        string(REPLACE "$$[QT_INSTALL_LIBEXECS]"   "${_qt_pfx}/libexec"  _prl_libs "${_prl_libs}")
+        if(_prl_libs MATCHES "\\$\\$\\[([A-Z_]+)\\]")
+            message(FATAL_ERROR
+                "static-everywhere: ${_prl} contains an unhandled qmake "
+                "token $$[${CMAKE_MATCH_1}]. Add it to the mapping in "
+                "contrib/f4-qt/import-qt-static-plugins.cmake -- left "
+                "unresolved it reaches the linker verbatim and produces "
+                "'cannot open $[${CMAKE_MATCH_1}]/...' by the hundred.")
+        endif()
+        # Any stale absolute prefix from the machine that built the
+        # package is remapped the same way.
+        string(REGEX REPLACE "/[^ ;]*/p/lib/" "${_qt_pfx}/lib/" _prl_libs "${_prl_libs}")
         separate_arguments(_prl_items UNIX_COMMAND "${_prl_libs}")
         # Three kinds of token live in a Conan-built Qt's QMAKE_PRL_LIBS,
         # and only two of them are for us. Qt's own archives arrive as
@@ -163,6 +187,16 @@ function(_se_import_plugin_archive archive imports_var libs_var)
                 if(TARGET "${_bare}")
                     list(APPEND _new_libs "${_bare}")
                 endif()
+                continue()
+            endif()
+            # Existence gate. Conan's recipe does not ship Qt's
+            # objects-Release/ trees (zero entries in the package), yet
+            # the .prl files reference resource object files inside them.
+            # A path that does not exist is a hard `cannot open` from
+            # ld.lld -- it cannot be recovered from and says nothing
+            # useful. Dropping it either works, or fails loudly later on
+            # an undefined symbol, which is the diagnosable failure.
+            if(_it MATCHES "^/" AND NOT EXISTS "${_it}")
                 continue()
             endif()
             list(APPEND _new_libs "${_it}")
