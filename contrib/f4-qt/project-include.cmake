@@ -9,5 +9,10 @@
 # Each included file guards itself with PROJECT_IS_TOP_LEVEL, because
 # CMAKE_PROJECT_INCLUDE runs after *every* project() call, nested ones
 # included.
+# Runs in EVERY project scope, nested ones included -- unlike the two
+# below, which guard themselves to the top level. It must, because the
+# target it rewrites is declared inside ZoinGallery's own project().
+include("${CMAKE_CURRENT_LIST_DIR}/force-static-qml-backing.cmake")
+
 include("${CMAKE_CURRENT_LIST_DIR}/link-qt6-opengl.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/import-qt-static-plugins.cmake")

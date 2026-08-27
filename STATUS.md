@@ -23,6 +23,63 @@ for this entire stretch of work.
   changes cheaply.
 - Compiler wrappers: `onebin/toolchain/zig-cc`, `zig-c++`.
 
+### Latest diagnostic run (2026-08-27, night #2) — every Qt module fixed; the last one is ZoinGallery's own, built as a `.so`
+
+The self-emitted registrations worked. `plugin "qtquick2plugin" not
+found` is **gone entirely**, the hook reports `26 QML module plugins
+registered here`, and tests went 3/9 → **4/9**. One class remains, 43
+times: `module "ZoinGallery" is not installed`.
+
+The build artefact says why: `libZoinGalleryQmlplugin.**so**`.
+
+### Read from Qt's source, not guessed
+
+Qt's own `Qt6QmlMacros.cmake` (fetched from qtdeclarative rather than
+recalled) picks the plugin's linkage: when the backing target already
+exists, `STATIC_LIBRARY` gives a STATIC plugin, `SHARED` or `MODULE`
+gives SHARED. And ZoinGallery declares, at `CMakeLists.txt:289`:
+
+```cmake
+add_library(ZoinGalleryQml SHARED)
+```
+
+`qt6_add_qml_module` is called with neither STATIC nor SHARED, so it
+inherits that. A shared QML plugin cannot be registered into a statically
+linked binary — hence the message, after every *Qt* module had been
+fixed.
+
+There is no supported switch: the type is hard-coded and ZoinGallery
+declares no option covering it.
+
+### The override, and saying plainly what it is
+
+`contrib/f4-qt/force-static-qml-backing.cmake` overrides `add_library`
+for one explicitly named target and rewrites SHARED to STATIC. Everything
+else passes through untouched, including the MODULE libraries Qt creates
+on purpose. Named, not pattern-matched, so it cannot quietly widen.
+
+This is the toolchain overriding an upstream decision, and that deserves
+stating rather than burying: ZoinGallery's choice is right for an
+ordinary desktop build and wrong only for a single-file static artifact,
+which is this project's whole purpose. The durable fix belongs upstream —
+an option, or honouring `BUILD_SHARED_LIBS`. **Nothing is disabled:** the
+gallery, its QML module and every type in it build and link exactly as
+before; only the linkage changes.
+
+### The probe earned its keep immediately
+
+First version recursed infinitely. The file is included from every
+`project()` scope, and overriding a command twice makes the saved
+`_add_library` resolve to the previous override instead of the builtin.
+Caught locally, in the probe, because it ran the file in a *nested*
+project — which is the only place the bug appears, and also the only
+place the fix has to work. Guarded now with a GLOBAL property, since
+variables do not carry across sibling directory scopes.
+
+`tools/test-static-qml-backing.sh` pins all three properties — target
+rewritten, others untouched, configure completes — and each is
+negative-controlled. Added to the preflight.
+
 ### Latest diagnostic run (2026-08-27, later) — the archive is linked, the instance is not; stop waiting for Qt to emit the registration
 
 Identical test counts to the run before, which is itself the finding: the

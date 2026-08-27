@@ -178,6 +178,16 @@ else
     printf '%s\n' "$PLUGIN_TEST" | sed 's/^/       /'
 fi
 
+# Cost: a full run that fixed every Qt module and then reported
+# `module "ZoinGallery" is not installed` 43 times, because the in-tree
+# QML plugin had been built as a .so.
+if BACKING_TEST=$("${REPO_ROOT}/tools/test-static-qml-backing.sh" 2>&1); then
+    pass "the QML backing library is forced static, and only that target"
+else
+    fail "static QML backing regression"
+    printf '%s\n' "$BACKING_TEST" | sed 's/^/       /'
+fi
+
 # Cost: would have been a silently unreproducible artifact rather than a
 # failed build -- f4's own script clones qwindowkit from an unpinned
 # branch, so upstream could change what we ship without anything failing.
