@@ -74,6 +74,31 @@ cat <<'JSON'
 JSON
 SCANNER
 chmod +x "$PROBE/fakeqt/libexec/qmlimportscanner"
+
+# Just enough QtCore for the generated unit's import-path net to compile:
+# the shapes it uses (qgetenv/qputenv/QByteArray append, and the startup
+# macro expanding to a static object) mirror the real headers.
+mkdir -p "$PROBE/fakeqt/include/QtCore"
+cat >"$PROBE/fakeqt/include/QtCore/QByteArray" <<'HDR'
+#pragma once
+#include <string>
+struct QByteArray {
+    std::string d;
+    bool isEmpty() const { return d.empty(); }
+    void append(char c) { d.push_back(c); }
+    void append(const char* s) { d += s; }
+};
+HDR
+cat >"$PROBE/fakeqt/include/QtCore/QCoreApplication" <<'HDR'
+#pragma once
+#include <QtCore/QByteArray>
+#include <cstdlib>
+inline QByteArray qgetenv(const char* n){ const char* v = std::getenv(n); QByteArray b; if(v) b.d = v; return b; }
+inline void qputenv(const char* n, const QByteArray& v){ setenv(n, v.d.c_str(), 1); }
+#define Q_COREAPP_STARTUP_FUNCTION(FN) \
+    struct se_startup_##FN { se_startup_##FN(){ FN(); } }; \
+    static se_startup_##FN se_startup_instance_##FN;
+HDR
 sed -i "s|PLUGINDIR|$PROBE/fakeqt/qml/QtQuick|; s|TREEDIR|$PROBE/src|" \
     "$PROBE/fakeqt/libexec/qmlimportscanner"
 # A Qt module archive with no .prl beside it: the bulk declaration must
@@ -212,10 +237,11 @@ cmake_language(DEFER DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
 file(WRITE "${CMAKE_BINARY_DIR}/intree.cpp"
 "struct QStaticPluginShim { int v; };
 QStaticPluginShim qt_static_plugin_ZoinGalleryPlugin(){ return { 7 }; }\n")
-# MODULE, not STATIC -- this is the type Qt gives an in-tree QML plugin,
-# and it cannot be linked into another target at all. A previous version
-# of the hook tried to and CMake refused.
-add_library(ZoinGalleryQmlplugin MODULE "${CMAKE_BINARY_DIR}/intree.cpp")
+# STATIC, as force-static-qml-backing.cmake now guarantees for the real
+# tree; the class property is what the hook reads. The registration
+# symbol lives in the plugin archive so a plugin imported but not linked
+# is an undefined symbol.
+add_library(ZoinGalleryQmlplugin STATIC "${CMAKE_BINARY_DIR}/intree.cpp")
 set_property(TARGET ZoinGalleryQmlplugin PROPERTY
              QT_PLUGIN_CLASS_NAME "ZoinGalleryPlugin")
 
@@ -285,6 +311,11 @@ grep -Fq -- "static-everywhere: imported static Qt plugins into Qt6::Gui's" \
 # failure mode the single entry point exists to remove.
 # Qt's own qt6_import_qml_plugins needs these targets to exist; without
 # them it warns and silently does not link the plugin.
+grep -Fq -- 'Q_COREAPP_STARTUP_FUNCTION(se_add_qrc_import_path)' \
+    "$PROBE/build/static_everywhere_qt_plugin_import.cpp" \
+    || fail 'the qrc import-path net is missing from the generated unit' \
+            "$PROBE/configure.log"
+
 grep -Fq -- 'static-everywhere: declared' "$PROBE/configure.log" \
     || fail 'the missing-Qt6-target declaration did not run' \
             "$PROBE/configure.log"
@@ -304,7 +335,7 @@ cmake --build "$PROBE/build" >"$PROBE/build.log" 2>&1 \
 for exe in f4-qt-host F4SomeTest; do
     for plugin in QXcbIntegrationPlugin QOffscreenIntegrationPlugin \
                   QSvgPlugin QSvgIconPlugin QGifPlugin QICOPlugin \
-                  QtQuick2Plugin; do
+                  QtQuick2Plugin ZoinGalleryPlugin; do
         nm -A "$PROBE/build/$exe" 2>/dev/null \
             | grep -q "se_imported_${plugin}" \
             || fail "${exe} does not carry the import for ${plugin}" \

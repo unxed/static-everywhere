@@ -23,6 +23,51 @@ for this entire stretch of work.
   changes cheaply.
 - Compiler wrappers: `onebin/toolchain/zig-cc`, `zig-c++`.
 
+### Latest diagnostic run (2026-08-27, night #5) — companions exported, build and tests run; the tests still lack the module
+
+All six companions were added, configure and generate completed, the
+build ran to the tests — and `module "ZoinGallery" is not installed` is
+back, 41 times, now with a **static** plugin. Reading the sources rather
+than the error settles who is missing what:
+
+- the app (`main.cpp:118`) and most tests call `addImportPath(":/")` /
+  `":"` themselves, so the qmldir at `:/ZoinGallery/qmldir`
+  (`RESOURCE_PREFIX "/"`) is reachable — **once its resources are linked
+  in and its plugin registered**;
+- Qt's finalizer imports qml plugins for an executable by scanning that
+  executable's **own** qml sources. `f4-qt-host` has them; the eight test
+  executables have none and load everything from linked resources, so
+  the finalizer gives them nothing. The 41 errors are the tests'.
+
+### Fix: the in-tree block returns, legal this time, plus a one-line net
+
+The in-tree registration removed three runs ago comes back with both of
+its old failure modes addressed by things that changed since:
+
+- the backing library is forced STATIC, so the plugin is a
+  `STATIC_LIBRARY` and linking it into executables is legal — the
+  original `MODULE_LIBRARY may not be linked` cannot recur, and a MODULE
+  plugin appearing anyway is **fatal with its name**, because it would
+  mean the force-static rewrite stopped covering a target, and silently
+  skipping was how this bug looked the first time;
+- the class comes from Qt's own `QT_PLUGIN_CLASS_NAME`, read not derived.
+
+Every executable gets `Q_IMPORT_PLUGIN(<class>)` in the shared generated
+unit and links the plugin target, which drags the `_resources_N`
+companions in through the interface — registering the qmldir resource.
+
+And for the two tests that never call `addImportPath`: the generated unit
+gains a `Q_COREAPP_STARTUP_FUNCTION` appending `:/` to `QML_IMPORT_PATH`
+— read at engine construction, resource paths accepted, appending never
+overrides what a process set for itself.
+
+The mock's in-tree plugin became STATIC (mirroring what the rewrite now
+guarantees), the probe asserts the registration symbol in both
+executables and the net in the generated unit, and it gained minimal
+QtCore header shims so the unit genuinely compiles. Three negative
+controls: registration not emitted, plugin not linked, net removed — all
+caught.
+
 ### Latest diagnostic run (2026-08-27, night #4) — same defect, different companion; naming one was the mistake
 
 All three markers present, so the last fix worked and the generate step
