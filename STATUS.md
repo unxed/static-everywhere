@@ -23,6 +23,47 @@ for this entire stretch of work.
   changes cheaply.
 - Compiler wrappers: `onebin/toolchain/zig-cc`, `zig-c++`.
 
+### Latest diagnostic run (2026-08-27, night #3) — the static rewrite took effect and exposed the companion target
+
+Both markers are in the log — `building ZoinGalleryQml STATIC` and `26
+QML module plugins registered here` — so the previous fix did what it
+said. The generate step then failed, twice over the same thing:
+
+```
+export called with target "ZoinGalleryQmlplugin" which requires target
+"ZoinGalleryQmlplugin_init" that is not in any export set.
+```
+
+A static Qt plugin carries a companion: `qt6_add_qml_module` creates
+`<plugin>_init`, an OBJECT library holding the registration unit, and puts
+it in the plugin's interface. **A shared plugin has none** — which is why
+this appeared only once the rewrite worked, and is a fair reminder that
+changing linkage changes the target graph, not just a flag.
+
+ZoinGallery installs its plugin into the `ZoinGalleryTargets` set
+(`CMakeLists.txt:772`), so the companion has to join it. Both names are
+read from that file, recorded next to the target they belong to, and
+checked before use — a file that already overrides one upstream decision
+should not be guessing a second name.
+
+### Two structural bugs, both caught in the probe
+
+- The DEFER registration sat **inside** the run-once guard, so it never
+  registered in ZoinGallery's own scope — the only scope that matters.
+  The guard now wraps the function definitions only.
+- Registered per directory but **targets are global**, so the outer
+  project saw the nested project's target and installed it a second time:
+  `includes target ... more than once in the export set`. Now gated on a
+  GLOBAL property per target.
+
+Neither would have been visible in a flat probe. Both showed up because
+the probe mirrors the real shape — an outer project with a nested
+`project()` that declares the target, installs it, and exports it.
+
+`tools/test-static-qml-backing.sh` now pins four properties, each
+negative-controlled: target rewritten, others untouched, companion
+exported exactly once, configure completes.
+
 ### Latest diagnostic run (2026-08-27, night #2) — every Qt module fixed; the last one is ZoinGallery's own, built as a `.so`
 
 The self-emitted registrations worked. `plugin "qtquick2plugin" not
