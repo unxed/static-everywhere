@@ -105,38 +105,92 @@ if(NOT _se_add_library_overridden)
     # Deferred so it runs after the project's own install() calls have
     # created the export set. Harmless in scopes with no such target: the
     # TARGET check simply finds nothing.
-    function(_se_export_static_plugin_init)
+    # Companions of a static Qt target, found rather than listed.
+    #
+    # Making the backing target static changes the target graph, not just
+    # a flag. Qt attaches generated OBJECT libraries to it -- <t>plugin_init
+    # for the plugin registration, <t>_resources_N for each resource set,
+    # and more in other configurations -- and every one of them has to be
+    # in the same export set as the target that requires it, or the
+    # generate step fails.
+    #
+    # The first version of this named `<t>plugin_init` explicitly and was
+    # right for exactly one run; the next failure was
+    # `ZoinGalleryQml_resources_5`, the same defect with a different name.
+    # So enumerate instead: walk the interface link libraries of each root
+    # and take every target whose name is that root plus a suffix. That is
+    # what "a companion Qt generated for this target" means, and it needs
+    # no list to keep current.
+    #
+    # Targets the project exports itself are left alone: only names
+    # prefixed by a root are touched, so ZoinGalleryCore and the roots
+    # themselves are never added twice.
+    function(_se_export_static_companions)
         foreach(_t IN LISTS _SE_FORCE_STATIC_TARGETS)
-            set(_init "${_t}plugin_init")
-            if(NOT TARGET "${_init}")
-                continue()
-            endif()
-            # Targets are global but this call is registered per directory
-            # scope, so the outer project sees the nested project's target
-            # too and would install it a second time -- CMake rejects that
-            # with "includes target ... more than once in the export set".
-            get_property(_done GLOBAL PROPERTY "_SE_EXPORTED_${_init}")
-            if(_done)
-                continue()
-            endif()
-            set_property(GLOBAL PROPERTY "_SE_EXPORTED_${_init}" TRUE)
             set(_set "${_SE_PLUGIN_EXPORT_SET_${_t}}")
-            if(NOT _set)
-                message(FATAL_ERROR
-                    "static-everywhere: ${_init} exists but no export set is "
-                    "recorded for ${_t} in "
-                    "contrib/f4-qt/force-static-qml-backing.cmake. Leaving it "
-                    "out fails the generate step with 'requires target ... "
-                    "that is not in any export set'.")
-            endif()
-            install(TARGETS "${_init}" EXPORT "${_set}"
-                    OBJECTS DESTINATION "${CMAKE_INSTALL_LIBDIR}")
-            message(STATUS
-                "static-everywhere: added ${_init} to the ${_set} export set")
+            set(_roots "${_t}" "${_t}plugin")
+            set(_queue ${_roots})
+            set(_seen "")
+            while(_queue)
+                list(POP_FRONT _queue _cur)
+                if(NOT TARGET "${_cur}")
+                    continue()
+                endif()
+                if("${_cur}" IN_LIST _seen)
+                    continue()
+                endif()
+                list(APPEND _seen "${_cur}")
+                get_target_property(_deps "${_cur}" INTERFACE_LINK_LIBRARIES)
+                if(NOT _deps)
+                    continue()
+                endif()
+                foreach(_d IN LISTS _deps)
+                    # Strip the genex Qt wraps companions in, e.g.
+                    # $<LINK_ONLY:ZoinGalleryQml_resources_5>.
+                    string(REGEX REPLACE "^\\$<[A-Za-z_]+:" "" _d "${_d}")
+                    string(REGEX REPLACE ">$" "" _d "${_d}")
+                    if(NOT TARGET "${_d}")
+                        continue()
+                    endif()
+                    list(APPEND _queue "${_d}")
+                    set(_is_companion FALSE)
+                    foreach(_r IN LISTS _roots)
+                        if("${_d}" MATCHES "^${_r}_")
+                            set(_is_companion TRUE)
+                        endif()
+                    endforeach()
+                    if(NOT _is_companion)
+                        continue()
+                    endif()
+                    if(NOT _set)
+                        message(FATAL_ERROR
+                            "static-everywhere: ${_d} is a generated companion "
+                            "of ${_t} but no export set is recorded for it in "
+                            "contrib/f4-qt/force-static-qml-backing.cmake. "
+                            "Leaving it out fails the generate step with "
+                            "'requires target ... that is not in any export "
+                            "set'.")
+                    endif()
+                    # Targets are global while this call is registered per
+                    # directory scope, so without this the outer project
+                    # would install the nested project's companion a second
+                    # time: "includes target ... more than once".
+                    get_property(_done GLOBAL PROPERTY "_SE_EXPORTED_${_d}")
+                    if(_done)
+                        continue()
+                    endif()
+                    set_property(GLOBAL PROPERTY "_SE_EXPORTED_${_d}" TRUE)
+                    install(TARGETS "${_d}" EXPORT "${_set}"
+                            OBJECTS DESTINATION "${CMAKE_INSTALL_LIBDIR}")
+                    message(STATUS
+                        "static-everywhere: added companion ${_d} to the "
+                        "${_set} export set")
+                endforeach()
+            endwhile()
         endforeach()
     endfunction()
 endif()
 
 include(GNUInstallDirs)
 cmake_language(DEFER DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
-               CALL _se_export_static_plugin_init)
+               CALL _se_export_static_companions)

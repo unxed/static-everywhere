@@ -23,6 +23,51 @@ for this entire stretch of work.
   changes cheaply.
 - Compiler wrappers: `onebin/toolchain/zig-cc`, `zig-c++`.
 
+### Latest diagnostic run (2026-08-27, night #4) — same defect, different companion; naming one was the mistake
+
+All three markers present, so the last fix worked and the generate step
+failed on the next name along:
+
+```
+export called with target "ZoinGalleryQml" which requires target
+"ZoinGalleryQml_resources_5" that is not in any export set.
+```
+
+Last run it was `ZoinGalleryQmlplugin_init`; this run
+`ZoinGalleryQml_resources_5`, on the backing target rather than the
+plugin, and reachable only through the `$<LINK_ONLY:…>` genex Qt wraps it
+in. Same defect, and I had fixed it by **naming one companion** — which
+was right for exactly one run and would have been right for exactly one
+more each time.
+
+### Enumerate, don't name
+
+Making a target static changes the target graph, not just a flag: Qt
+attaches generated OBJECT libraries — `<t>plugin_init` for the plugin
+registration, `<t>_resources_N` per resource set, and others in other
+configurations — and every one must be in the same export set as the
+target requiring it.
+
+The hook now **walks the interface link libraries** of each root
+(`ZoinGalleryQml` and its plugin), strips the genex wrapper, and takes
+every target whose name is a root plus a suffix. That is what "a
+companion Qt generated for this target" means, and it needs no list to
+keep current. Targets the project exports itself are untouched, because
+only root-prefixed names qualify — `ZoinGalleryCore` and the roots
+themselves are never added twice.
+
+The probe gained all three shapes at once: a companion on the plugin, a
+companion on the backing target behind `$<LINK_ONLY:…>`, and a
+project-exported sibling that must **not** be re-added. Negative
+controls: genex stripping removed (the resources companion is missed),
+and the companion filter removed (the sibling gets exported twice) —
+both caught.
+
+I should have written it this way last run. The rule this file already
+carries — *read, never derive* — has a twin worth stating: **when a
+failure names a thing, fix the category the thing belongs to.** Two runs
+were spent proving that separately.
+
 ### Latest diagnostic run (2026-08-27, night #3) — the static rewrite took effect and exposed the companion target
 
 Both markers are in the log — `building ZoinGalleryQml STATIC` and `26

@@ -9,7 +9,8 @@
 #   2. every OTHER library is left alone -- a blanket SHARED->STATIC
 #      rewrite would break the MODULE libraries Qt creates on purpose,
 #      and would do so quietly;
-#   3. the <plugin>_init companion joins the export set exactly once --
+#   3. EVERY generated companion joins the export set exactly once,
+#      found by walking the target's interface rather than by name --
 #      a static Qt plugin has one and a shared one does not, so exporting
 #      the plugin started failing the moment the rewrite worked; and
 #      because targets are global while the deferred call is per
@@ -50,7 +51,21 @@ add_library(SomethingElse SHARED "${CMAKE_BINARY_DIR}/a.cpp")
 add_library(ZoinGalleryQmlplugin STATIC "${CMAKE_BINARY_DIR}/a.cpp")
 add_library(ZoinGalleryQmlplugin_init OBJECT "${CMAKE_BINARY_DIR}/a.cpp")
 target_link_libraries(ZoinGalleryQmlplugin INTERFACE ZoinGalleryQmlplugin_init)
-install(TARGETS ZoinGalleryQml ZoinGalleryQmlplugin
+
+# A second companion, on the BACKING target and wrapped in the genex Qt
+# uses. Naming _init alone was right for exactly one run; the next
+# failure was ZoinGalleryQml_resources_5, so the probe now carries both
+# shapes and a companion reachable only through a generator expression.
+add_library(ZoinGalleryQml_resources_5 OBJECT "${CMAKE_BINARY_DIR}/a.cpp")
+target_link_libraries(ZoinGalleryQml INTERFACE
+                      "$<LINK_ONLY:ZoinGalleryQml_resources_5>")
+
+# Exported by the project itself: must NOT be added again, or CMake fails
+# with "includes target ... more than once in the export set".
+add_library(ZoinGalleryCore STATIC "${CMAKE_BINARY_DIR}/a.cpp")
+target_link_libraries(ZoinGalleryQml INTERFACE ZoinGalleryCore)
+
+install(TARGETS ZoinGalleryQml ZoinGalleryQmlplugin ZoinGalleryCore
         EXPORT ZoinGalleryTargets
         ARCHIVE DESTINATION lib LIBRARY DESTINATION lib)
 install(EXPORT ZoinGalleryTargets DESTINATION lib/cmake NAMESPACE ZoinGallery::)
@@ -73,8 +88,10 @@ grep -Fq -- 'PROBE ZoinGalleryQml=STATIC_LIBRARY' "$PROBE/configure.log" \
 grep -Fq -- 'SomethingElse=SHARED_LIBRARY' "$PROBE/configure.log" \
     || { printf 'the rewrite widened beyond its named target\n' >&2; exit 1; }
 
-grep -Fq -- 'added ZoinGalleryQmlplugin_init to the ZoinGalleryTargets export set' \
-    "$PROBE/configure.log" \
-    || { printf 'the plugin init target was not added to the export set\n' >&2; exit 1; }
+for _companion in ZoinGalleryQmlplugin_init ZoinGalleryQml_resources_5; do
+    grep -Fq -- "added companion ${_companion} to the ZoinGalleryTargets export set" \
+        "$PROBE/configure.log" \
+        || { printf '%s was not added to the export set\n' "$_companion" >&2; exit 1; }
+done
 
 printf 'static QML backing: named target rewritten, others untouched: pass\n'
