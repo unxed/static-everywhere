@@ -23,6 +23,62 @@ for this entire stretch of work.
   changes cheaply.
 - Compiler wrappers: `onebin/toolchain/zig-cc`, `zig-c++`.
 
+### Latest diagnostic run (2026-08-27, night #6) — **8 of 9 suites pass**; the last failure is not ours
+
+Both markers present. Every QML error is gone — no `module … is not
+installed`, no `plugin … not found`, none of the 27 engine load failures.
+`F4GalleryPointerTests` alone reports **12 passed, 1 failed**, and the
+run is **89%**, up from 44%.
+
+```
+FAIL!  : F4GalleryPointerTests::pixelWheelAndLoaderRecreationPreserveScroll()
+   Actual   (qRound(session->property("panelScrollOffset").toReal())): 0
+   Expected (37)                                                     : 37
+```
+
+### This one is upstream, and the sources say so plainly
+
+The test waits for the layout to reach the scrolled position, then checks
+the persisted offset immediately (`F4GalleryPointerTests.cpp:1514`). But
+the offset is not written during the scroll — it is written when the
+animation **stops**, in `GalleryPanel.qml`'s `galleryPanelScrollAnimation`
+`onRunningChanged` handler, guarded by `if (!running …)`.
+
+So two conditions must coincide and the test waits only for the first:
+
+| condition | when it becomes true |
+| --- | --- |
+| `qRound(contentY) == 37` | as soon as `contentY` passes 36.5 |
+| `running == false` | end of the 150 ms `OutSine` animation |
+
+On a host where the final frame lands on the same event-loop turn the
+`QTRY_COMPARE` observes, they coincide and the test passes. Under
+offscreen rendering the frame cadence differs, `contentY` rounds up an
+animation frame early, and the immediate `QCOMPARE` runs before the write.
+
+The race is present on any host; this configuration only makes it
+reliable. No product code is implicated — the persistence behaviour is
+what the surrounding cases assert.
+
+Report drafted at `qt-bugreport…`-style alongside the Qt one:
+**`f4-bugreport-pointer-test-race.md`**, with both one-line fixes
+(`QTRY_COMPARE` on the offset, or `QTRY_VERIFY(!running)` before
+comparing — the latter states the contract better).
+
+### Not patching it, and why that is the call
+
+The rule this project has held to is that the toolchain does not disable
+or paper over upstream behaviour. Editing someone else's test to make our
+gate green is exactly that, and it would also hide a real race from the
+people who can fix it properly.
+
+What it does block is everything after `ctest` — `onebin audit --strict`,
+the smoke run, packaging, `go test`, and the final static audit — which
+are the remaining unproven steps and the whole point of the exercise. The
+decision of how CI should treat one known-racing upstream case is the
+project owner's, not the toolchain's, so it is being put to them rather
+than made here.
+
 ### Latest diagnostic run (2026-08-27, night #5) — companions exported, build and tests run; the tests still lack the module
 
 All six companions were added, configure and generate completed, the
