@@ -23,6 +23,61 @@ for this entire stretch of work.
   changes cheaply.
 - Compiler wrappers: `onebin/toolchain/zig-cc`, `zig-c++`.
 
+### Waiving the upstream test race — narrowly, loudly, and with an expiry date
+
+Asked to work around the f4 test race so the build can reach everything
+behind it, in a way that comes out cleanly once upstream fixes it.
+
+`tools/ctest-with-waivers.sh` runs ctest and tolerates **one named test
+case**. What makes it a waiver rather than a suppression:
+
+- **It names a case, not a suite.** The other twelve cases in the same
+  binary still have to pass.
+- **It expires by itself.** If a waived case *passes*, the script
+  **fails** with `STALE WAIVER` and names the line to delete. A
+  workaround nobody is forced to revisit is permanent, so this one is
+  wired to complain the moment it stops being needed. Removing it is a
+  one-line deletion; nothing else refers to the entry.
+- **It is never silent.** Every tolerated run prints the case, the report
+  filename and why it is not ours, ending with "this is a waiver, not a
+  pass".
+
+Retiring it, when f4 lands the fix: delete the line from the `WAIVERS`
+table. That is the whole procedure — and CI will demand it, because the
+run after the fix fails as stale until the line is gone.
+
+### Staleness means *passed*, not *did not fail*
+
+The first version treated "absent from the failures" as fixed. A case can
+be absent because the binary crashed, because a filter excluded it, or
+because an earlier failure stopped the suite — calling any of those a fix
+would drop the waiver at exactly the wrong moment. It now requires an
+actual `PASS` line. Its own test caught this.
+
+`tools/test-ctest-waivers.sh` drives a stand-in ctest through four
+states: unrelated failure still fails; waived case alone is tolerated;
+waived plus unwaived still fails; waived case passing produces `STALE
+WAIVER`. Three negative controls — expiry removed, unwaived tolerance,
+silent application — all caught. Wired into the preflight, because a
+workaround's guarantees deserve checking every run rather than once.
+
+### A flaky test of my own, found while wiring this up
+
+`test-qt-static-plugins.sh` failed about one run in three, on a binary
+that was perfectly correct. Cause: `nm … | grep -q` under `set -o
+pipefail`. `grep -q` exits at the first match, `nm` takes SIGPIPE and
+returns non-zero, and the pipeline's status is nm's — so the check
+failed or passed depending on whether nm had finished writing.
+
+This is the **same trap** recorded in this file for the linker-argument
+survey, which once reported "0 rejected" against a hand-run fourteen. I
+wrote the rule down and then reintroduced the bug in a new file. Symbols
+are now read once and searched afterwards; 20 consecutive runs pass.
+
+Worth stating because it nearly cost more than the bug: an intermittent
+check is worse than none. It had already fired inside the preflight and
+sent me looking at `PATH` before the repetition showed it was timing.
+
 ### Latest diagnostic run (2026-08-27, night #6) — **8 of 9 suites pass**; the last failure is not ours
 
 Both markers present. Every QML error is gone — no `module … is not

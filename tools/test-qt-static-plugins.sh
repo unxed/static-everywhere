@@ -332,12 +332,19 @@ cmake --build "$PROBE/build" >"$PROBE/build.log" 2>&1 \
 # symbol in the produced binaries rather than the CMake property is
 # deliberate: the property being set is not the same claim as the
 # translation unit being compiled into each executable.
+# Symbols are read once per binary and then searched. Piping nm straight
+# into `grep -q` under `set -o pipefail` makes the pipeline's status nm's
+# own: grep exits at the first match, nm takes SIGPIPE, and the check
+# fails depending on whether nm had finished writing. That made this test
+# flaky -- it failed roughly one run in three while the binary under test
+# was perfectly correct. Same trap as the linker-argument survey; capture
+# first, test second.
 for exe in f4-qt-host F4SomeTest; do
+    exe_symbols=$(nm -A "$PROBE/build/$exe" 2>/dev/null || true)
     for plugin in QXcbIntegrationPlugin QOffscreenIntegrationPlugin \
                   QSvgPlugin QSvgIconPlugin QGifPlugin QICOPlugin \
                   QtQuick2Plugin ZoinGalleryPlugin; do
-        nm -A "$PROBE/build/$exe" 2>/dev/null \
-            | grep -q "se_imported_${plugin}" \
+        printf '%s' "$exe_symbols" | grep -Fq "se_imported_${plugin}" \
             || fail "${exe} does not carry the import for ${plugin}" \
                     "$PROBE/build.log"
     done
@@ -346,7 +353,8 @@ done
 # The import unit must NOT be compiled into static libraries. That is the
 # real tree's failure mode, and the reason the hook restricts its
 # INTERFACE_SOURCES entry to EXECUTABLE targets the way Qt itself does.
-if nm "$PROBE/build/libZoinCore.a" 2>/dev/null | grep -q 'se_imported_'; then
+archive_symbols=$(nm "$PROBE/build/libZoinCore.a" 2>/dev/null || true)
+if printf '%s' "$archive_symbols" | grep -Fq 'se_imported_'; then
     fail 'the import unit was compiled into a static library' "$PROBE/build.log"
 fi
 
