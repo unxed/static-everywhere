@@ -2,11 +2,13 @@
 # Regression test for the CMAKE_PROJECT_INCLUDE hooks, entered through
 # contrib/f4-qt/project-include.cmake.
 #
-# Scope note, because it moved: QML plugins are NOT asserted here. Qt's
-# own qt6_import_qml_plugins handles them, from Qt6QmlMacros.cmake in the
-# package -- the hook's job for QML is only to declare the Qt6::<name>
-# targets Conan omits, so Qt's lookup succeeds. What this test still owns
-# is the platform and image plugins, which nothing else imports.
+# Scope note, twice revised, which is the point: Qt's own
+# qt6_import_qml_plugins does exist and does link the archives, but with
+# our declared targets it emitted no Q_IMPORT_PLUGIN, and the runtime
+# error never moved. So QML plugins ARE asserted here again -- the hook
+# emits the registrations itself and this test checks they reach the
+# binaries, because "Qt will do it" was believed twice and was wrong
+# twice.
 #
 # The failure it guards against is not a link error but a runtime one --
 # every GUI test aborting with "Could not find the Qt platform plugin
@@ -301,7 +303,8 @@ cmake --build "$PROBE/build" >"$PROBE/build.log" 2>&1 \
 # translation unit being compiled into each executable.
 for exe in f4-qt-host F4SomeTest; do
     for plugin in QXcbIntegrationPlugin QOffscreenIntegrationPlugin \
-                  QSvgPlugin QSvgIconPlugin QGifPlugin QICOPlugin; do
+                  QSvgPlugin QSvgIconPlugin QGifPlugin QICOPlugin \
+                  QtQuick2Plugin; do
         nm -A "$PROBE/build/$exe" 2>/dev/null \
             | grep -q "se_imported_${plugin}" \
             || fail "${exe} does not carry the import for ${plugin}" \

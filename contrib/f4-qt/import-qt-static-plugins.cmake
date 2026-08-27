@@ -397,6 +397,117 @@ function(_static_everywhere_import_qt_plugins)
     # the targets and let Qt do the importing.
     _se_declare_missing_qt_targets()
 
+
+    # Emit the registrations ourselves rather than trusting Qt to.
+    #
+    # Run night#7 settled which half is missing. With the Qt6::<name>
+    # targets declared, Qt's warnings fell from 31 to 5 and it linked the
+    # archives -- and the runtime error did not move at all: `plugin
+    # "qtquick2plugin" not found`, 47 times. The archive is in the binary;
+    # its static instance is not. Qt's finalizer did not emit
+    # Q_IMPORT_PLUGIN for our targets, and which internal property it
+    # consults is a Qt-version detail we cannot read from here (the
+    # diagnostic artifact prunes */lib/cmake/*, which is what misled this
+    # file once already).
+    #
+    # So stop depending on it. qmlimportscanner is Qt's own tool and is in
+    # the package; it says which modules the app imports, and each
+    # reported archive goes through the same reader used for every other
+    # plugin here. If Qt also emits an import for the same plugin, the two
+    # registrations are identical and idempotent -- a duplicate
+    # registration is harmless, an absent one costs a run.
+    find_program(_se_qmlscanner qmlimportscanner
+        PATHS "${qt_PACKAGE_FOLDER_RELEASE}/libexec"
+              "${Qt6_PACKAGE_FOLDER_RELEASE}/libexec"
+        NO_DEFAULT_PATH)
+    if(NOT _se_qmlscanner)
+        message(FATAL_ERROR
+            "static-everywhere: qmlimportscanner not found in the Qt package. "
+            "Without it the QML module plugins cannot be determined, and a "
+            "static build fails at runtime with 'QQmlApplicationEngine failed "
+            "to load component'.")
+    endif()
+
+    set(_qml_roots "")
+    foreach(_dir "${CMAKE_SOURCE_DIR}/qml"
+                 "${CMAKE_SOURCE_DIR}/../../third_party/ZoinGallery")
+        if(IS_DIRECTORY "${_dir}")
+            list(APPEND _qml_roots -rootPath "${_dir}")
+        endif()
+    endforeach()
+    if(NOT _qml_roots)
+        message(FATAL_ERROR
+            "static-everywhere: found no QML source directory to scan. The "
+            "paths in contrib/f4-qt/import-qt-static-plugins.cmake are "
+            "relative to f4's layout; if that moved, update them.")
+    endif()
+
+    execute_process(
+        COMMAND "${_se_qmlscanner}" ${_qml_roots}
+                -importPath "${qt_PACKAGE_FOLDER_RELEASE}/qml"
+        OUTPUT_VARIABLE _scan_json
+        ERROR_VARIABLE _scan_err
+        RESULT_VARIABLE _scan_rc)
+    if(NOT _scan_rc EQUAL 0)
+        message(FATAL_ERROR
+            "static-everywhere: qmlimportscanner failed (${_scan_rc}):\n${_scan_err}")
+    endif()
+
+    # Strictly parsed, and loud on anything unexpected. The JSON shape is
+    # qmlimportscanner's own and could change between Qt versions; a
+    # mismatch must stop here with the payload in hand, not resurface as a
+    # runtime QML load error two hours later.
+    string(JSON _n_imports ERROR_VARIABLE _json_err LENGTH "${_scan_json}")
+    if(_json_err)
+        message(FATAL_ERROR
+            "static-everywhere: could not parse qmlimportscanner output "
+            "(${_json_err}). Raw output follows:\n${_scan_json}")
+    endif()
+    set(_qml_plugin_count 0)
+    set(_seen_classnames "")
+    math(EXPR _last "${_n_imports} - 1")
+    foreach(_i RANGE 0 ${_last})
+        string(JSON _entry GET "${_scan_json}" ${_i})
+        string(JSON _cls ERROR_VARIABLE _no_cls GET "${_entry}" classname)
+        string(JSON _plug ERROR_VARIABLE _no_plug GET "${_entry}" plugin)
+        string(JSON _path ERROR_VARIABLE _no_path GET "${_entry}" path)
+        # Entries without a plugin are header-only modules; skip quietly.
+        if(_no_cls OR _no_plug OR _no_path)
+            continue()
+        endif()
+        # Only plugins that live in the Qt package. The scanner also
+        # reports the tree's own modules (F4QtHost, ZoinGallery, ZGStyle,
+        # QWindowKit); those are built and linked by this very build, and
+        # their reported paths point at source or build directories where
+        # no archive exists yet -- treating them like Qt's would abort
+        # configure on a file that is not supposed to be there.
+        string(FIND "${_path}" "${qt_PACKAGE_FOLDER_RELEASE}/qml" _in_qt)
+        if(NOT _in_qt EQUAL 0)
+            continue()
+        endif()
+        # The scanner can report one module several times (two root paths,
+        # repeated imports). Q_IMPORT_PLUGIN expands to a definition, so a
+        # duplicate is a redefinition error in the generated file, not a
+        # harmless repeat. The scanner's classname is used only for this
+        # dedup key; the imported name comes from the archive itself.
+        if("${_cls}" IN_LIST _seen_classnames)
+            continue()
+        endif()
+        list(APPEND _seen_classnames "${_cls}")
+        find_library(_se_qmlplug_${_plug} NAMES "${_plug}"
+                     PATHS "${_path}" NO_DEFAULT_PATH)
+        if(NOT _se_qmlplug_${_plug})
+            message(FATAL_ERROR
+                "static-everywhere: qmlimportscanner reports module plugin "
+                "'${_plug}' in '${_path}' but no archive was found there. A "
+                "missing QML plugin does not fail the link; it fails at "
+                "startup with 'QQmlApplicationEngine failed to load "
+                "component'.")
+        endif()
+        _se_import_plugin_archive("${_se_qmlplug_${_plug}}" _imports _libs)
+        math(EXPR _qml_plugin_count "${_qml_plugin_count} + 1")
+    endforeach()
+
     set(_gen "${CMAKE_BINARY_DIR}/static_everywhere_qt_plugin_import.cpp")
     file(GENERATE OUTPUT "${_gen}" CONTENT
 "// Generated by contrib/f4-qt/import-qt-static-plugins.cpp -- do not edit.
@@ -423,8 +534,7 @@ ${_imports}")
     message(STATUS
         "static-everywhere: imported static Qt plugins into Qt6::Gui's "
         "interface (xcb, offscreen, svg, svgicon, gif, ico, "
-        "${_qml_plugin_count} QML module plugins from the Qt package, and "
-        "in-tree plugins: ${_intree_plugins})")
+        "and ${_qml_plugin_count} QML module plugins registered here)")
 endfunction()
 
 cmake_language(DEFER DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"

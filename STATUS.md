@@ -23,6 +23,45 @@ for this entire stretch of work.
   changes cheaply.
 - Compiler wrappers: `onebin/toolchain/zig-cc`, `zig-c++`.
 
+### Latest diagnostic run (2026-08-27, later) — the archive is linked, the instance is not; stop waiting for Qt to emit the registration
+
+Identical test counts to the run before, which is itself the finding: the
+fix worked at the level it addressed and the runtime never moved.
+
+- declarator ran: **378** `Qt6::*` targets declared
+- Qt's "will not be linked" warnings: **31 → 5** (the five remaining name
+  archives the package genuinely does not ship)
+- runtime: **unchanged**, `plugin "qtquick2plugin" not found`, now 47×
+
+So Qt found the targets and linked the archives, and still emitted no
+`Q_IMPORT_PLUGIN` for them. Setting `QT_PLUGIN_CLASS_NAME` was not enough,
+and which internal property this Qt's finalizer actually consults is a
+version detail **I cannot read from here** — the diagnostic artifact
+prunes `*/lib/cmake/*`, the same blind spot that misled this file once
+already.
+
+### The decision, and why it is not another guess
+
+Stop depending on it. `qmlimportscanner` is Qt's own tool, is in the
+package, and reports exactly which modules the app imports; each reported
+archive goes through the same reader every other plugin here uses —
+mangled symbol for the class, `.prl` for the closure. The registration is
+emitted into our own generated unit.
+
+If Qt also emits one for the same plugin, the two registrations are
+identical and idempotent. **A duplicate registration is harmless; an
+absent one costs a run** — and this asymmetry is the whole argument for
+doing it ourselves rather than diagnosing Qt's finalizer through a
+listing that cannot show me its source.
+
+The `QT_PLUGIN_CLASS_NAME` property stays: it costs nothing and is what
+Qt's path needs if it is consulted at all.
+
+This is the second time "Qt will do it" was believed and wrong. The test's
+scope note now records both reversals rather than just the current state,
+and QML plugins are asserted in the produced binaries again. Both halves
+negative-controlled: registration not emitted, property not set.
+
 ### Latest diagnostic run (2026-08-27) — linked but never registered: `plugin "qtquick2plugin" not found`
 
 The target declaration worked, and the failure moved one step further in
