@@ -187,6 +187,16 @@ function(_probe_check_module_targets)
       message(FATAL_ERROR "probe: ${_want} was not declared")
     endif()
   endforeach()
+  # Linking without registration was run night#6: the archive reaches the
+  # binary while Qt, finding no QT_PLUGIN_CLASS_NAME on the target, emits
+  # no Q_IMPORT_PLUGIN for it -- silently. The declared plugin target
+  # must carry the class read from its own mangled symbol.
+  get_target_property(_cls Qt6::qtquick2plugin QT_PLUGIN_CLASS_NAME)
+  if(NOT _cls STREQUAL "QtQuick2Plugin")
+    message(FATAL_ERROR
+      "probe: Qt6::qtquick2plugin QT_PLUGIN_CLASS_NAME is '${_cls}', "
+      "expected 'QtQuick2Plugin'")
+  endif()
 endfunction()
 cmake_language(DEFER DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
                CALL _probe_check_module_targets)

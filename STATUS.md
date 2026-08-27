@@ -23,6 +23,43 @@ for this entire stretch of work.
   changes cheaply.
 - Compiler wrappers: `onebin/toolchain/zig-cc`, `zig-c++`.
 
+### Latest diagnostic run (2026-08-27) — linked but never registered: `plugin "qtquick2plugin" not found`
+
+The target declaration worked, and the failure moved one step further in
+— the most granular results yet. Test binaries run and report per-case:
+`F4GalleryPointerTests: 5 passed, 8 failed`, 3 of 9 suites green, and
+`module "…" is not installed` is gone entirely. What remains, 27 times:
+
+```
+qrc:/F4QtHost/qml/main.qml:1:1: module "QtQuick" plugin "qtquick2plugin" not found
+```
+
+The qmldir is found; the module is known; the plugin's **static instance
+does not exist in the binary**. Which pins the mechanism precisely:
+linking is only half of what `qt6_import_qml_plugins` does. The other
+half is emitting `Q_IMPORT_PLUGIN(<class>)` into a generated unit, and
+the class comes from the plugin target's **`QT_PLUGIN_CLASS_NAME`**
+property. My declared targets had archives and `.prl` closures — and no
+class-name property. Qt linked them and silently emitted no registration:
+the archive is in the binary, the instance is not.
+
+### Fix, one property, read not derived
+
+The declarator now sets `QT_PLUGIN_CLASS_NAME` on every declared target
+whose archive carries a plugin symbol — the class read from the archive's
+own mangled `_Z<len>qt_static_plugin_<Class>v`, by the extractor that
+already existed for the direct imports, factored into
+`_se_plugin_class()` with the same `required` split as the `.prl` parser:
+fatal when importing a plugin, tolerant when sweeping `lib/`, where
+module libraries legitimately carry no plugin symbol.
+
+The probe now asserts the declared `Qt6::qtquick2plugin` carries exactly
+`QtQuick2Plugin`, read back from the property; removing the
+property-setting is caught. This closes the pair with night #6's lesson
+as a unit: **declare = location + closure + class name.** Any one of the
+three missing produces a distinct silent failure, and all three now come
+from the package itself.
+
 ### Latest diagnostic run (2026-08-26, night #5) — **my premise was wrong**: Qt's machinery is present and running; it was skipping 31 plugins silently
 
 ```

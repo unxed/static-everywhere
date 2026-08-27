@@ -189,7 +189,12 @@ function(_se_prl_closure archive out_var required)
     set(${out_var} ${_out} PARENT_SCOPE)
 endfunction()
 
-function(_se_import_plugin_archive archive imports_var libs_var)
+# The plugin class name, read out of the archive itself. The defining
+# symbol is a mangled C++ function _Z<len>qt_static_plugin_<Class>v, and
+# the Itanium length prefix makes extraction exact. `required` mirrors
+# _se_prl_closure: fatal when importing a plugin, tolerant when sweeping
+# a directory where not every archive is a plugin.
+function(_se_plugin_class archive out_var required)
     # The defining symbol is a mangled C++ function,
     # _Z<len>qt_static_plugin_<Class>v, and the Itanium length prefix is
     # what makes extraction exact: a greedy [A-Za-z0-9_]+ would swallow
@@ -199,6 +204,10 @@ function(_se_import_plugin_archive archive imports_var libs_var)
     file(STRINGS "${archive}" _syms REGEX "_Z[0-9]+qt_static_plugin_")
     string(REGEX MATCH "_Z([0-9]+)qt_static_plugin_" _m "${_syms}")
     if(NOT _m)
+        if(NOT required)
+            set(${out_var} "" PARENT_SCOPE)
+            return()
+        endif()
         message(FATAL_ERROR
             "static-everywhere: no mangled qt_static_plugin_<Class> symbol "
             "in ${archive}. Without it Q_IMPORT_PLUGIN cannot reference the "
@@ -216,6 +225,12 @@ function(_se_import_plugin_archive archive imports_var libs_var)
             "${archive} is not an identifier -- the symbol parse went wrong; "
             "raw match context: ${_syms}")
     endif()
+
+    set(${out_var} "${_cls}" PARENT_SCOPE)
+endfunction()
+
+function(_se_import_plugin_archive archive imports_var libs_var)
+    _se_plugin_class("${archive}" _cls TRUE)
 
     set(_new_imports "Q_IMPORT_PLUGIN(${_cls})\n")
     set(_new_libs "${archive}")
@@ -279,6 +294,22 @@ function(_se_declare_missing_qt_targets)
             add_library("Qt6::${_n}" STATIC IMPORTED)
             set_target_properties("Qt6::${_n}" PROPERTIES
                 IMPORTED_LOCATION "${_a}")
+            # Run night#6: with the targets declared, Qt linked the
+            # archives -- and QML still said `plugin "qtquick2plugin"
+            # not found` at runtime. Linking is only half of what
+            # qt6_import_qml_plugins does; the other half is emitting
+            # Q_IMPORT_PLUGIN(<class>) into a generated unit, and the
+            # class comes from the target's QT_PLUGIN_CLASS_NAME. A
+            # target without it is linked and silently never registered,
+            # so the plugin's archive is in the binary while its static
+            # instance does not exist. The class is read from the
+            # archive's own mangled symbol, tolerant here because module
+            # libraries under lib/ legitimately have none.
+            _se_plugin_class("${_a}" _pcls FALSE)
+            if(_pcls)
+                set_property(TARGET "Qt6::${_n}" PROPERTY
+                             QT_PLUGIN_CLASS_NAME "${_pcls}")
+            endif()
             if(_closure)
                 set_property(TARGET "Qt6::${_n}" PROPERTY
                              INTERFACE_LINK_LIBRARIES ${_closure})
