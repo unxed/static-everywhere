@@ -148,6 +148,17 @@ else
     printf '%s\n' "$GL_TEST" | sed 's/^/       /'
 fi
 
+# The host audit fails --strict only on OB0060 build paths baked into
+# prebuilt Qt and libheif -- third-party strings that do not affect
+# portability. The wrapper tolerates those by origin and nothing else,
+# and expires when they go. Its guarantees are checked every run.
+if HYGIENE_TEST=$("${REPO_ROOT}/tools/test-hygiene-waivers.sh" 2>&1); then
+    pass "hygiene waivers stay scoped to third-party origins and expire"
+else
+    fail "hygiene waiver mechanism regression"
+    printf '%s\n' "$HYGIENE_TEST" | sed 's/^/       /'
+fi
+
 if GL_CXX_TEST=$("${REPO_ROOT}/tools/test-optional-gl-cxx-only.sh" 2>&1); then
     pass "optional-GL sources stay in a CXX-only CMake project"
 else

@@ -23,6 +23,76 @@ for this entire stretch of work.
   changes cheaply.
 - Compiler wrappers: `onebin/toolchain/zig-cc`, `zig-c++`.
 
+### Latest diagnostic run — **0 errors**; host audit fails --strict only on third-party build-path hygiene
+
+libGL is gone from the binary's `needed` list: the CXX-only fix landed,
+the 3470-symbol forwarder built, and `DT_NEEDED` no longer carries libGL.
+The host audit reached the end for the first time:
+
+```
+FAIL  Level 1  (0 errors, 6 warnings, 3 infos)
+```
+
+**Zero errors.** Every portability check is clean — `DT_NEEDED`, the
+glibc baseline, `RUNPATH`. What fails is `--strict` turning six `OB0060`
+warnings fatal, and all six are build-machine paths compiled as string
+data into prebuilt Qt and libheif archives:
+
+```
+…/.conan2/…/src/qtbase/src/widgets/widgets/qabstractspinbox.cpp
+…/.conan2/…/src/qtbase/src/widgets/widgets/qdatetimeedit.cpp
+…/.conan2/…/lib/libheif    /tmp/libheif-XXXXXX    /tmp/perf-%1.map    /tmp/
+```
+
+`OB0060` is a pure string scan (`c_hygiene.c`): the paths sit in
+`.rodata`/`.debug_str`, never in `DT_NEEDED` or `RUNPATH`, so they do not
+affect whether the binary runs anywhere. They are a hygiene and
+reproducibility matter, which is why onebin rates them WARN, not ERROR.
+None is from our own compilation units.
+
+### The decision: a self-expiring, origin-scoped waiver, not `--strict` off
+
+The alternative — dropping `--strict` — would weaken the entire warning
+class forever and never come back on its own once upstream fixes the
+paths. Instead `tools/audit-with-hygiene-waivers.sh`:
+
+- keys off the auditor's **JSON** output, matching on the `subject`
+  field, not scraped text;
+- tolerates `OB0060` **only** for declared third-party origins (the Conan
+  cache, Qt's source tree, libheif's temp paths), matched by origin
+  substring so per-build hashes and random temp suffixes do not make it
+  rot;
+- **fails** on an `OB0060` path that matches no third-party origin — e.g.
+  one from our own code, which `-ffile-prefix-map` should have stripped —
+  and on any error or any non-`OB0060` warning;
+- **expires**: zero `OB0060` findings makes it fail with `STALE WAIVER`,
+  so the tolerance cannot outlive the problem;
+- is never silent.
+
+### Two errors caught before CI, both by simulating the real paths
+
+- The bare string `/tmp/` was **not** covered by the substring origins
+  and would have failed the waiver. Rather than waive "anything under
+  /tmp" — which would hide a future `/tmp` path from our own build — an
+  exact-match origin convention (`=/tmp/`) was added, so the libheif
+  prefix is tolerated while a real path under `/tmp` still fails. A
+  control in the test pins exactly that distinction.
+- The local end-to-end run failed on `zig013/lib/libc/glibc/…` startup
+  paths that are **not** in CI. They turned out to sit in `.debug_str`
+  and are removed by our own `--strip-debug` link flag; with the real
+  build flags the local run matches CI exactly. So the discrepancy was
+  the sandbox lacking a flag the build applies, not a hole in the waiver.
+
+Verified end to end against the real auditor with real build flags: the
+three CI-shaped paths are tolerated and announced, exit 0. Five stub-JSON
+states and four negative controls on the mechanism, all caught. Wired
+into the preflight.
+
+Report for the f4/Qt/libheif side drafted at
+`f4-bugreport-embedded-build-paths.md`, noting also that Qt **Widgets**
+appears linked into an image viewer — dropping it, if unused, removes two
+of the six at the source.
+
 ### Latest diagnostic run (2026-08-28) — CMake generated no C compile rule after the optional-GL hook
 
 The attached archive `f4-qt-zig-build-diagnostic-logs.zip` records the

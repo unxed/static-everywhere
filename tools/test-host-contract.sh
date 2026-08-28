@@ -78,8 +78,8 @@ fi
 # EVERY hybrid audit, not merely one of them. The first version of this
 # check asked whether a strict invocation existed, and there are two --
 # so dropping --strict from the one that matters passed unnoticed.
-total=$(grep -c 'plan_step .*audit --profile hybrid' "$REPO_ROOT/tools/build-f4-qt.sh" || true)
-strict=$(grep 'plan_step .*audit --profile hybrid' "$REPO_ROOT/tools/build-f4-qt.sh" \
+total=$(grep -c 'plan_step .*--profile hybrid' "$REPO_ROOT/tools/build-f4-qt.sh" || true)
+strict=$(grep 'plan_step .*--profile hybrid' "$REPO_ROOT/tools/build-f4-qt.sh" \
          | grep -c -- '--strict' || true)
 if [ "$total" -eq 0 ] || [ "$total" -ne "$strict" ]; then
     printf '%s of %s hybrid audits are --strict\n' "$strict" "$total" >&2
@@ -88,7 +88,7 @@ fi
 
 # And every one of them must carry the declared contract, or the audit
 # would fail on libraries the project has already accounted for.
-allowed=$(grep 'plan_step .*audit --profile hybrid' "$REPO_ROOT/tools/build-f4-qt.sh" \
+allowed=$(grep 'plan_step .*--profile hybrid' "$REPO_ROOT/tools/build-f4-qt.sh" \
           | grep -c 'f4_qt_allow_flags' || true)
 if [ "$total" -ne "$allowed" ]; then
     printf '%s of %s hybrid audits pass the host contract\n' "$allowed" "$total" >&2

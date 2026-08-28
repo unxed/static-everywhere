@@ -263,7 +263,16 @@ if [ "${CONFIG}" = "linux" ] && [ "${TOOLCHAIN}" = "host" ]; then
     plan_step "cp ${SRC}/embedded/f4-qt-host.gz ${OUT}/"
 
     plan_step "${ONEBIN_BIN} audit --profile static --level 1 --strict ${OUT}/f4"
-    plan_step "${ONEBIN_BIN} audit --profile hybrid --glibc-max 2.27 $(f4_qt_allow_flags)--level 1 --strict ${SRC}/build-qt/f4-qt-host"
+    # Through tools/audit-with-hygiene-waivers.sh, not onebin directly.
+    # The host audit reaches 0 errors and fails --strict only on OB0060
+    # build-path warnings baked into prebuilt Qt and libheif archives --
+    # third-party strings in .rodata that never touch DT_NEEDED or
+    # RUNPATH, so they do not affect portability. The wrapper tolerates
+    # exactly those, by third-party origin, and fails on anything else
+    # including an OB0060 path from our own code. It fails STALE once the
+    # dependencies stop embedding the paths, so the tolerance removes
+    # itself.
+    plan_step "${REPO_ROOT}/tools/audit-with-hygiene-waivers.sh ${ONEBIN_BIN} --profile hybrid --glibc-max 2.27 $(f4_qt_allow_flags)--level 1 --strict ${SRC}/build-qt/f4-qt-host"
 
     plan_step "timeout --kill-after=30s 120s env QT_QPA_PLATFORM=offscreen QSG_RHI_BACKEND=software ${SRC}/build-qt/f4-qt-host --f4-ext-connect=127.0.0.1:1 > ${OUT}/smoke.log 2>&1 || [ \$? -eq 2 ]"
     plan_step "! grep -q 'QQmlApplicationEngine failed to load component' ${OUT}/smoke.log"
@@ -773,7 +782,7 @@ HOOKEOF"
     # itself rather than outliving the bug.
     plan_step "cd ${SRC} && ${REPO_ROOT}/tools/ctest-with-waivers.sh --test-dir qt/host/build-portable-linux -C Release --output-on-failure --timeout 300 -R '^(F4|QtShellController|WindowGeometryPersistence)'"
 
-    plan_step "${ONEBIN_BIN} audit --profile hybrid --glibc-max ${GLIBC_BASELINE} $(f4_qt_allow_flags)--level 1 --strict ${SRC}/qt/host/build-portable-linux/bin/Release/f4-qt-host"
+    plan_step "${REPO_ROOT}/tools/audit-with-hygiene-waivers.sh ${ONEBIN_BIN} --profile hybrid --glibc-max ${GLIBC_BASELINE} $(f4_qt_allow_flags)--level 1 --strict ${SRC}/qt/host/build-portable-linux/bin/Release/f4-qt-host"
 
     plan_step "timeout --kill-after=30s 120s env QT_QPA_PLATFORM=offscreen QSG_RHI_BACKEND=software ${SRC}/qt/host/build-portable-linux/bin/Release/f4-qt-host --f4-ext-connect=127.0.0.1:1 --f4-ext-nonce=ci-smoke > ${OUT}/smoke.log 2>&1 || [ \$? -eq 2 ]"
     plan_step "! grep -q 'QQmlApplicationEngine failed to load component' ${OUT}/smoke.log"
