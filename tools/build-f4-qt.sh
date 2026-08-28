@@ -141,6 +141,16 @@ if [ -n "${GALLERY}" ] && [ "${GALLERY}" != "public" ]; then
 fi
 
 
+# libGL is deliberately ABSENT from this list, and that is the point.
+#
+# contrib/f4-qt/optional-gl.cmake removes it from DT_NEEDED entirely, so
+# a correct build never needs it allowed. Leaving it allowed "just in
+# case" would have been worse than useless: an allowlisted soname is
+# reported by nothing, so a build where the forwarder silently stopped
+# applying would pass the audit and we would have no evidence either way.
+# Omitted, the property is enforced -- if libGL ever comes back as a
+# load-time dependency, OB0010 says so by name.
+#
 # The host GUI contract, named once.
 #
 # Profile H exists precisely so a binary can be static in everything
@@ -150,8 +160,6 @@ fi
 # accidents, and the fix is to state the contract rather than to widen
 # the profile:
 #
-#   libGL            Qt Quick's renderer, and the reason a GPU-accelerated
-#                    build can exist at all.
 #   libX11, libxcb   the display connection. Qt's xcb platform plugin --
 #   libX11-xcb       the one imported in contrib/f4-qt/import-qt-static-
 #                    plugins.cmake -- links the xcb helper libraries
@@ -164,7 +172,7 @@ fi
 # if one ever appears in this list it means something stopped being
 # static -- so the list failing to cover a new soname is a signal worth
 # having, not a nuisance to silence with a wildcard.
-F4_QT_HOST_CONTRACT="libGL.so.1 libX11.so.6 libX11-xcb.so.1 libxcb.so.1 \
+F4_QT_HOST_CONTRACT="libX11.so.6 libX11-xcb.so.1 libxcb.so.1 \
 libxcb-cursor.so.0 libxcb-icccm.so.4 libxcb-image.so.0 libxcb-keysyms.so.1 \
 libxcb-randr.so.0 libxcb-render.so.0 libxcb-render-util.so.0 \
 libxcb-shape.so.0 libxcb-shm.so.0 libxcb-sync.so.1 libxcb-xfixes.so.0 \

@@ -78,6 +78,93 @@ Worth stating because it nearly cost more than the bug: an intermittent
 check is worse than none. It had already fired inside the preflight and
 sent me looking at `PATH` before the repetition showed it was timing.
 
+### libGL is now optional, and its absence selects software rendering
+
+Raised as a question rather than a failure: GL may or may not exist on a
+host, and a binary that cannot fall back is useless on half of them.
+
+It is worse than it looks. `libGL.so.1` in `DT_NEEDED` is resolved by the
+loader **before `main()`**, so on a machine without GL the process never
+starts and no fallback of ours could possibly run.
+
+And Qt does not rescue it. From `qtdeclarative`'s `qsgcontextplugin.cpp`,
+the software adaptation is chosen only when the **build** lacks
+OpenGL/Vulkan/Metal, or when the platform integration reports no
+`RhiBasedRendering`. This build has OpenGL and xcb is RHI-capable — there
+is no runtime "GL missing, use software" path at all.
+
+So two halves, both built and both measured.
+
+### Half one — libGL stops being a load-time dependency
+
+`tools/gen-optional-lib-forwarder.sh` defines every symbol libGL exports
+(3470 of them, read from a real library, not listed by hand), each a
+tail-call to a pointer resolved by `dlopen` at startup.
+
+| link | `DT_NEEDED` |
+| --- | --- |
+| `-lGL` | `libGL.so.1`, `libc.so.6` |
+| forwarder | `libc.so.6`, `libdl.so.2` |
+
+`libdl` is already on onebin's default allowlist, so an optional GPU
+library is traded for a C-runtime one present everywhere.
+
+**Why assembly and not C wrappers.** A wrapper needs the prototype of
+what it forwards, and there are thousands of GL and GLX entry points. The
+trampoline touches no argument register, so every signature is forwarded
+correctly *by construction* rather than by a table someone maintains.
+Emitted as a global `asm()` inside a normal `.c`, so nothing needs
+`enable_language(ASM)`.
+
+A pleasant discovery while measuring: lld records `DT_NEEDED` only for
+libraries that actually supply something, so once the symbols are defined
+locally the entry disappears **without touching the link line** — no
+filtering of `-lGL` out of Conan's or Qt's flags, which would have been
+the fragile part.
+
+### Half two — Qt is told, before `main()`
+
+`contrib/f4-qt/compat/render-backend-fallback.c` is a constructor that
+probes `dlopen` and, if GL is absent, sets `QT_QUICK_BACKEND=software`
+and `QT_XCB_GL_INTEGRATION=none` — both variables located in Qt's own
+sources, with the citations in the file. Both with `overwrite=0`, so
+anyone who has already chosen keeps their choice, including f4's tests.
+
+It runs its own `dlopen` rather than reading the forwarder's state, so it
+does not depend on which constructor ran first.
+
+### Testability was designed in, not bolted on
+
+The absent-GL path is unfalsifiable on a machine that has GL, so both
+pieces honour `SE_FORWARD_SE_GL_SONAME`. Pointing it at a nonexistent
+library exercises the fallback deterministically on an ordinary runner.
+Without that hook half of this work would be untestable in CI, which is
+the same as untested.
+
+`tools/test-optional-gl.sh` pins five things — no libGL in `DT_NEEDED`; a
+control build that *does* depend on it, so the first check means
+something; correct forwarding of float, pointer-returning and GLX
+entry points when GL is present; software selected when it is absent; and
+an explicit choice never overridden. Five negative controls, all caught,
+including one on the trampoline itself.
+
+`libGL.so.1` is deliberately **absent** from the host contract list, and
+the first draft of this entry had that backwards. I wrote that keeping it
+allowed would let the audit notice a forwarder that stopped applying — it
+is the opposite: an allowlisted soname is reported by nothing, so the
+dependency would come back and pass in silence, leaving no evidence
+either way. Omitted, the property is enforced: if libGL ever returns as a
+load-time dependency, `OB0010` names it. Caught while checking whether
+the build job installs libGL at all — the check found a real problem, just
+not the one it was looking for.
+
+### The same technique is worth extending
+
+`libX11` and the `libxcb-*` family have the identical problem, and the
+payoff is larger: a bare server with no X libraries installed currently
+cannot run the binary **even with `QT_QPA_PLATFORM=offscreen`**. Left for
+after this has proven itself on a smaller surface.
+
 ### Latest diagnostic run (2026-08-28, later still) — rpath gone; the remaining 18 are the host contract, undeclared
 
 `CMAKE_SKIP_RPATH` worked: **47 OB0040 errors to zero**, and the residual

@@ -137,6 +137,17 @@ else
     printf '%s\n' "$CONTRACT_TEST" | sed 's/^/       /'
 fi
 
+# libGL is a GPU driver library, present on desktops and routinely absent
+# on servers and minimal images. As a DT_NEEDED entry it stops the binary
+# before main(), so no fallback of ours could run; forwarded, its absence
+# only selects software rendering.
+if GL_TEST=$("${REPO_ROOT}/tools/test-optional-gl.sh" 2>&1); then
+    pass "libGL is optional and its absence selects software rendering"
+else
+    fail "optional-GL regression"
+    printf '%s\n' "$GL_TEST" | sed 's/^/       /'
+fi
+
 # And that the flag survives the wrappers and leaves the audit's inputs
 # alone: --strip-debug must remove DWARF while keeping .dynsym and
 # .gnu.version_r, which is what the glibc baseline check reads.
