@@ -431,6 +431,20 @@ elif [ "${CONFIG}" = "linux" ] && [ "${TOOLCHAIN}" = "zig" ]; then
     # and STATUS.md. Compiled here, ahead of `conan install`, because the
     # object has to exist before Conan starts building anything.
     #
+    # -Wl,--strip-debug on both lists: zig cc emits DWARF whether or not
+    # anyone asked for it. Measured, not assumed -- compiling a trivial
+    # file with `-O2` and no `-g` still produces .debug_info,
+    # .debug_abbrev, .debug_line and .debug_str, and `-g0` barely dents
+    # it because zig's own startup objects carry debug info too. At this
+    # scale it stops being cosmetic: the Qt package's static archives
+    # total 3.5 GB and f4-qt-host came out at 708 MB, past the auditor's
+    # 512 MiB input limit, so nothing downstream could even be examined.
+    #
+    # --strip-debug, not --strip-all: it removes DWARF and keeps .symtab,
+    # so crashes still symbolise. Verified that a stripped binary keeps
+    # .dynsym and .gnu.version_r, which is what the glibc-baseline audit
+    # actually reads.
+    #
     # In the GLOBAL exe and shared link flags, not scoped to `qt/*`.
     # It was scoped for a while, and that was wrong in an instructive
     # way. Scoping does fix the symptom it was introduced for -- an
@@ -602,8 +616,8 @@ HOOKEOF"
 -c 'tools.build:cflags=[\"-target\",\"x86_64-linux-gnu.${GLIBC_BASELINE}\"]' \
 -c 'tools.build:cxxflags=[\"-target\",\"x86_64-linux-gnu.${GLIBC_BASELINE}\"]' \
 -c 'libmount*:tools.build:cflags=[\"-DHAVE_CLOSE_RANGE=1\"]' \
--c 'tools.build:sharedlinkflags=[\"-target\",\"x86_64-linux-gnu.${GLIBC_BASELINE}\",\"${OUT_ABS}/compat-glibc-shims.o\"]' \
--c 'tools.build:exelinkflags=[\"-target\",\"x86_64-linux-gnu.${GLIBC_BASELINE}\",\"-pie\",\"${OUT_ABS}/compat-glibc-shims.o\"]' \
+-c 'tools.build:sharedlinkflags=[\"-target\",\"x86_64-linux-gnu.${GLIBC_BASELINE}\",\"${OUT_ABS}/compat-glibc-shims.o\",\"-Wl,--strip-debug\"]' \
+-c 'tools.build:exelinkflags=[\"-target\",\"x86_64-linux-gnu.${GLIBC_BASELINE}\",\"-pie\",\"${OUT_ABS}/compat-glibc-shims.o\",\"-Wl,--strip-debug\"]' \
 -cc core.sources:download_cache=\"${OUT_ABS}/sources-backup\" \
 -cc core.sources:download_urls='[\"https://c3i.jfrog.io/artifactory/conan-center-backup-sources/\",\"origin\"]' \
 -c tools.system.package_manager:mode=check \

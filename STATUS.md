@@ -78,6 +78,55 @@ Worth stating because it nearly cost more than the bug: an intermittent
 check is worse than none. It had already fired inside the preflight and
 sent me looking at `PATH` before the repetition showed it was timing.
 
+### Latest diagnostic run (2026-08-28) — **the auditor was reached**; it refused a 708 MB binary
+
+The waiver did exactly its job: `ctest failed only on waived upstream
+cases; continuing`, printed with the case, its report and the reason, and
+the run went **past ctest for the first time** into `onebin audit`.
+
+```
+FAIL  OB0092  742613672 bytes exceeds the 536870912 byte limit
+```
+
+`OB0092` is the auditor's **input** limit, not a rule about artefacts —
+it will not open a file over 512 MiB. So nothing about the binary could
+be examined, including the glibc baseline this whole toolchain exists to
+satisfy.
+
+### Where 708 MB came from: zig cc emits DWARF nobody asked for
+
+Measured rather than assumed. Compiling a trivial file through the
+wrapper with `-O2` and **no `-g`** still produces `.debug_info`,
+`.debug_abbrev`, `.debug_line`, `.debug_str`. `-g0` barely dents the
+result, because zig's own startup objects carry debug info too. Only a
+link-time strip removes it, and it halves even a hello-world.
+
+At this scale it stops being cosmetic. From the artifact's own listings:
+
+| | size |
+| --- | --- |
+| Qt package static archives | **3565 MB** |
+| build-tree archives | 194 MB |
+| `f4-qt-host` | 708 MB |
+
+### Fix
+
+`-Wl,--strip-debug` in the global `exelinkflags` **and**
+`sharedlinkflags`.
+
+`--strip-debug`, not `--strip-all`: it removes DWARF and keeps `.symtab`,
+so crashes still symbolise. Checked that a stripped binary retains
+`.dynsym` and `.gnu.version_r` — which is exactly what the glibc baseline
+check reads, so stripping cannot hide the thing being audited.
+
+Three preflight checks, all negative-controlled: the flag is in each of
+the two lists, and a wrapper-built binary actually comes out with zero
+`.debug_*` sections and a live `.dynsym`. The third catches the case the
+first two cannot — a wrapper that filters the flag back out.
+
+Nothing is disabled and no functionality is traded away: the same code,
+the same plugins, minus debugging metadata that was never requested.
+
 ### Latest diagnostic run (2026-08-27, night #6) — **8 of 9 suites pass**; the last failure is not ours
 
 Both markers present. Every QML error is gone — no `module … is not

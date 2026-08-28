@@ -99,6 +99,37 @@ for _flags in exelinkflags sharedlinkflags; do
         fail "shim missing from the global tools.build:${_flags}"
     fi
 done
+
+# Cost: the first run ever to reach the auditor, which refused to open a
+# 708 MB binary at all (OB0092, 512 MiB input limit). zig cc emits DWARF
+# with no -g asked for, and the Qt package's archives total 3.5 GB.
+for _flags in exelinkflags sharedlinkflags; do
+    if grep -qE "'tools\.build:${_flags}=\[[^']*--strip-debug" "$PLAN"; then
+        pass "debug info is stripped in tools.build:${_flags}"
+    else
+        fail "no --strip-debug in tools.build:${_flags}"
+    fi
+done
+
+# And that the flag survives the wrappers and leaves the audit's inputs
+# alone: --strip-debug must remove DWARF while keeping .dynsym and
+# .gnu.version_r, which is what the glibc baseline check reads.
+_sd=$(mktemp -d)
+printf 'int main(void){return 0;}\n' >"$_sd/m.c"
+if "${REPO_ROOT}/onebin/toolchain/zig-cc" -target x86_64-linux-gnu.2.27 -O2 \
+     "$_sd/m.c" -o "$_sd/m" -Wl,--strip-debug 2>"$_sd/err"; then
+    _dbg=$(readelf -S "$_sd/m" 2>/dev/null | grep -c '\.debug_' || true)
+    _dyn=$(readelf -S "$_sd/m" 2>/dev/null | grep -c '\.dynsym' || true)
+    if [ "$_dbg" = 0 ] && [ "$_dyn" != 0 ]; then
+        pass "--strip-debug drops DWARF and keeps the audit's inputs"
+    else
+        fail "--strip-debug left ${_dbg} debug sections, .dynsym count ${_dyn}"
+    fi
+else
+    fail "zig-cc rejects -Wl,--strip-debug"
+    head -2 "$_sd/err" | sed 's/^/       /'
+fi
+rm -rf "$_sd"
 if grep -q "qt/\*:tools.build:exelinkflags" "$PLAN"; then
     fail "shim is scoped to qt/* again -- that leaves every consumer of libQt6Core.a short"
 else
