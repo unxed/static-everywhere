@@ -111,6 +111,22 @@ for _flags in exelinkflags sharedlinkflags; do
     fi
 done
 
+# Cost: 47 of the 48 errors in the first audit that could read the
+# binary. CMake records the directory of every shared library it links,
+# so a portable artefact carried absolute paths from the build machine.
+if grep -q 'CMAKE_SKIP_RPATH' "$PLAN"; then
+    pass "CMAKE_SKIP_RPATH is set, so dependency directories stay out"
+else
+    fail "CMAKE_SKIP_RPATH missing from the toolchain variables"
+fi
+
+if RPATH_TEST=$("${REPO_ROOT}/tools/test-no-embedded-rpath.sh" 2>&1); then
+    pass "a probe build embeds no dependency directory in DT_RUNPATH"
+else
+    fail "embedded rpath regression"
+    printf '%s\n' "$RPATH_TEST" | sed 's/^/       /'
+fi
+
 # And that the flag survives the wrappers and leaves the audit's inputs
 # alone: --strip-debug must remove DWARF while keeping .dynsym and
 # .gnu.version_r, which is what the glibc baseline check reads.

@@ -431,6 +431,22 @@ elif [ "${CONFIG}" = "linux" ] && [ "${TOOLCHAIN}" = "zig" ]; then
     # and STATUS.md. Compiled here, ahead of `conan install`, because the
     # object has to exist before Conan starts building anything.
     #
+    # CMAKE_SKIP_RPATH: the first audit that could actually read the
+    # binary reported 48 errors, and 47 of them were one thing --
+    #
+    #   OB0040  search path component is not $ORIGIN-relative:
+    #           /home/runner/.conan2/p/b/qtf24b8750aaa73/p/lib
+    #
+    # CMake records the directory of every shared library it links as a
+    # build rpath, so a binary meant to run anywhere carried a list of
+    # absolute paths from the machine that built it. For a static
+    # artefact none of them is needed at runtime, and each one is both a
+    # portability hazard and a leak of the build environment.
+    #
+    # Verified against real CMake and the real wrappers: a probe linking
+    # a shared library from a non-standard directory gets that directory
+    # in DT_RUNPATH, and with this variable set it does not.
+
     # -Wl,--strip-debug on both lists: zig cc emits DWARF whether or not
     # anyone asked for it. Measured, not assumed -- compiling a trivial
     # file with `-O2` and no `-g` still produces .debug_info,
@@ -612,7 +628,7 @@ HOOKEOF"
 -o:h 'harfbuzz/*:with_glib=False' \
 -o:h 'xkbcommon/*:with_wayland=True' -o:h 'libraw/*:shared=False' \
 -c 'tools.build:compiler_executables={\"c\":\"${ZIGCC}\",\"cpp\":\"${ZIGCXX}\"}' \
--c 'tools.cmake.cmaketoolchain:extra_variables={\"CMAKE_C_COMPILER_LAUNCHER\":\"ccache\",\"CMAKE_CXX_COMPILER_LAUNCHER\":\"ccache\",\"CMAKE_SIZEOF_VOID_P\":\"8\",\"CMAKE_LIBRARY_ARCHITECTURE\":\"x86_64-linux-gnu\",\"CMAKE_C_IMPLICIT_INCLUDE_DIRECTORIES\":\"/usr/include\",\"CMAKE_CXX_IMPLICIT_INCLUDE_DIRECTORIES\":\"/usr/include\"}' \
+-c 'tools.cmake.cmaketoolchain:extra_variables={\"CMAKE_C_COMPILER_LAUNCHER\":\"ccache\",\"CMAKE_CXX_COMPILER_LAUNCHER\":\"ccache\",\"CMAKE_SIZEOF_VOID_P\":\"8\",\"CMAKE_LIBRARY_ARCHITECTURE\":\"x86_64-linux-gnu\",\"CMAKE_C_IMPLICIT_INCLUDE_DIRECTORIES\":\"/usr/include\",\"CMAKE_CXX_IMPLICIT_INCLUDE_DIRECTORIES\":\"/usr/include\",\"CMAKE_SKIP_RPATH\":\"ON\"}' \
 -c 'tools.build:cflags=[\"-target\",\"x86_64-linux-gnu.${GLIBC_BASELINE}\"]' \
 -c 'tools.build:cxxflags=[\"-target\",\"x86_64-linux-gnu.${GLIBC_BASELINE}\"]' \
 -c 'libmount*:tools.build:cflags=[\"-DHAVE_CLOSE_RANGE=1\"]' \

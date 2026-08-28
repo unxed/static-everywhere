@@ -78,6 +78,50 @@ Worth stating because it nearly cost more than the bug: an intermittent
 check is worse than none. It had already fired inside the preflight and
 sent me looking at `PATH` before the repetition showed it was timing.
 
+### Latest diagnostic run (2026-08-28, later) — 708 MB → **50 MB**, and the audit finally reported on the binary itself
+
+The strip worked, by more than expected: **708 MB → 50 MB**, well inside
+the auditor's input limit, and for the first time `onebin audit` said
+something about *this binary* rather than refusing to open it.
+
+48 errors, and 47 are one thing:
+
+```
+FAIL  OB0040  search path component is not $ORIGIN-relative:
+              /home/runner/.conan2/p/b/qtf24b8750aaa73/p/lib
+```
+
+One per Conan package directory. CMake records the directory of every
+shared library it links as a build rpath, so a binary meant to run
+anywhere was carrying a list of absolute paths from the machine that
+built it — a portability hazard and a leak of the build environment in
+the same field.
+
+### Fix
+
+`CMAKE_SKIP_RPATH=ON` in the toolchain variables. For a static artefact
+none of those directories is needed at runtime.
+
+Established against real CMake and the real wrappers rather than from the
+documentation: a probe linking a shared library from a non-standard
+directory gets that directory in `DT_RUNPATH`, and with the variable set
+it does not. `tools/test-no-embedded-rpath.sh` keeps both halves — it
+fails if the probe stops reproducing the defect, which is the failure
+mode that would quietly turn it into a test of nothing.
+
+Two preflight checks, both negative-controlled: the variable is in the
+plan, and a probe build really comes out without the dependency
+directory.
+
+### One thing deliberately left open
+
+A residual `/usr/lib64:/usr/lib` appears in `DT_RUNPATH` in the local
+probe even with the variable set, and it is **not** what CI reported —
+every path in the 47 errors was a Conan package directory. Rather than
+guess at a second mechanism while fixing the first, this is noted and
+left for the next artifact to describe. Chasing a symptom the evidence
+does not show is how the `.prl` name-list mistakes happened.
+
 ### Latest diagnostic run (2026-08-28) — **the auditor was reached**; it refused a 708 MB binary
 
 The waiver did exactly its job: `ctest failed only on waived upstream
