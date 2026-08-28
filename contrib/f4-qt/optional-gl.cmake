@@ -71,13 +71,26 @@ function(_static_everywhere_optional_gl)
     string(STRIP "${_out}" _out)
     message(STATUS "static-everywhere: ${_out}")
 
+    # f4's host project enables CXX, not C. These files contain C-compatible
+    # code, but adding a .c source through an imported target's
+    # INTERFACE_SOURCES makes newer CMake try to enable C after project()
+    # already configured the language set. That leaves CMAKE_C_COMPILE_OBJECT
+    # unset and fails during generation. Keep both sources in the project's
+    # existing C++ language context instead. The generator emits C linkage
+    # for its assembly-referenced globals, so compiling it as C++ preserves
+    # the exact symbol names used by the trampolines.
+    set(_se_fallback
+        "${_SE_REPO_ROOT}/contrib/f4-qt/compat/render-backend-fallback.c")
+    set_source_files_properties("${_gen}" "${_se_fallback}"
+        PROPERTIES LANGUAGE CXX)
+
     # Executables only, exactly as the plugin import unit: a registration
     # or a symbol definition compiled into an intermediate static library
     # ends up duplicated in every consumer, and once produced a ninja
     # dependency cycle. See import-qt-static-plugins.cmake.
     set_property(TARGET Qt6::Gui APPEND PROPERTY INTERFACE_SOURCES
         "$<$<STREQUAL:$<TARGET_PROPERTY:TYPE>,EXECUTABLE>:${_gen}>"
-        "$<$<STREQUAL:$<TARGET_PROPERTY:TYPE>,EXECUTABLE>:${_SE_REPO_ROOT}/contrib/f4-qt/compat/render-backend-fallback.c>")
+        "$<$<STREQUAL:$<TARGET_PROPERTY:TYPE>,EXECUTABLE>:${_se_fallback}>")
 
     message(STATUS
         "static-everywhere: libGL is now optional; software rendering is "

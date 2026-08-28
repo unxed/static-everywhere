@@ -22,8 +22,10 @@
 # by value, variadic -- is forwarded correctly by construction rather
 # than by a table someone has to maintain.
 #
-# It is emitted as a global asm() block inside a normal .c file, so no
-# project needs enable_language(ASM) to consume it.
+# It is emitted as a global asm() block inside a normal C/C++ source file,
+# so no project needs enable_language(ASM) to consume it. The declarations
+# use C linkage when compiled as C++ because the assembly refers to their
+# unmangled names directly.
 #
 # Usage: gen-optional-lib-forwarder.sh <soname> <prefix> <library-path> <output.c>
 #   soname        what to dlopen at runtime, e.g. libGL.so.1
@@ -73,6 +75,8 @@ COUNT=$(printf '%s\n' "$SYMBOLS" | wc -l)
     printf '#include <dlfcn.h>\n'
     printf '#include <stdlib.h>\n\n'
 
+    printf '#ifdef __cplusplus\nextern "C" {\n#endif\n\n'
+
     printf '/* One pointer per symbol, resolved once at startup. */\n'
     printf '%s\n' "$SYMBOLS" | while IFS= read -r s; do
         printf 'void *%s_%s;\n' "$PREFIX" "$s"
@@ -95,6 +99,8 @@ COUNT=$(printf '%s\n' "$SYMBOLS" | wc -l)
         printf '    %s_%s = dlsym(%s_handle, "%s");\n' "$PREFIX" "$s" "$PREFIX" "$s"
     done
     printf '}\n\n'
+
+    printf '#ifdef __cplusplus\n}\n#endif\n\n'
 
     printf '__asm__(\n'
     printf '".text\\n"\n'

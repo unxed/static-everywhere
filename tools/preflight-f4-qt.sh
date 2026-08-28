@@ -148,25 +148,37 @@ else
     printf '%s\n' "$GL_TEST" | sed 's/^/       /'
 fi
 
+if GL_CXX_TEST=$("${REPO_ROOT}/tools/test-optional-gl-cxx-only.sh" 2>&1); then
+    pass "optional-GL sources stay in a CXX-only CMake project"
+else
+    fail "optional-GL CMake language regression"
+    printf '%s\n' "$GL_CXX_TEST" | sed 's/^/       /'
+fi
+
 # And that the flag survives the wrappers and leaves the audit's inputs
 # alone: --strip-debug must remove DWARF while keeping .dynsym and
 # .gnu.version_r, which is what the glibc baseline check reads.
-_sd=$(mktemp -d)
-printf 'int main(void){return 0;}\n' >"$_sd/m.c"
-if "${REPO_ROOT}/onebin/toolchain/zig-cc" -target x86_64-linux-gnu.2.27 -O2 \
-     "$_sd/m.c" -o "$_sd/m" -Wl,--strip-debug 2>"$_sd/err"; then
-    _dbg=$(readelf -S "$_sd/m" 2>/dev/null | grep -c '\.debug_' || true)
-    _dyn=$(readelf -S "$_sd/m" 2>/dev/null | grep -c '\.dynsym' || true)
-    if [ "$_dbg" = 0 ] && [ "$_dyn" != 0 ]; then
-        pass "--strip-debug drops DWARF and keeps the audit's inputs"
-    else
-        fail "--strip-debug left ${_dbg} debug sections, .dynsym count ${_dyn}"
-    fi
+if ! command -v zig >/dev/null 2>&1; then
+    skip "--strip-debug drops DWARF and keeps the audit's inputs" \
+         "zig not on PATH"
 else
-    fail "zig-cc rejects -Wl,--strip-debug"
-    head -2 "$_sd/err" | sed 's/^/       /'
+    _sd=$(mktemp -d)
+    printf 'int main(void){return 0;}\n' >"$_sd/m.c"
+    if "${REPO_ROOT}/onebin/toolchain/zig-cc" -target x86_64-linux-gnu.2.27 -O2 \
+         "$_sd/m.c" -o "$_sd/m" -Wl,--strip-debug 2>"$_sd/err"; then
+        _dbg=$(readelf -S "$_sd/m" 2>/dev/null | grep -c '\.debug_' || true)
+        _dyn=$(readelf -S "$_sd/m" 2>/dev/null | grep -c '\.dynsym' || true)
+        if [ "$_dbg" = 0 ] && [ "$_dyn" != 0 ]; then
+            pass "--strip-debug drops DWARF and keeps the audit's inputs"
+        else
+            fail "--strip-debug left ${_dbg} debug sections, .dynsym count ${_dyn}"
+        fi
+    else
+        fail "zig-cc rejects -Wl,--strip-debug"
+        head -2 "$_sd/err" | sed 's/^/       /'
+    fi
+    rm -rf "$_sd"
 fi
-rm -rf "$_sd"
 if grep -q "qt/\*:tools.build:exelinkflags" "$PLAN"; then
     fail "shim is scoped to qt/* again -- that leaves every consumer of libQt6Core.a short"
 else

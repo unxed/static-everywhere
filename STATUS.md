@@ -23,6 +23,51 @@ for this entire stretch of work.
   changes cheaply.
 - Compiler wrappers: `onebin/toolchain/zig-cc`, `zig-c++`.
 
+### Latest diagnostic run (2026-08-28) — CMake generated no C compile rule after the optional-GL hook
+
+The attached archive `f4-qt-zig-build-diagnostic-logs.zip` records the
+failure after the previous `libGL` change. The decisive evidence is in
+`03-build-output-tail.txt`: CMake 3.31.6 finishes configuring, then fails
+eight times during generation with:
+
+```
+Missing variable is:
+CMAKE_C_COMPILE_OBJECT
+```
+
+The cache snapshot also shows `CMAKE_C_ABI_COMPILED FALSE`, while f4's host
+project is a CXX-only project. The earlier `zig: unsupported option
+'-print-multi-os-directory'` line is an Autotools probe warning; it is not
+the error that stopped this build.
+
+#### Cause
+
+`contrib/f4-qt/optional-gl.cmake` added the generated GL forwarder and
+`render-backend-fallback.c` as `.c` files through `Qt6::Gui`'s
+`INTERFACE_SOURCES`. Newer CMake then tried to infer/enable C for a project
+that had already configured only CXX. It left the C compiler rule unset and
+failed at the generate step, before any f4 source was compiled.
+
+#### Fix and regression coverage
+
+- Both optional-GL sources are explicitly marked `LANGUAGE CXX`, keeping
+  them in f4's existing compiler language context.
+- The forwarder generator emits C linkage guards when compiled as C++, so
+  its assembly trampolines still refer to the intended unmangled globals.
+- `tools/test-optional-gl-cxx-only.sh` configures and builds a minimal
+  CXX-only consumer and checks the source-language invariant. It is wired
+  into `tools/preflight-f4-qt.sh`.
+
+Local checks passed without starting the full f4-qt rebuild: the new CXX-only
+regression, the small toolchain CMake build, the five repeated static-plugin
+checks, and the complete `tools/preflight-f4-qt.sh` gate pass. The
+zig-dependent direct optional-GL and host-library probes were skipped because
+`zig` is not installed in this environment. The preflight's strip-debug
+probe now reports that condition as a skip rather than a false failure, and
+the static-plugin symbol check searches captured `nm` output without a
+`pipefail`/`SIGPIPE` race. The full f4-qt build remains delegated to GitHub
+Actions.
+
 ### Waiving the upstream test race — narrowly, loudly, and with an expiry date
 
 Asked to work around the f4 test race so the build can reach everything

@@ -344,9 +344,11 @@ for exe in f4-qt-host F4SomeTest; do
     for plugin in QXcbIntegrationPlugin QOffscreenIntegrationPlugin \
                   QSvgPlugin QSvgIconPlugin QGifPlugin QICOPlugin \
                   QtQuick2Plugin ZoinGalleryPlugin; do
-        printf '%s' "$exe_symbols" | grep -Fq "se_imported_${plugin}" \
-            || fail "${exe} does not carry the import for ${plugin}" \
-                    "$PROBE/build.log"
+        case "$exe_symbols" in
+            *"se_imported_${plugin}"*) ;;
+            *) fail "${exe} does not carry the import for ${plugin}" \
+                    "$PROBE/build.log" ;;
+        esac
     done
 done
 
@@ -354,8 +356,10 @@ done
 # real tree's failure mode, and the reason the hook restricts its
 # INTERFACE_SOURCES entry to EXECUTABLE targets the way Qt itself does.
 archive_symbols=$(nm "$PROBE/build/libZoinCore.a" 2>/dev/null || true)
-if printf '%s' "$archive_symbols" | grep -Fq 'se_imported_'; then
+case "$archive_symbols" in
+*se_imported_*)
     fail 'the import unit was compiled into a static library' "$PROBE/build.log"
-fi
+    ;;
+esac
 
 printf 'static Qt plugin import: both plugins in both consumers: pass\n'
