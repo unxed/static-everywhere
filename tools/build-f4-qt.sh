@@ -140,6 +140,42 @@ if [ -n "${GALLERY}" ] && [ "${GALLERY}" != "public" ]; then
     exit 2
 fi
 
+
+# The host GUI contract, named once.
+#
+# Profile H exists precisely so a binary can be static in everything
+# except a small, declared set of host libraries. onebin's default
+# allowlist covers the C runtime only, so the first audit that read the
+# binary reported 18 x OB0010 -- one per GUI library. They are not
+# accidents, and the fix is to state the contract rather than to widen
+# the profile:
+#
+#   libGL            Qt Quick's renderer, and the reason a GPU-accelerated
+#                    build can exist at all.
+#   libX11, libxcb   the display connection. Qt's xcb platform plugin --
+#   libX11-xcb       the one imported in contrib/f4-qt/import-qt-static-
+#                    plugins.cmake -- links the xcb helper libraries
+#   libxcb-*         directly; they are its published dependencies, not
+#                    ours.
+#   libICE, libSM    X11 session management, pulled in by the same plugin.
+#
+# Deliberately NOT here: fontconfig, freetype, harfbuzz, ssl, zlib and the
+# image codecs. Those are linked statically out of the Conan graph, and
+# if one ever appears in this list it means something stopped being
+# static -- so the list failing to cover a new soname is a signal worth
+# having, not a nuisance to silence with a wildcard.
+F4_QT_HOST_CONTRACT="libGL.so.1 libX11.so.6 libX11-xcb.so.1 libxcb.so.1 \
+libxcb-cursor.so.0 libxcb-icccm.so.4 libxcb-image.so.0 libxcb-keysyms.so.1 \
+libxcb-randr.so.0 libxcb-render.so.0 libxcb-render-util.so.0 \
+libxcb-shape.so.0 libxcb-shm.so.0 libxcb-sync.so.1 libxcb-xfixes.so.0 \
+libxcb-xkb.so.1 libICE.so.6 libSM.so.6"
+
+f4_qt_allow_flags() {
+    for _soname in ${F4_QT_HOST_CONTRACT}; do
+        printf -- '--allow %s ' "${_soname}"
+    done
+}
+
 plan_step() {
     if [ "${PRINT_PLAN}" -eq 1 ]; then
         printf '%s\n' "$1" | sed "s#${REPO_ROOT}#<repo>#g"
@@ -219,7 +255,7 @@ if [ "${CONFIG}" = "linux" ] && [ "${TOOLCHAIN}" = "host" ]; then
     plan_step "cp ${SRC}/embedded/f4-qt-host.gz ${OUT}/"
 
     plan_step "${ONEBIN_BIN} audit --profile static --level 1 --strict ${OUT}/f4"
-    plan_step "${ONEBIN_BIN} audit --profile hybrid --glibc-max 2.27 --level 1 --strict ${SRC}/build-qt/f4-qt-host"
+    plan_step "${ONEBIN_BIN} audit --profile hybrid --glibc-max 2.27 $(f4_qt_allow_flags)--level 1 --strict ${SRC}/build-qt/f4-qt-host"
 
     plan_step "timeout --kill-after=30s 120s env QT_QPA_PLATFORM=offscreen QSG_RHI_BACKEND=software ${SRC}/build-qt/f4-qt-host --f4-ext-connect=127.0.0.1:1 > ${OUT}/smoke.log 2>&1 || [ \$? -eq 2 ]"
     plan_step "! grep -q 'QQmlApplicationEngine failed to load component' ${OUT}/smoke.log"
@@ -729,7 +765,7 @@ HOOKEOF"
     # itself rather than outliving the bug.
     plan_step "cd ${SRC} && ${REPO_ROOT}/tools/ctest-with-waivers.sh --test-dir qt/host/build-portable-linux -C Release --output-on-failure --timeout 300 -R '^(F4|QtShellController|WindowGeometryPersistence)'"
 
-    plan_step "${ONEBIN_BIN} audit --profile hybrid --glibc-max ${GLIBC_BASELINE} --level 1 --strict ${SRC}/qt/host/build-portable-linux/bin/Release/f4-qt-host"
+    plan_step "${ONEBIN_BIN} audit --profile hybrid --glibc-max ${GLIBC_BASELINE} $(f4_qt_allow_flags)--level 1 --strict ${SRC}/qt/host/build-portable-linux/bin/Release/f4-qt-host"
 
     plan_step "timeout --kill-after=30s 120s env QT_QPA_PLATFORM=offscreen QSG_RHI_BACKEND=software ${SRC}/qt/host/build-portable-linux/bin/Release/f4-qt-host --f4-ext-connect=127.0.0.1:1 --f4-ext-nonce=ci-smoke > ${OUT}/smoke.log 2>&1 || [ \$? -eq 2 ]"
     plan_step "! grep -q 'QQmlApplicationEngine failed to load component' ${OUT}/smoke.log"

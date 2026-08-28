@@ -127,6 +127,16 @@ else
     printf '%s\n' "$RPATH_TEST" | sed 's/^/       /'
 fi
 
+# Cost: the first audit that could read the binary reported 18 of these
+# after the rpath fix -- one per host GUI library. Profile H exists to
+# permit exactly such a set, but only when it is declared.
+if CONTRACT_TEST=$("${REPO_ROOT}/tools/test-host-contract.sh" 2>&1); then
+    pass "the host GUI contract is declared and still enumerated"
+else
+    fail "host contract regression"
+    printf '%s\n' "$CONTRACT_TEST" | sed 's/^/       /'
+fi
+
 # And that the flag survives the wrappers and leaves the audit's inputs
 # alone: --strip-debug must remove DWARF while keeping .dynsym and
 # .gnu.version_r, which is what the glibc baseline check reads.

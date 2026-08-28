@@ -78,6 +78,51 @@ Worth stating because it nearly cost more than the bug: an intermittent
 check is worse than none. It had already fired inside the preflight and
 sent me looking at `PATH` before the repetition showed it was timing.
 
+### Latest diagnostic run (2026-08-28, later still) — rpath gone; the remaining 18 are the host contract, undeclared
+
+`CMAKE_SKIP_RPATH` worked: **47 OB0040 errors to zero**, and the residual
+`/usr/lib64:/usr/lib` I had noted as an open question did not appear in
+CI at all — so it was a local-probe artefact, and leaving it alone rather
+than chasing it was the right call.
+
+What remains is 18 x `OB0010`, and every one is a host GUI library:
+
+```
+libGL.so.1  libX11.so.6  libX11-xcb.so.1  libxcb.so.1
+libxcb-cursor/icccm/image/keysyms/randr/render/render-util/shape/shm/sync/xfixes/xkb
+libICE.so.6  libSM.so.6
+```
+
+Profile H exists precisely so a binary can be static in everything except
+a small, declared set of host libraries — but onebin's default allowlist
+covers the C runtime only, so the contract has to be **stated**. It now
+is, in one place, with a reason per group: `libGL` for Qt Quick's
+renderer; `libX11`/`libxcb`/`libX11-xcb` for the display connection; the
+`libxcb-*` helpers and `libICE`/`libSM` because Qt's xcb platform plugin
+links them directly — its published dependencies, not ours.
+
+Deliberately absent: fontconfig, freetype, harfbuzz, ssl, zlib, the image
+codecs. Those are static, out of the Conan graph, and **if one ever shows
+up in this list it means something stopped being static** — so the list
+failing to cover a new soname is a signal worth having, never something
+to silence with a wildcard.
+
+Verified against the real auditor: a probe with a genuine `libX11`
+dependency is reported, and naming it clears the finding, 1 to 0.
+
+`tools/test-host-contract.sh` keeps the mechanism honest and, more
+importantly, keeps the *shape* honest — no wildcard in the list, and
+every hybrid audit both `--strict` and carrying the contract. It does not
+pin the 18 names: that set shifts legitimately with Qt's plugin
+dependencies, and the audit is already the check on membership.
+
+Two of my own errors surfaced writing it, both the same species — a check
+that asked "does one exist" where it meant "do all". Asking whether *a*
+strict invocation existed passed a build where the one that matters had
+lost `--strict`, because there are two; and counting every mention
+matched a comment describing the command. Both now count plan steps and
+compare totals.
+
 ### Latest diagnostic run (2026-08-28, later) — 708 MB → **50 MB**, and the audit finally reported on the binary itself
 
 The strip worked, by more than expected: **708 MB → 50 MB**, well inside
