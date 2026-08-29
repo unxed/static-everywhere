@@ -346,13 +346,15 @@ meson_dep harfbuzz "${harfbuzz_src}" harfbuzz \
 
 if [ ! -f "${PREFIX}/.built-freetype-harfbuzz" ]; then
     freetype_build="${WORK}/build/freetype-harfbuzz"
+    # FindHarfBuzz.cmake expects the directory containing hb.h; HarfBuzz
+    # installs it below include/harfbuzz, not directly below include.
     run cmake -S "${freetype_src}" -B "${freetype_build}" \
         -G Ninja -DCMAKE_TOOLCHAIN_FILE="${CMAKE_TOOLCHAIN}" \
         -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="${PREFIX}" \
         -DCMAKE_INSTALL_LIBDIR=lib -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
         -DBUILD_SHARED_LIBS=OFF -DFT_DISABLE_HARFBUZZ=OFF \
         -DFT_DYNAMIC_HARFBUZZ=OFF -DFT_REQUIRE_HARFBUZZ=ON \
-        -DHarfBuzz_INCLUDE_DIR="${PREFIX}/include" \
+        -DHarfBuzz_INCLUDE_DIR="${PREFIX}/include/harfbuzz" \
         -DHarfBuzz_LIBRARY="${PREFIX}/lib/libharfbuzz.a" \
         -DZLIB_LIBRARY="${PREFIX}/lib/libz.a" \
         -DZLIB_INCLUDE_DIR="${PREFIX}/include"
