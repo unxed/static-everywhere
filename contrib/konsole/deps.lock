@@ -1,0 +1,11 @@
+# contrib/konsole/deps.lock — pinned inputs for the Konsole showcase.
+# The Qt/KF6 graph is built from source; only the ABI-stable desktop contract
+# remains on the host (X11/xcb and OpenGL), exactly as in f4-qt.
+konsole 264ecd0808f752a10204f954dfc1f87f7aba9ea8 - https://github.com/KDE/konsole.git
+qt 6.11.1 - -
+icu 78.1 - -
+kde-builder 985bdc9abbffaf2fdb90e4b10392bdd6a1272ba8 - https://invent.kde.org/sdk/kde-builder.git
+conan 2.29.1 - -
+cmake 3.31.6 - -
+ninja 1.13.0 - -
+zig 0.13.0 - https://ziglang.org/download/0.13.0/zig-linux-x86_64-0.13.0.tar.xz

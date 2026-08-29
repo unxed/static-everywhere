@@ -1,0 +1,45 @@
+config-version: 2
+
+global:
+  branch-group: latest-kf6
+  include-dependencies: true
+  source-dir: "@KDE_SOURCE_DIR@"
+  build-dir: "@KDE_BUILD_DIR@"
+  install-dir: "@KDE_INSTALL_DIR@"
+  log-dir: "@KDE_LOG_DIR@"
+  persistent-data-file: "@KDE_STATE_DIR@/persistent.json"
+  cmake-generator: Ninja
+  stop-on-failure: true
+  run-tests: false
+  check-self-updates: false
+  compile-commands-export: false
+  compile-commands-linking: false
+  num-cores: "@KDE_JOBS@"
+  cmake-options: >
+    -DCMAKE_BUILD_TYPE=Release
+    -DCMAKE_TOOLCHAIN_FILE=@CONAN_TOOLCHAIN@
+    -DCMAKE_C_COMPILER=@ZIGCC@
+    -DCMAKE_CXX_COMPILER=@ZIGCXX@
+    -DCMAKE_PREFIX_PATH=@CMAKE_PREFIX_PATH@
+    -DCMAKE_PROJECT_INCLUDE=@PROJECT_INCLUDE@
+    -DBUILD_SHARED_LIBS=OFF
+    -DCMAKE_SKIP_RPATH=ON
+    -DCMAKE_INSTALL_RPATH_USE_LINK_PATH=OFF
+    -DCMAKE_FIND_PACKAGE_PREFER_CONFIG=ON
+    -DCMAKE_FIND_USE_PACKAGE_REGISTRY=OFF
+    -DCMAKE_FIND_USE_SYSTEM_PACKAGE_REGISTRY=OFF
+    -DCMAKE_IGNORE_PREFIX_PATH=/usr;/lib;/lib64
+    -DKDE_INSTALL_USE_QT_SYS_PATHS=OFF
+    -DONEBIN_GLIBC_BASELINE=2.27
+    -DBUILD_TESTING=OFF
+    -DUSE_DBUS=OFF
+    -DWITH_KAPSULE=OFF
+    -DWITH_LIBSSH=OFF
+    -DWITH_X11=ON
+    -DENABLE_PLUGIN_SSHMANAGER=OFF
+    -DENABLE_PLUGIN_QUICKCOMMANDS=OFF
+    -DKONSOLE_BUILD_UNI2CHARACTERWIDTH=OFF
+    -DINSTALL_ICONS=ON
+
+override konsole:
+  revision: "@KONSOLE_REF@"
