@@ -174,7 +174,8 @@ allow libsystemd
 #      libedit inside mesa's closure, liblz4 from libsystemd, and
 #      libXxf86vm/libpciaccess from the GLX path specifically (they do not
 #      appear on the EGL path measured in probe report II -- the two backends
-#      have genuinely different host contracts).
+#      have genuinely different host contracts). GSettings also loads the
+#      host GVfs modules when the terminal schemas are installed.
 allow libcairo-gobject
 allow libpangoft2
 allow libatspi
@@ -183,3 +184,5 @@ allow libpciaccess
 allow libbsd
 allow libmd
 allow liblz4
+allow libgvfscommon
+allow libgvfsdbus
