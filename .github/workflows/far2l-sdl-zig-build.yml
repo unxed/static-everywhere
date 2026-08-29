@@ -52,6 +52,7 @@ jobs:
             https://ziglang.org/download/0.13.0/zig-linux-x86_64-0.13.0.tar.xz
           tar xf zig.tar.xz
           echo "$PWD/zig-linux-x86_64-0.13.0" >> "$GITHUB_PATH"
+          echo "$PWD/onebin/toolchain" >> "$GITHUB_PATH"
 
       - name: Build onebin and run fast far2l checks
         run: |
@@ -117,6 +118,7 @@ jobs:
             https://ziglang.org/download/0.13.0/zig-linux-x86_64-0.13.0.tar.xz
           tar xf zig.tar.xz
           echo "$PWD/zig-linux-x86_64-0.13.0" >> "$GITHUB_PATH"
+          echo "$PWD/onebin/toolchain" >> "$GITHUB_PATH"
 
       - name: Build onebin
         run: make -C onebin
@@ -229,6 +231,15 @@ jobs:
             echo '=== df -h ==='; df -h
             echo '=== free -h ==='; free -h
           } > "$diag/05-system-state.txt"
+
+      - name: Upload far2l SDL diagnostic logs
+        if: failure() || cancelled()
+        uses: actions/upload-artifact@v4
+        with:
+          name: far2l-sdl-diagnostic-logs
+          path: /tmp/far2l-sdl-diagnostic-logs
+          if-no-files-found: warn
+          retention-days: 14
 
       - name: Upload far2l SDL artifacts
         if: always()
