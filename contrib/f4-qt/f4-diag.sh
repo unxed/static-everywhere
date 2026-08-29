@@ -116,12 +116,30 @@ LOG="${SCRIPT_DIR}/f4-diag-${STAMP}.log"
     printf 'binary: %s\n' "$F4"
     printf 'args:   %s\n' "${passthrough[*]:-(none)}"
     printf 'env:    QT_DEBUG_PLUGINS=1 QSG_INFO=1 SE_RENDER_DEBUG=1\n'
+    printf '        F4_DETACHED=1  (keeps f4 in the foreground: it would\n'
+    printf '                        otherwise re-exec detached with stdio\n'
+    printf '                        on /dev/null and this log would be empty)\n'
     printf '        QT_LOGGING_RULES=%s\n' "$QT_LOGGING_RULES"
     [ -n "${QT_QPA_PLATFORM:-}" ] && printf '        QT_QPA_PLATFORM=%s\n' "$QT_QPA_PLATFORM"
     [ -n "${QT_QUICK_BACKEND:-}" ] && printf '        QT_QUICK_BACKEND=%s\n' "$QT_QUICK_BACKEND"
 
     printf '\n%s\n' '----- f4 output (stderr+stdout) -----'
 } >"$LOG" 2>&1
+
+# Keep f4 in the foreground, or there is nothing to capture.
+#
+# On a desktop f4 auto-detects GUI mode from DISPLAY/WAYLAND_DISPLAY and
+# then detaches: it re-execs itself with Setsid, points the child's
+# stdio at /dev/null, and the parent exits 0 immediately. Run plainly,
+# this wrapper therefore recorded an empty output section and exit 0 --
+# a correct launch that looked like a silent failure, with the Qt host
+# and all its QT_DEBUG_PLUGINS/QSG_INFO output living in a process we
+# had no handle on.
+#
+# F4_DETACHED=1 is f4's own signal that the re-exec has already happened
+# (--attached does the same via the command line). Either keeps the real
+# work in our process, where its output reaches the log.
+export F4_DETACHED=1
 
 # Run f4 and capture everything, but keep it attached to a terminal.
 #
@@ -168,10 +186,11 @@ fi
     # block opens, so the log is not read and written in one pipeline.)
     if [ "$captured_anything" -eq 0 ]; then
         printf '\nNOTE: f4 produced no output at all.\n'
-        printf '      With exit code 0 this usually means it started, found\n'
-        printf '      nothing to do, and returned -- e.g. a GUI mode that needs\n'
-        printf '      an argument (a file or directory to open).\n'
-        printf '      Try:  ./f4-diag -- <path-to-an-image>\n'
+        printf '      F4_DETACHED=1 was set, so this is not the usual cause\n'
+        printf '      (f4 re-execing itself and exiting 0 in the parent).\n'
+        printf '      Check whether GUI mode was selected at all: it keys off\n'
+        printf '      DISPLAY / WAYLAND_DISPLAY, and without either f4 goes to\n'
+        printf '      console mode, which needs a terminal.\n'
     fi
     if [ "$rc" -ne 0 ]; then
         printf '\nIf the window never appeared, the most telling lines above are:\n'

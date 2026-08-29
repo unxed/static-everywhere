@@ -106,4 +106,26 @@ EMPTYLOG=$(ls -t "$PROBE"/f4-diag-*.log 2>/dev/null | head -1)
 grep -q 'produced no output' "$EMPTYLOG" \
     || { printf 'an empty run was not called out in the log\n' >&2; exit 1; }
 
+# 7. f4 detaches on a desktop: it re-execs itself with Setsid, points the
+# child's stdio at /dev/null and exits 0 in the parent. Run plainly, the
+# wrapper captured an empty section and exit 0 -- a correct launch that
+# looked like a silent failure. The wrapper must set F4_DETACHED=1 so the
+# real work stays in our process and its output reaches the log.
+cat >"$PROBE/f4" <<'EOF'
+#!/usr/bin/env bash
+if [ "${F4_DETACHED:-}" != "1" ]; then
+    F4_DETACHED=1 setsid "$0" "$@" >/dev/null 2>&1 &
+    exit 0
+fi
+printf 'POST-DETACH-OUTPUT\n'
+EOF
+chmod +x "$PROBE/f4"
+rm -f "$PROBE"/f4-diag-*.log
+( cd "$PROBE" && ./f4-diag >/dev/null 2>&1 ) || true
+# shellcheck disable=SC2012
+DETACHLOG=$(ls -t "$PROBE"/f4-diag-*.log 2>/dev/null | head -1)
+grep -q 'POST-DETACH-OUTPUT' "$DETACHLOG" \
+    || { printf 'f4 detached and its output was lost; F4_DETACHED not honoured\n' >&2
+         exit 1; }
+
 printf 'f4-diag: no printf errors, child output and exit code captured\n'

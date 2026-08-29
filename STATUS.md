@@ -7,6 +7,42 @@ Everything below this section is a reverse-chronological log (newest
 first). Read *this* section first; consult the log below only for the
 detail behind a specific claim.
 
+### The empty log was f4 detaching — a correct launch that looked like a silent failure
+
+Studying the desktop run before spending another two hours of CI paid
+off. f4 exited 0 with no output whether or not a file argument was given,
+and `QT_DEBUG_PLUGINS=1` / `QSG_INFO=1` produced nothing — which cannot
+happen if Qt started at all.
+
+Reading the pinned f4 (`Zoinen/f4` at the plan's PIN, where `package
+main` lives in the root — my newer local clone had moved it to
+`cmd/f4`, which is why a plain `go build .` there produced an `ar
+archive` and briefly confused the diagnosis) explains all of it:
+
+- GUI mode is auto-detected from `DISPLAY`/`WAYLAND_DISPLAY`, so **no
+  argument is needed** — both of the user's runs were selecting GUI
+  correctly;
+- `checkAndDetach` then re-execs f4 with `Setsid: true`, points the
+  child's stdin/stdout/stderr at `/dev/null`, and the parent calls
+  `os.Exit(0)`.
+
+So the exit 0 was the parent's, immediate and correct; the Qt host and
+every diagnostic line we asked for were in a detached process whose
+output went to `/dev/null`. Nothing was broken — the wrapper simply had
+no handle on the process that mattered.
+
+f4 provides the way out itself: `F4_DETACHED=1` (the env var it sets on
+its own re-exec) or `--attached`. f4-diag now exports the former, says so
+in the launch-configuration section, and the empty-output note points at
+GUI-mode selection instead of detaching, since detaching is now handled.
+A stand-in that reproduces the real detach (setsid, stdio to /dev/null,
+parent exits 0) is in the test, with a control that removing the export
+loses the output again.
+
+Two rounds now where the diagnostic tool, not the build, was what stood
+between us and the answer. Worth remembering that a tool which observes
+by redirecting is a tool that can change what it observes.
+
 ### The audit report worked, and it named a regression I had shipped
 
 `00-audit-f4.audit.txt` arrived in the artifact and answered the question
