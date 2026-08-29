@@ -229,12 +229,15 @@ meson_dep harfbuzz harfbuzz "${harfbuzz_src}" harfbuzz \
     -Dsubset=disabled \
     -Dfreetype=enabled
 
+# FreeType's FindHarfBuzz.cmake expects the directory containing hb.h.
+# HarfBuzz installs that header below include/harfbuzz; using its parent
+# makes the module's hb-version.h fallback miss the version.
 if ! built freetype-p2; then
     cmake_dep freetype-p2 freetype "${freetype_src}" freetype-p2 \
         -DFT_DISABLE_HARFBUZZ=OFF \
         -DFT_DYNAMIC_HARFBUZZ=OFF \
         -DFT_REQUIRE_HARFBUZZ=ON \
-        -DHarfBuzz_INCLUDE_DIR="${PREFIX}/harfbuzz/include" \
+        -DHarfBuzz_INCLUDE_DIR="${PREFIX}/harfbuzz/include/harfbuzz" \
         -DHarfBuzz_LIBRARY="${PREFIX}/harfbuzz/lib/libharfbuzz.a" \
         -DZLIB_LIBRARY="${PREFIX}/zlib/lib/libz.a" \
         -DZLIB_INCLUDE_DIR="${PREFIX}/zlib/include"

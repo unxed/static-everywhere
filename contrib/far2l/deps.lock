@@ -125,9 +125,10 @@ freetype 2.14.3 e61b31ab26358b946e767ed7eb7f4bb2e507da1cfefeb7a8861ace7fd5c899a1
 # reaching for `dlopen("libharfbuzz.so...")`. Also note the *_INCLUDE_DIRS/
 # *_LIBRARY cache-variable trick used elsewhere in this file does not apply
 # here: FreeType's own `builds/cmake/FindHarfBuzz.cmake` module looks for
-# `HarfBuzz_INCLUDE_DIR`/`HarfBuzz_LIBRARY` (singular, via pkg-config), so
-# just pointing `PKG_CONFIG_PATH` at this HarfBuzz build's installed
-# `harfbuzz.pc` is what actually gets it found.
+# `HarfBuzz_INCLUDE_DIR`/`HarfBuzz_LIBRARY` (singular). Its include directory
+# must be the one containing `hb.h` (`include/harfbuzz`), because this old
+# module reads `hb-version.h` from that same directory when its non-standard
+# `PC_HARFBUZZ_CFLAGS_VERSION` lookup is empty.
 harfbuzz 14.2.1 a54a5d8e9380a41fbb762ce367bcbf7704792dfca0d93f1bbca86c5a57902e0e https://github.com/harfbuzz/harfbuzz/releases/download/14.2.1/harfbuzz-14.2.1.tar.xz
 
 # expat: XML parser for fontconfig's config-file backend
