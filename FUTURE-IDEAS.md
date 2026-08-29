@@ -361,51 +361,6 @@ Instead of loading distro `libvulkan.so.1` (which might be missing on minimal di
 
 This removes the dichotomy between "Static" and "Hybrid": every binary is static, self-contained, and universal, while retaining full hardware acceleration on every desktop.
 
-### 1.10.2 The same goal, re-cut: the boundary is the hard part, not the loader
-
-§1.10.1 proposes four in-process mechanisms. The reason to re-examine the shape is that the closest prior art shipped those mechanisms to millions of machines — and what defeated it was the boundary, not the loader.
-
-**libcapsule** (Collabora, for Valve / Steam Runtime pressure-vessel) loads the host's `libGL` into a private link-map namespace via `dlmopen`, with its own glibc alongside the application's. The failure report is precise: `libXi` allocates with the outer `malloc` and frees with `XFree` (which calls the inner `free`) — two glibc heaps, one pointer, crash.
-
-> **The cut has to be somewhere that no memory ownership, no opaque handle, and no global state crosses.**
-
-#### The cut that satisfies the rule: Vulkan ICD + dma-buf
-
-The Vulkan driver interface is specified as an airtight boundary:
-- Drivers are discovered by manifest (`/usr/share/vulkan/icd.d/*.json`).
-- Entry is a single negotiated function pair (`vk_icdNegotiateLoaderICDInterfaceVersion` and `vk_icdGetInstanceProcAddr`).
-- Memory allocations go through `VkAllocationCallbacks` (the application never frees driver memory with its own allocator).
-- Rendered frames cross as kernel **dma-buf file descriptors** (`VK_EXT_external_memory_dma_buf`), and synchronization crosses via sync fds (`VK_KHR_external_semaphore_fd`).
-
-Presentation stays on the application's side via pure socket protocol (DRI3 `PixmapFromBuffers` or Wayland `zwp_linux_dmabuf_v1`). `Zink` provides OpenGL 4.6 over Vulkan.
-
-#### Most hardware needs no bridge at all
-
-The Linux kernel DRM uAPI (`/dev/dri/renderD128`) is completely stable across distributions:
-- **AMD**: Bundled static RADV (Mesa) talks directly to `amdgpu` ioctl.
-- **Intel**: Bundled static ANV (Mesa) talks directly to `i915`/`xe`.
-- **NVIDIA (nouveau / open kernel)**: Bundled static NVK (Mesa 25.1+).
-- **Software**: Bundled static lavapipe.
-
-A statically linked Mesa inside a static-PIE binary yields **Profile S with hardware acceleration** on AMD, Intel, and open-kernel NVIDIA with zero host userspace dependencies.
-
-#### Proprietary NVIDIA: Out-of-process helper
-
-For the proprietary `nvidia.ko` stack, userspace must match the kernel driver. Launch a minimal helper process using the host's own dynamic loader (`/lib64/ld-linux-x86-64.so.2` or musl's loader), run the NVIDIA driver in its native environment, and pass rendered dma-buf fds back over `SCM_RIGHTS`.
-
-#### The Profile U Ladder:
-0. **Bundled Mesa, kernel-only**: Static-PIE, direct `/dev/dri` ioctls + dma-buf + Zink. (AMD, Intel, NVIDIA-nouveau, software).
-1. **Host ICD in helper process**: For proprietary NVIDIA. Native host libc, fds across domain socket.
-2. **Host ICD in-process via `micro-ld`**: Optimization only if step 1 latency warrants it.
-
-### 1.10.3 The wire is the ABI
-
-Preferring wire protocols over library ABIs eliminates interposition and memory-ownership collisions entirely:
-- **X11**: Pure X11 wire protocol + DRI3 / Present (via static xcb). `DRI3Open` gets the DRM fd directly from the X server over the socket.
-- **Wayland**: Pure `wayland.xml` protocol + `zwp_linux_dmabuf_v1`.
-- **D-Bus**: Socket protocol for portals and notifications.
-- **Audio**: PulseAudio/PipeWire socket protocol or `/dev/snd` ALSA kernel uAPI.
-
 Purely to make the shape concrete. **This is not a specification.**
 
 ### 1.10.2 The same goal, re-cut: the boundary is the hard part, not the loader
@@ -482,7 +437,7 @@ The second re-cut is larger. Ask what the host userspace is actually
 |---|---|---|
 | AMD | RADV (Mesa) | No — bundle it; talks to `amdgpu` via ioctl |
 | Intel | ANV (Mesa) | No — same, via `i915`/`xe` |
-| NVIDIA, Maxwell..Blackwell, **nouveau kernel** | NVK (Mesa) | No — conformant Vulkan 1.4, default GL via Zink since Mesa 25.1 |
+| NVIDIA, Maxwell..Blackwell, **nouveau kernel** | NVK (Mesa) | No — shipped since Mesa 24.1, conformant Vulkan 1.4, and the default GL via Zink since Mesa 25.1 |
 | No GPU / no permission | lavapipe (Mesa) | No — software Vulkan |
 | NVIDIA, **proprietary kernel module** | `libGLX_nvidia.so.0` | **Yes** — userspace must match the kernel module |
 
@@ -583,6 +538,10 @@ research programme, and it is the rung that decides whether the rest is
 worth anything.
 
 ### 1.10.3 The wire is the ABI
+
+This is not a new observation in this file — §1.3's table already says
+it, in the row that reads "X11: a wire protocol over a socket, fully
+specified since 1987". What follows is that row taken to its conclusion.
 
 There is no need to negotiate with X11 at all. The X protocol is a
 published specification; `xcb` is *generated* from machine-readable
