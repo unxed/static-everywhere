@@ -363,6 +363,180 @@ This removes the dichotomy between "Static" and "Hybrid": every binary is static
 
 Purely to make the shape concrete. **This is not a specification.**
 
+### 1.10.2 The same goal, re-cut: the boundary is the hard part, not the loader
+
+§1.10.1 proposes four mechanisms. All four are buildable. The reason to
+re-examine the shape anyway is that the closest prior art shipped those
+mechanisms, in production, to millions of machines — and what defeated it
+was not any of them.
+
+**libcapsule** (Collabora, for Valve) does exactly A+C: it loads the
+host's `libGL` into a private link-map namespace via `dlmopen`, with its
+own glibc, alongside the application's. It is in the Steam Runtime today,
+under `pressure-vessel`. Two things are worth taking from it.
+
+The first is that the mechanism works. A second glibc *can* live in one
+process.
+
+The second is the failure report, and it is precise. From the NixOS
+discussion of adopting it: the capsuled `libGL` also has to export
+`libX11` symbols, because GLX keeps per-process state tying the screen to
+the client-side GL library; so `libX11` ends up loaded on both sides. And
+then `libXi` allocates with the outer `malloc` and frees with `XFree`,
+which calls the inner `free` — two glibc heaps, one pointer, crash. There
+is no way to say "load this library once and share it across
+namespaces".
+
+So the lesson is not "in-process foreign glibc is impossible". It is:
+
+> **The cut has to be somewhere that no memory ownership, no opaque
+> handle, and no global state crosses.** GLX/X11 is the worst available
+> cut on Linux. It was also the obvious one, which is why everyone picks
+> it and then discovers the heap.
+
+That reframes the problem. Pick the cut first; the loader is then an
+implementation detail with a much smaller job.
+
+#### The cut that satisfies the rule: Vulkan ICD + dma-buf
+
+The Vulkan driver interface is the only graphics boundary on Linux that
+is *specified as a boundary*:
+
+- drivers are discovered by manifest (`/usr/share/vulkan/icd.d/*.json`),
+  not by soname guessing;
+- entry is a single negotiated function pair —
+  `vk_icdNegotiateLoaderICDInterfaceVersion` then
+  `vk_icdGetInstanceProcAddr` — with an explicit interface *version*;
+- every object is an opaque handle, and every allocation the application
+  cares about goes through `VkAllocationCallbacks`. **The application
+  never frees driver memory with its own `free`.** That is the exact
+  property whose absence killed the GLX cut;
+- a headless instance needs no window-system extension at all, so the
+  driver never touches `libX11`, `libxcb` or `libglvnd`.
+
+And the results cross as **file descriptors**: `VK_KHR_external_memory_fd`
++ `VK_EXT_external_memory_dma_buf` for the image,
+`VK_KHR_external_semaphore_fd` for the fence. A dma-buf fd has no ABI, no
+allocator, no TLS and no symbol version. It is a kernel object.
+
+Presentation then stays on *our* side: the static binary owns the
+connection to X11 or Wayland and hands the fd over the wire —
+DRI3 `PixmapFromBuffers`, or `zwp_linux_dmabuf_v1`. Both take fds over
+the existing socket. We already link xcb statically.
+
+`Zink` makes this sufficient rather than merely elegant: it is a
+conformant OpenGL 4.6 implementation over Vulkan, so a Vulkan-only host
+contract still gives Qt a GL.
+
+#### Most of the goal needs no bridge at all
+
+The second re-cut is larger. Ask what the host userspace is actually
+*for*, and the answer, for most hardware, is nothing:
+
+| Hardware | Driver | Needs host userspace? |
+|---|---|---|
+| AMD | RADV (Mesa) | No — bundle it; talks to `amdgpu` via ioctl |
+| Intel | ANV (Mesa) | No — same, via `i915`/`xe` |
+| NVIDIA, Maxwell..Blackwell, **nouveau kernel** | NVK (Mesa) | No — conformant Vulkan 1.4, default GL via Zink since Mesa 25.1 |
+| No GPU / no permission | lavapipe (Mesa) | No — software Vulkan |
+| NVIDIA, **proprietary kernel module** | `libGLX_nvidia.so.0` | **Yes** — userspace must match the kernel module |
+
+The kernel's DRM uAPI is the one genuinely stable ABI Linux has. A
+statically linked Mesa against `/dev/dri/renderD128` is *Profile S with
+hardware acceleration* — no `PT_INTERP`, no `DT_NEEDED`, no host libc,
+running identically on Alpine, CentOS 7 and a scratch container.
+
+That is not a fallback. That is the primary path, and it covers every
+vendor except one configuration: a machine running NVIDIA's proprietary
+stack, where `nouveau` is not bound and NVK therefore cannot drive the
+card.
+
+So the ABI bridge — the hardest, riskiest part of §1.10.1 — is needed for
+**one vendor, in one configuration**. That is a very different project
+from "we must emulate glibc to have graphics".
+
+#### And for that one case, out-of-process is strictly cheaper
+
+For the proprietary NVIDIA stack the driver's userspace must come from
+the host. It does not follow that it must live in *our* process.
+
+Ship a small helper and launch it with **the host's own loader**, found
+at runtime — `/lib64/ld-linux-x86-64.so.2`, else
+`/lib/ld-musl-x86_64.so.1`. Invoking the loader explicitly
+(`execve(loader, [loader, helper, ...])`) overrides `PT_INTERP`, so one
+helper binary works on either libc: the host's loader resolves the host's
+libc for it. The helper does nothing but hold the ICD and render into
+exported dma-bufs; we pass fds back over `SCM_RIGHTS`.
+
+The comparison is not close:
+
+| | In-process (`micro-ld` + bridge) | Helper process |
+|---|---|---|
+| glibc ABI emulated | ~60–80 functions, plus struct translation | none — driver runs on its native libc |
+| TLS | private slab + custom `__tls_get_addr` | none |
+| `IFUNC`/`IRELATIVE` resolvers | must implement | none |
+| C++ exceptions in the driver | must provide `dl_iterate_phdr` so the unwinder can find FDEs | none |
+| Symbol versioning | must implement | none |
+| Failure mode | memory corruption, far from the cause | process exits; we fall back |
+| Cost | zero IPC | one process, fd passing, submission latency |
+
+The in-process version buys latency and pays in the currency this project
+has learned to distrust: failures that surface far from their cause. It
+is an optimisation to reach for *after* measurement, not the architecture.
+
+Two details of that table are worth keeping even if the helper wins,
+because they are the traps a future in-process attempt will hit and
+§1.10.1 does not list: **`dl_iterate_phdr`** (without it, any C++
+exception thrown inside the driver terminates, because the unwinder
+cannot find the `.eh_frame_hdr` of a module the host loader never
+registered) and **`IFUNC`** (glibc resolves `memcpy`, `strlen` and
+friends through `IRELATIVE` relocations at load time; a relocator that
+handles only the five types listed will load a driver that immediately
+jumps to address zero).
+
+#### The ladder
+
+Each rung is independently useful, independently testable, and degrades
+into the one below it:
+
+0. **Bundled Mesa, kernel-only.** Static-PIE, `/dev/dri` + dma-buf +
+   Zink. Covers AMD, Intel, NVIDIA-on-nouveau, and software. No host
+   userspace whatsoever.
+1. **Host ICD in a helper process.** Only for the proprietary NVIDIA
+   configuration. Native libc, fds across.
+2. **Host ICD in-process via `micro-ld`.** Only if 1 is measured and
+   found wanting.
+
+Profile U is then not one heroic mechanism but a *contract*: the binary
+has no `PT_INTERP` and no `DT_NEEDED`, and every contact with the host
+goes through a file descriptor. Which — and this is the part that makes
+it ours rather than a wish — **is auditable**. `onebin` already reads
+`DT_NEEDED` and `PT_INTERP`; a `--profile universal` would add: no
+interpreter, no needed libraries, and no host path reached except
+`/dev/dri/*` and sockets. A claim we can check is worth more than an
+architecture we can describe.
+
+#### The experiment that would settle rung 0
+
+In the spirit of §1.12, and much smaller than it: a static-PIE musl
+binary that opens `/dev/dri/renderD128`, creates a Vulkan instance from a
+**statically linked** lavapipe and then RADV, renders one triangle into a
+`VK_EXT_external_memory_dma_buf` image, and presents it through raw xcb
+DRI3 `PixmapFromBuffers`.
+
+If that draws on Ubuntu, on Alpine, and in a `FROM scratch` container
+with only `/dev/dri` bind-mounted, then Profile U rung 0 exists, on
+hardware, with no host userspace and no ABI bridge — and the remaining
+question shrinks to one vendor's proprietary driver.
+
+If it does not, the failure will be specific and cheap to read, which is
+more than can be said for discovering the same thing three layers into a
+glibc emulator.
+
+**Still not a specification.** But the first rung is a weekend, not a
+research programme, and it is the rung that decides whether the rest is
+worth anything.
+
 ```
 Profile U — one image, N heads
 
