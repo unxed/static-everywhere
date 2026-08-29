@@ -89,8 +89,13 @@ else
             pass "$(grep -o '[0-9]* passed, [0-9]* failed, [0-9]* warnings' "${OUT}/gt-probe-report.txt" | tail -1)"
         else
             fail "gt-probe --strict"
-            grep -E 'FAIL|MISSING|undeclared' "${OUT}/gt-probe-report.txt" 2>/dev/null \
-                | head -20 | sed 's/^/       /'
+            # Whole sections, not a keyword grep. gt-probe lists undeclared
+            # sonames indented and without any keyword, so the grep this
+            # replaced printed the count and none of the names -- leaving the
+            # reader to re-run the job to find out what had drifted. See
+            # tools/gt-report-summary.sh.
+            "${REPO_ROOT}/tools/gt-report-summary.sh" \
+                "${OUT}/gt-probe-report.txt" 2>&1 | sed 's/^/       /'
         fi
     fi
 

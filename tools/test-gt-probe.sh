@@ -184,6 +184,85 @@ else
     fi
 fi
 
+# ---- the failure summariser ---------------------------------------------
+#
+# This is the thing that gets read when something has already gone wrong, so it
+# has to work on the first try. The grep it replaced printed the count of
+# undeclared sonames and none of their names.
+
+SUMMARY="${REPO_ROOT}/tools/gt-report-summary.sh"
+
+# Unreadable report must fail fast with 2, not print an empty summary that
+# looks like "nothing was wrong".
+"$SUMMARY" "${TMP}/no-such-report.txt" >/dev/null 2>&1
+if [ $? -eq 2 ]; then
+    t_ok "summariser fails fast on an unreadable report"
+else
+    t_fail "summariser does not fail fast on an unreadable report"
+fi
+
+# A synthetic report, so this check does not need a display and cannot be
+# fooled by whatever the host happens to map today.
+cat >"${TMP}/synth-report.txt" <<'REPORT'
+== gt-probe: GNOME Terminal dependency load probe ==
+== contract: everything required is mapped ==
+  ok    libgtk-3.so.0                      libgtk-3.so.0.2409.32
+  FAIL  libvte-2.91.so.0                   NOT MAPPED after the exercise
+== dlopen delta: mapped only after gtk_init ==
+    libEGL.so.1.1.0
+== undeclared mappings ==
+    libcanary-one.so.7
+    libcanary-two.so.7
+  FAIL  undeclared mappings                2 mapping(s) not in the contract file
+== gt-probe: 1 passed, 2 failed, 0 warnings ==
+REPORT
+SUM=$("$SUMMARY" "${TMP}/synth-report.txt" 2>&1)
+
+# The names, not just the count. This is the entire point of the script.
+if printf '%s' "$SUM" | grep -q 'libcanary-one.so.7' && \
+   printf '%s' "$SUM" | grep -q 'libcanary-two.so.7'; then
+    t_ok "summariser names every undeclared soname, not just the count"
+else
+    t_fail "summariser prints the count but loses the soname names"
+    printf '%s\n' "$SUM" | sed 's/^/         /'
+fi
+
+if printf '%s' "$SUM" | grep -q 'NOT MAPPED'; then
+    t_ok "summariser carries the failing require line through"
+else
+    t_fail "summariser drops failing 'require' assertions"
+fi
+
+# The tally must always be present, so an empty-looking summary is
+# distinguishable from a summary that ran and found nothing.
+if printf '%s' "$SUM" | grep -q '1 passed, 2 failed'; then
+    t_ok "summariser always ends with the tally"
+else
+    t_fail "summariser omits the tally"
+fi
+
+# A clean report must not be reported as a failure. A summariser that shouts on
+# success gets ignored on failure.
+cat >"${TMP}/clean-report.txt" <<'REPORT'
+== gt-probe: GNOME Terminal dependency load probe ==
+== undeclared mappings ==
+  ok    no undeclared mappings             
+== gt-probe: 26 passed, 0 failed, 0 warnings ==
+REPORT
+CSUM=$("$SUMMARY" "${TMP}/clean-report.txt" 2>&1)
+if printf '%s' "$CSUM" | grep -q 'FAIL'; then
+    t_fail "summariser invents a failure from a clean report"
+else
+    t_ok "a clean report summarises without any FAIL line"
+fi
+
+# preflight must use the summariser rather than reintroducing the grep.
+if grep -q 'gt-report-summary.sh' "${REPO_ROOT}/tools/preflight-gnome-terminal.sh"; then
+    t_ok "preflight explains a failing probe with the summariser"
+else
+    t_fail "preflight no longer uses gt-report-summary.sh"
+fi
+
 echo
 if [ "$FAILED" -eq 0 ]; then
     echo "test-gt-probe: all checks passed"

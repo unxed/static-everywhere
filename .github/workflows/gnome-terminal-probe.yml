@@ -66,6 +66,22 @@ jobs:
       - name: Fast invariant checks
         run: ./tools/preflight-gnome-terminal.sh
 
+      - name: Upload the probe report from preflight
+        # The preflight runs gt-probe --strict, so when the contract drifts it
+        # is preflight that fails and the probe job never starts. Without this
+        # step the report exists on the runner and is thrown away, leaving only
+        # what the summariser printed into the log. Cheap insurance for the one
+        # case where it matters.
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gnome-terminal-preflight-report
+          path: |
+            out/gnome-terminal/gt-probe-report.txt
+            out/gnome-terminal/gt-probe-stderr.txt
+          if-no-files-found: ignore
+          retention-days: 14
+
   probe:
     needs: preflight
     runs-on: ubuntu-24.04
