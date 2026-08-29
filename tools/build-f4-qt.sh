@@ -795,7 +795,23 @@ HOOKEOF"
     plan_step "cd ${SRC} && python ci/package-embedded-qt-host.py qt/host/build-portable-linux/bin/Release/f4-qt-host"
     plan_step "cd ${SRC} && go test -tags f4_embedded_qt_host -run 'TestMaterializeEmbeddedQtHost|TestGeneratedEmbeddedQtHostPayload' ."
     plan_step "mkdir -p ${SRC}/dist/f4-linux-amd64"
-    plan_step "cd ${SRC} && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -tags f4_embedded_qt_host -ldflags='-s -w' -o dist/f4-linux-amd64/f4 ."
+    # -buildmode=pie and -bindnow are load-bearing, not cosmetic.
+    #
+    # f4 is built without cgo and reaches system libraries through goffi,
+    # whose fakecgo path uses //go:cgo_import_dynamic. That makes the Go
+    # linker emit PT_INTERP and DT_NEEDED even under CGO_ENABLED=0, so the
+    # binary is dynamic by construction and audited as Profile H. A
+    # dynamic binary must carry RELRO and BIND_NOW or the audit fails
+    # OB0050/OB0051, both ERROR, and ET_EXEC additionally warns OB0054
+    # (no ASLR).
+    #
+    # External linking would supply them but requires cgo, which f4 avoids
+    # on purpose. Go's internal linker does both alone: -buildmode=pie
+    # emits PT_GNU_RELRO and makes the file ET_DYN, and the linker flag
+    # -bindnow sets DT_BIND_NOW and DF_1_NOW. Verified on Go 1.27 with
+    # goffi 0.6.3, and asserted against this very line by
+    # tools/test-goffi-hardening.sh.
+    plan_step "cd ${SRC} && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -tags f4_embedded_qt_host -buildmode=pie -ldflags='-s -w -bindnow' -o dist/f4-linux-amd64/f4 ."
 
     plan_step "cp ${SRC}/dist/f4-linux-amd64/f4 ${OUT}/f4"
     # Ship the diagnostic wrapper next to the binary. CI cannot test a

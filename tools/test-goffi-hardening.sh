@@ -119,4 +119,27 @@ if ( cd "$PROBE" && CGO_ENABLED=0 go build -trimpath -ldflags='-s -w' \
     esac
 fi
 
+# The assertions above prove the FLAGS work. They say nothing about
+# whether the plan actually passes them -- and that gap is not
+# hypothetical: the flags were once lost from the build line while this
+# test stayed green, so CI shipped an ET_EXEC binary with no RELRO and no
+# BIND_NOW and the audit failed two errors that the preflight had just
+# declared fine. Assert against the real plan line too.
+BUILD_LINE=$(grep -E 'plan_step .*go build .*f4_embedded_qt_host' \
+             "${REPO_ROOT}/tools/build-f4-qt.sh" || true)
+if [ -z "$BUILD_LINE" ]; then
+    printf 'could not find the f4 go build step in the plan\n' >&2
+    exit 1
+fi
+case "$BUILD_LINE" in
+    *-buildmode=pie*) ;;
+    *) printf 'the plan builds f4 without -buildmode=pie: no RELRO, no ASLR\n' >&2
+       printf '  %s\n' "$BUILD_LINE" >&2; exit 1 ;;
+esac
+case "$BUILD_LINE" in
+    *-bindnow*) ;;
+    *) printf 'the plan builds f4 without -bindnow: OB0051 will fail\n' >&2
+       printf '  %s\n' "$BUILD_LINE" >&2; exit 1 ;;
+esac
+
 printf 'goffi f4 build: PIE+bindnow gives RELRO and BIND_NOW, strict Profile H passes\n'

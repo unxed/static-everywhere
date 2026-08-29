@@ -72,4 +72,38 @@ for section in 'host' 'libGL' 'fonts' 'launch configuration' 'f4 output'; do
         || { printf 'the log is missing the %s section\n' "$section" >&2; exit 1; }
 done
 
+# 5. The child must get a real terminal. Capturing output by redirecting
+# both streams into a file leaves it with no tty, and a terminal UI
+# started that way exits immediately and silently -- which is exactly what
+# the first desktop run produced: an empty section and exit 0. The
+# capture must not change what it captures.
+cat >"$PROBE/f4" <<'EOF'
+#!/usr/bin/env bash
+if [ -t 1 ]; then printf 'TTY-PRESENT\n'; else printf 'NO-TTY\n'; fi
+EOF
+chmod +x "$PROBE/f4"
+rm -f "$PROBE"/f4-diag-*.log
+( cd "$PROBE" && ./f4-diag >/dev/null 2>&1 ) || true
+# shellcheck disable=SC2012
+TTYLOG=$(ls -t "$PROBE"/f4-diag-*.log 2>/dev/null | head -1)
+if command -v script >/dev/null 2>&1; then
+    grep -q 'TTY-PRESENT' "$TTYLOG" \
+        || { printf 'the child was run without a tty; a terminal UI would exit silently\n' >&2
+             exit 1; }
+fi
+
+# 6. An empty capture must be called out, since a blank section plus exit
+# 0 is otherwise indistinguishable from a broken wrapper.
+cat >"$PROBE/f4" <<'EOF'
+#!/usr/bin/env bash
+exit 0
+EOF
+chmod +x "$PROBE/f4"
+rm -f "$PROBE"/f4-diag-*.log
+( cd "$PROBE" && ./f4-diag >/dev/null 2>&1 ) || true
+# shellcheck disable=SC2012
+EMPTYLOG=$(ls -t "$PROBE"/f4-diag-*.log 2>/dev/null | head -1)
+grep -q 'produced no output' "$EMPTYLOG" \
+    || { printf 'an empty run was not called out in the log\n' >&2; exit 1; }
+
 printf 'f4-diag: no printf errors, child output and exit code captured\n'

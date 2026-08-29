@@ -7,6 +7,56 @@ Everything below this section is a reverse-chronological log (newest
 first). Read *this* section first; consult the log below only for the
 detail behind a specific claim.
 
+### The audit report worked, and it named a regression I had shipped
+
+`00-audit-f4.audit.txt` arrived in the artifact and answered the question
+that had been a dead end for two runs:
+
+```
+error OB0050  no PT_GNU_RELRO segment
+error OB0051  no BIND_NOW
+warn  OB0054  ET_EXEC in Profile H: not position-independent
+```
+
+Those are exactly the findings `-buildmode=pie -ldflags=-bindnow` was
+supposed to clear. `ET_EXEC` gave it away: the flags were not applied.
+The CI command was `go build -trimpath -tags f4_embedded_qt_host
+-ldflags='-s -w'` — no PIE, no bindnow.
+
+**Cause, and it is mine.** When the hard reset discarded the goffi work,
+I rebuilt it from the handed-off patch. The patch carried the audit
+change and the test, but the edit to the `go build` line had been made
+separately and was not in it. So `b921c88` moved the audit to Profile H
+while leaving the build unhardened — the audit now demanded properties
+the build no longer produced.
+
+**Why nothing caught it.** `test-goffi-hardening.sh` built *its own*
+binary with the right flags and passed, proving the flags work while
+saying nothing about whether the plan passes them. A green gate and an
+unhardened artifact, at the same time. The test now also asserts against
+the real plan line: no `-buildmode=pie` or no `-bindnow` in the f4 build
+step fails the preflight in a minute. Both controls verified.
+
+### f4-diag was capturing by breaking the thing it captured
+
+The printf fix worked — the log is clean — but the output section was
+still empty with exit 0. Not a leftover bug: redirecting both streams
+into a file leaves the child with **no tty**, and a terminal UI started
+that way exits immediately and silently. The wrapper was changing the
+behaviour it existed to observe.
+
+Now it runs the binary under `script(1)`, which gives a real pty and
+still records the transcript, with a plain-redirection fallback that says
+so in the log. And an empty capture is called out explicitly, since a
+blank section plus exit 0 otherwise looks identical to a broken wrapper;
+the check ignores `script`'s own framing lines so a silent run is not
+mistaken for a talkative one. Both directions tested, both controls fail
+when disabled.
+
+What the desktop run does tell us: the binary starts, finds nothing to
+do, and returns 0. The next step is a launch with an actual argument —
+`./f4-diag -- <path-to-an-image>` — which the log now recommends by name.
+
 ### f4 runs on a real desktop — and both diagnostics had bugs that hid the evidence
 
 The binary launched on Linux Mint 22.3, X11, `DISPLAY=:0`, 2527 fonts,

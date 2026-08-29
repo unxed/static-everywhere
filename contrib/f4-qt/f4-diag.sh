@@ -123,14 +123,56 @@ LOG="${SCRIPT_DIR}/f4-diag-${STAMP}.log"
     printf '\n%s\n' '----- f4 output (stderr+stdout) -----'
 } >"$LOG" 2>&1
 
-# Run f4, teeing everything into the log. Do not let a crash abort the
-# capture -- a non-zero exit is exactly what we want recorded.
-"$F4" "${passthrough[@]}" >>"$LOG" 2>&1
-rc=$?
+# Run f4 and capture everything, but keep it attached to a terminal.
+#
+# The first desktop run of this wrapper produced an empty output section
+# and exit 0: redirecting both streams into a file leaves the child with
+# no tty, and a terminal UI started that way exits immediately and
+# silently. Capturing the output must not change the thing being
+# captured. `script` gives the child a real pty and writes the transcript,
+# so the program behaves as it does when launched by hand.
+if command -v script >/dev/null 2>&1; then
+    script -q -e -a "$LOG" -c "$(printf '%q ' "$F4" "${passthrough[@]}")" </dev/null
+    rc=$?
+else
+    # No script(1): fall back to plain redirection and say so, since the
+    # result may then be an artefact of the capture rather than the bug.
+    {
+        printf 'NOTE: script(1) not found; running without a pty. A terminal UI\n'
+        printf '      may exit immediately for that reason alone.\n\n'
+    } >>"$LOG"
+    "$F4" "${passthrough[@]}" >>"$LOG" 2>&1
+    rc=$?
+fi
+
+# Did the run produce anything? Computed here, before the log is reopened
+# for appending, so nothing reads and writes it at once.
+# script(1) frames the transcript with its own "Script started/done"
+# lines; they are not the program's output and must not count as content,
+# or an empty run would look populated.
+if sed -n '/----- f4 output/,$p' "$LOG" \
+   | sed '1d' \
+   | grep -v '^Script started on ' \
+   | grep -v '^Script done on ' \
+   | grep -q '[^[:space:]]'; then
+    captured_anything=1
+else
+    captured_anything=0
+fi
 
 {
     printf '\n%s\n' '----- exit -----'
     printf 'f4 exited with code %d\n' "$rc"
+    # An empty capture is itself a finding; name the likely causes rather
+    # than leaving the reader with a blank section. (Computed before this
+    # block opens, so the log is not read and written in one pipeline.)
+    if [ "$captured_anything" -eq 0 ]; then
+        printf '\nNOTE: f4 produced no output at all.\n'
+        printf '      With exit code 0 this usually means it started, found\n'
+        printf '      nothing to do, and returned -- e.g. a GUI mode that needs\n'
+        printf '      an argument (a file or directory to open).\n'
+        printf '      Try:  ./f4-diag -- <path-to-an-image>\n'
+    fi
     if [ "$rc" -ne 0 ]; then
         printf '\nIf the window never appeared, the most telling lines above are:\n'
         printf '  * "[se-render] ..."      -- which render backend was chosen\n'
