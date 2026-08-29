@@ -10,14 +10,15 @@ class KonsoleQtHostConan(ConanFile):
     # This is intentionally a small Qt surface. Konsole is a Widgets
     # application; QML, Qt Quick, Wayland, DBus and the multimedia backends
     # are not part of the showcase. qtmultimedia itself is required by
-    # Konsole, but its optional audio backends are not.
+    # Konsole, and Qt's qtmultimedia package requires qtshadertools; its
+    # optional audio backends are not.
     default_options = {
         "qt/*:shared": False,
         "qt/*:opengl": "desktop",
         "qt/*:qtmultimedia": True,
         "qt/*:qtdeclarative": False,
         "qt/*:qtimageformats": False,
-        "qt/*:qtshadertools": False,
+        "qt/*:qtshadertools": True,
         "qt/*:qttools": False,
         "qt/*:qttranslations": False,
         "qt/*:qtwayland": False,
