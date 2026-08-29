@@ -55,6 +55,7 @@ executable('probe-c', 'probe.c')
 MESON
 printf '%s\n' 'int main(void) { return 0; }' >"${PROBE}/src/probe.c"
 
+cd "$PROBE"
 meson setup "${PROBE}/build" "${PROBE}/src" \
     --native-file "$NATIVE_FILE" --buildtype release \
     >"${PROBE}/configure.log" 2>&1 \
