@@ -1,35 +1,6 @@
 name: gnome-terminal-hybrid-static-gtk
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'contrib/gnome-terminal/**'
-      - 'tools/build-gnome-terminal.sh'
-      - 'tools/build-gnome-terminal-deps.sh'
-      - 'tools/preflight-gnome-terminal.sh'
-      - 'tools/verify-gnome-terminal-static.sh'
-      - 'onebin/toolchain/**'
-      - '06-REFERENCE-gnome-terminal.md'
-      - 'STATIC-EVERYWHERE.md'
-      - 'DESIGN-onebin.md'
-      - 'README.md'
-      - 'CONFORMING.md'
-      - 'FUTURE-IDEAS.md'
-  pull_request:
-    paths:
-      - 'contrib/gnome-terminal/**'
-      - 'tools/build-gnome-terminal.sh'
-      - 'tools/build-gnome-terminal-deps.sh'
-      - 'tools/preflight-gnome-terminal.sh'
-      - 'tools/verify-gnome-terminal-static.sh'
-      - 'onebin/toolchain/**'
-      - '06-REFERENCE-gnome-terminal.md'
-      - 'STATIC-EVERYWHERE.md'
-      - 'DESIGN-onebin.md'
-      - 'README.md'
-      - 'CONFORMING.md'
-      - 'FUTURE-IDEAS.md'
   workflow_dispatch:
 
 jobs:
