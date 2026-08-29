@@ -20,6 +20,7 @@ on:
       - 'onebin/tools/build-far2l-deps.sh'
       - 'onebin/tools/run-far2l-sdl-smoke.sh'
       - 'onebin/toolchain/**'
+      - 'tools/test-meson-zig-linker.sh'
       - '.github/workflows/far2l-sdl-zig-build.yml'
 
 jobs:
@@ -60,10 +61,13 @@ jobs:
           make -C onebin far2l-plan
           bash -n onebin/tools/build-far2l.sh \
             onebin/tools/build-far2l-deps.sh \
-            onebin/tools/run-far2l-sdl-smoke.sh
+            onebin/tools/run-far2l-sdl-smoke.sh \
+            tools/test-meson-zig-linker.sh
           shellcheck onebin/tools/build-far2l.sh \
             onebin/tools/build-far2l-deps.sh \
-            onebin/tools/run-far2l-sdl-smoke.sh
+            onebin/tools/run-far2l-sdl-smoke.sh \
+            tools/test-meson-zig-linker.sh
+          tools/test-meson-zig-linker.sh
           onebin/tools/build-far2l-deps.sh --print-plan
 
       - name: Check the preview pin and forbidden host toolkit inputs

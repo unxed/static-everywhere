@@ -7,6 +7,46 @@ if ! command -v zig >/dev/null 2>&1; then
     exit 127
 fi
 
+# Meson identifies the linker from the first line printed for -Wl,--version.
+# Zig's default linker prints "zig ld 0.13.0", which is truthful but not one
+# of Meson's recognised GNU/LLD signatures. Translate only this detection
+# probe to the equivalent LLD signature; ordinary compiler calls remain
+# untouched, including their output and exit status.
+_onebin_linker_probe=0
+for _onebin_arg in "$@"; do
+    if [ "$_onebin_arg" = '-Wl,--version' ]; then
+        _onebin_linker_probe=1
+    fi
+done
+if [ "$_onebin_linker_probe" = 1 ]; then
+    _onebin_has_output=0
+    for _onebin_arg in "$@"; do
+        case "$_onebin_arg" in
+            -o|--output=*) _onebin_has_output=1 ;;
+        esac
+    done
+    set +e
+    if [ "$_onebin_has_output" = 0 ]; then
+        # Meson's probe has no input or output. Without this, Zig creates
+        # its default a.out in the current directory just to print the
+        # linker version.
+        _onebin_linker_output=$(zig c++ "$@" -o /dev/null 2>&1)
+    else
+        _onebin_linker_output=$(zig c++ "$@" 2>&1)
+    fi
+    _onebin_linker_status=$?
+    set -e
+    if [ "$_onebin_linker_status" -eq 0 ] &&
+       printf '%s\n' "$_onebin_linker_output" | grep -q '^zig ld '; then
+        printf '%s\n' "$_onebin_linker_output" | sed 's/^zig ld /LLD /'
+    elif [ "$_onebin_linker_status" -eq 0 ]; then
+        printf '%s\n' "$_onebin_linker_output"
+    else
+        printf '%s\n' "$_onebin_linker_output" >&2
+    fi
+    exit "$_onebin_linker_status"
+fi
+
 # See zig-cc for why these filters exist: Conan's AutotoolsDeps generator adds
 # -Wl,-rpath-link,<dep-lib-dir> per dependency, while f4 adds
 # -Wl,--exclude-libs at its final link. Zig rejects both spellings. Dropping
