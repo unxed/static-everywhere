@@ -742,28 +742,42 @@ HOOKEOF"
     plan_step "git -C ${OUT_ABS}/qwk-mirror remote add origin ${QWK_URL}"
     plan_step "git -C ${OUT_ABS}/qwk-mirror fetch -q --depth 1 origin ${QWK_PIN}"
     plan_step "git -C ${OUT_ABS}/qwk-mirror update-ref refs/heads/main ${QWK_PIN}"
-    # qwindowkit must be built with the same toolchain as everything
-    # else. f4's ci/build-qwindowkit.sh runs a plain `cmake -S ... -B ...`
-    # with no compiler settings, so CMake picks the host default -- host
-    # g++, and therefore libstdc++ -- while Qt, f4 and every Conan
-    # package here are built by zig c++, which uses libc++. The two only
-    # meet at the very last link of f4-qt-host, which is exactly where a
-    # real CI run failed:
+    # f4's script passes -DCMAKE_CXX_FLAGS explicitly. That means CMake
+    # ignores the CXXFLAGS environment variable we set below, including the
+    # x86-64/glibc target. On a runner with AVX-512 this silently puts those
+    # instructions into the static QWindowKit archive; the final host then
+    # dies with SIGILL on older CPUs before it can send ExtUI hello. Apply a
+    # small tracked patch to the exact f4 source tree so both CFLAGS and
+    # CXXFLAGS survive into CMake. It is idempotent for a reused checkout,
+    # while a changed upstream script fails rather than silently rebuilding
+    # an unportable dependency.
+    _F4_QWK_PATCH_APPLIED=0
+    plan_step "cd ${SRC} && if git apply --check \"${REPO_ROOT}/contrib/f4-qt/patches/f4-qwindowkit-portable-flags.patch\"; then git apply --quiet \"${REPO_ROOT}/contrib/f4-qt/patches/f4-qwindowkit-portable-flags.patch\"; _F4_QWK_PATCH_APPLIED=1; elif git apply --reverse --check \"${REPO_ROOT}/contrib/f4-qt/patches/f4-qwindowkit-portable-flags.patch\"; then :; else echo 'error: f4 qwindowkit helper does not match the portable-flags patch' >&2; exit 1; fi"
+    # qwindowkit must be built with the same toolchain and target as
+    # everything else. The CC/CXX variables above already select zig c++
+    # (and therefore libc++), but f4's explicit CMAKE_CXX_FLAGS otherwise
+    # discards CXXFLAGS and leaves the compiler's CPU target at the runner's
+    # native default. That is how AVX-512 entered the static archive and
+    # killed f4-qt-host on the desktop before ExtUI hello. The patch makes
+    # the target flags explicit in both CMake language variables.
     #
     #   ld.lld: error: undefined symbol:
     #     std::__detail::_List_node_base::_M_hook(...)
     #     std::_Rb_tree_increment(std::_Rb_tree_node_base*)
     #   >>> referenced by abstractwindowcontext.cpp.o
     #
-    # Those are libstdc++'s own out-of-line symbols, and
-    # abstractwindowcontext.cpp is qwindowkit's. CMake honours CC/CXX and
-    # CFLAGS/CXXFLAGS/LDFLAGS on a fresh configure, so setting them on
-    # the invocation fixes it without patching f4's script -- the same
-    # approach already used here to pin qwindowkit via GIT_CONFIG_*.
+    # The same explicit compiler selection also avoids the earlier
+    # libstdc++/libc++ mismatch at abstractwindowcontext.cpp. The tracked
+    # patch is still needed because CMake's explicit CMAKE_CXX_FLAGS would
+    # otherwise hide the portable CXXFLAGS.
     # The -target flags have to be passed explicitly because the wrappers
     # do not add them; everywhere else they arrive via Conan's
     # tools.build:cflags/cxxflags.
     plan_step "cd ${SRC} && env GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=url.${OUT_ABS}/qwk-mirror.insteadOf GIT_CONFIG_VALUE_0=${QWK_URL} CC=${ZIGCC} CXX=${ZIGCXX} CFLAGS=\"-target x86_64-linux-gnu.${GLIBC_BASELINE}\" CXXFLAGS=\"-target x86_64-linux-gnu.${GLIBC_BASELINE}\" LDFLAGS=\"-target x86_64-linux-gnu.${GLIBC_BASELINE}\" bash ci/build-qwindowkit.sh \"\$PWD/qt/host/build-portable-linux\" Release static"
+    # Keep f4's Go version metadata clean: only undo the overlay applied by
+    # this invocation. A patch already present in the caller's checkout is
+    # deliberately left untouched.
+    plan_step "cd ${SRC} && if [ \"\${_F4_QWK_PATCH_APPLIED}\" -eq 1 ]; then git apply --reverse --quiet \"${REPO_ROOT}/contrib/f4-qt/patches/f4-qwindowkit-portable-flags.patch\"; fi"
 
     # The redirect above is the prevention; this is the detection, and it
     # is what keeps the arrangement from being fragile. If upstream ever
@@ -772,7 +786,7 @@ HOOKEOF"
     # noticing. This turns that into a loud failure.
     plan_step "test \"\$(git -C ${SRC}/build/qwindowkit-src rev-parse HEAD)\" = ${QWK_PIN} || { echo 'error: qwindowkit is not at the pinned commit ${QWK_PIN} -- the GIT_CONFIG_* redirect did not take effect (did upstream change the clone URL?)' >&2; exit 1; }"
 
-    plan_step "cd ${SRC} && cmake -S qt/host -B qt/host/build-portable-linux -G Ninja \
+    plan_step "cd ${SRC} && env CC=\"${ZIGCC}\" CXX=\"${ZIGCXX}\" CFLAGS=\"-target x86_64-linux-gnu.${GLIBC_BASELINE}\" CXXFLAGS=\"-target x86_64-linux-gnu.${GLIBC_BASELINE}\" LDFLAGS=\"-target x86_64-linux-gnu.${GLIBC_BASELINE}\" cmake -S qt/host -B qt/host/build-portable-linux -G Ninja \
 -DCMAKE_TOOLCHAIN_FILE=\"\$PWD/qt/host/build-portable-linux/conan_toolchain.cmake\" \
 -DCMAKE_BUILD_TYPE=Release \
 -DCMAKE_PREFIX_PATH=\"\$PWD/build/qwindowkit-install\" \

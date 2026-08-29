@@ -7,6 +7,29 @@ Everything below this section is a reverse-chronological log (newest
 first). Read *this* section first; consult the log below only for the
 detail behind a specific claim.
 
+### 2026-08-29: fresh host dies with SIGILL before the ExtUI handshake
+
+The newest cached host
+`~/.cache/f4/qt-host/971aafd12dd8e719960d49242490da5c4c5f1375d0077ef0214d33cdb0183b6b/f4-qt-host`
+does not reach f4's protocol at all. Running it through f4 with
+`QT_QUICK_BACKEND=software QT_XCB_GL_INTEGRATION=none` still ends in
+`failed to read extui hello: EOF`; `strace` and gdb show the child being
+killed by `SIGILL` at `vptestnmq`, an AVX-512 instruction. The desktop CPU is
+an Intel i5-6300U with AVX2 but no AVX-512. The old host stays alive under the
+same software-rendering variables, so this is a CPU baseline failure, not an
+OpenGL decision.
+
+The immediate source is f4's `ci/build-qwindowkit.sh`: it sets
+`-DCMAKE_CXX_FLAGS` explicitly, which discards the `CXXFLAGS=-target
+x86_64-linux-gnu.2.27` passed by this repository. QWindowKit can therefore be
+compiled for the CI runner's CPU and its static code is later linked into
+`f4-qt-host`. The build plan now applies the tracked
+`contrib/f4-qt/patches/f4-qwindowkit-portable-flags.patch`, which carries both
+`CFLAGS` and `CXXFLAGS` into those explicit CMake variables, and makes the
+final host configure use the same compiler and target flags. The patch has
+been checked against the pinned f4 tree; a fresh full rebuild is still needed
+to verify the resulting host and image rendering.
+
 ### 2026-08-29: last known launch combination on this desktop
 
 The following invocation is the one that made the required Qt window appear

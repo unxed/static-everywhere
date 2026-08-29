@@ -120,6 +120,29 @@ else
     fail "CMAKE_SKIP_RPATH missing from the toolchain variables"
 fi
 
+# Cost: a full build on a runner with AVX-512. f4's qwindowkit helper sets
+# CMAKE_CXX_FLAGS explicitly, which otherwise discards the portable CXXFLAGS
+# supplied by this project's wrapper. That produced a host which reached the
+# desktop and then died with SIGILL on an older CPU before the ExtUI handshake.
+if grep -q 'f4-qwindowkit-portable-flags.patch' "$PLAN" && \
+   grep -q 'CXXFLAGS="-target x86_64-linux-gnu.2.27"' "$PLAN"; then
+    pass "QWindowKit receives the portable compiler flags"
+else
+    fail "QWindowKit portable-flag patch or target flags missing"
+fi
+
+if [ -f "${PWD}/f4-src/ci/build-qwindowkit.sh" ]; then
+    if git -C "${PWD}/f4-src" apply --check \
+         "${REPO_ROOT}/contrib/f4-qt/patches/f4-qwindowkit-portable-flags.patch"; then
+        pass "the QWindowKit patch applies to the fetched f4 source"
+    elif git -C "${PWD}/f4-src" apply --reverse --check \
+           "${REPO_ROOT}/contrib/f4-qt/patches/f4-qwindowkit-portable-flags.patch"; then
+        pass "the QWindowKit patch is already applied to the fetched f4 source"
+    else
+        fail "the QWindowKit patch does not apply to the fetched f4 source"
+    fi
+fi
+
 if RPATH_TEST=$("${REPO_ROOT}/tools/test-no-embedded-rpath.sh" 2>&1); then
     pass "a probe build embeds no dependency directory in DT_RUNPATH"
 else

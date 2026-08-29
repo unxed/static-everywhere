@@ -1,0 +1,19 @@
+diff --git a/ci/build-qwindowkit.sh b/ci/build-qwindowkit.sh
+--- a/ci/build-qwindowkit.sh
++++ b/ci/build-qwindowkit.sh
+@@ -10,5 +10,6 @@
+ qwk_build="${repo_root}/build/qwindowkit-build"
+ qwk_install="${repo_root}/build/qwindowkit-install"
+ qt_version="$(basename "$(dirname "${qt_root}")")"
+-qwk_cxx_flags=""
++qwk_c_flags="${CFLAGS:-}"
++qwk_cxx_flags="${CXXFLAGS:-}"
+ qwk_platform_args=()
+@@ -45,6 +45,7 @@
+ cmake -S "${qwk_source}" -B "${qwk_build}" -G Ninja \
+     -DCMAKE_BUILD_TYPE="${build_type}" \
+     -DCMAKE_PREFIX_PATH="${qt_root}" \
++    -DCMAKE_C_FLAGS="${qwk_c_flags}" \
+     -DCMAKE_CXX_FLAGS="${qwk_cxx_flags}" \
+     -DCMAKE_INSTALL_PREFIX="${qwk_install}" \
+     -DQWINDOWKIT_BUILD_QUICK=TRUE \
