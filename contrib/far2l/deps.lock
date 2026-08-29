@@ -445,6 +445,7 @@ libnfs 6.0.2 4e5459cc3e0242447879004e9ad28286d4d27daa42cbdcde423248fad911e747 ht
 #
 # Pinned at master's tip as of this check, an actively-developed commit
 # (same day as this pin): far2l master
+# far2l-sdl-ref: 65c29da43971eb1a4f4f43097621cb384a95e04d
 # 65c29da43971eb1a4f4f43097621cb384a95e04d (2026-08-18 16:50:05 +0300,
 # "possible fix"). git hash/date embed into the build's own version
 # string via far2l's CMake (confirmed: configure logged "git hash:

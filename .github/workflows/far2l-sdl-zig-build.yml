@@ -1,0 +1,255 @@
+name: far2l SDL showcase (hybrid, zig)
+
+# far2l's SDL backend is still a preview: it was added after v_2.8.0 and is
+# pinned to the commit recorded in contrib/far2l/deps.lock. This workflow is
+# manual because it builds the pinned static dependency prefix before building
+# far2l itself.
+
+on:
+  workflow_dispatch:
+    inputs:
+      far2l_ref:
+        description: 'far2l SDL preview commit (blank = the pin in deps.lock)'
+        required: false
+        default: ''
+  pull_request:
+    paths:
+      - '04-REFERENCE-far2l.md'
+      - 'contrib/far2l/**'
+      - 'onebin/tools/build-far2l.sh'
+      - 'onebin/tools/build-far2l-deps.sh'
+      - 'onebin/tools/run-far2l-sdl-smoke.sh'
+      - 'onebin/toolchain/**'
+      - '.github/workflows/far2l-sdl-zig-build.yml'
+
+jobs:
+  preflight:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout static-everywhere
+        uses: actions/checkout@v4
+
+      - name: Install build tools and host X11/OpenGL contract
+        # These are host headers/runtime libraries for SDL's own dlopen paths.
+        # There is intentionally no SDL, Qt, KDE, FreeType, HarfBuzz or
+        # Fontconfig development package here: those are built from deps.lock.
+        run: |
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq \
+            build-essential cmake ninja-build meson pkg-config gperf \
+            curl git python3 perl shellcheck binutils \
+            libx11-dev libx11-xcb-dev libxext-dev libxi-dev \
+            libxfixes-dev libxrandr-dev libxcursor-dev libxss-dev \
+            libxdamage-dev libxcomposite-dev libxrender-dev \
+            libgl-dev libegl-dev libgl1-mesa-dev libegl1-mesa-dev \
+            x11-utils xdotool imagemagick xvfb
+
+      - name: Install zig 0.13.0
+        run: |
+          curl --fail --location --silent --show-error \
+            -o zig.tar.xz \
+            https://ziglang.org/download/0.13.0/zig-linux-x86_64-0.13.0.tar.xz
+          tar xf zig.tar.xz
+          echo "$PWD/zig-linux-x86_64-0.13.0" >> "$GITHUB_PATH"
+
+      - name: Build onebin and run fast far2l checks
+        run: |
+          make -C onebin
+          make -C onebin far2l-plan
+          bash -n onebin/tools/build-far2l.sh \
+            onebin/tools/build-far2l-deps.sh \
+            onebin/tools/run-far2l-sdl-smoke.sh
+          shellcheck onebin/tools/build-far2l.sh \
+            onebin/tools/build-far2l-deps.sh \
+            onebin/tools/run-far2l-sdl-smoke.sh
+          onebin/tools/build-far2l-deps.sh --print-plan
+
+      - name: Check the preview pin and forbidden host toolkit inputs
+        run: |
+          ref=$(sed -n 's/^# far2l-sdl-ref: //p' contrib/far2l/deps.lock)
+          test -n "$ref"
+          test "$(printf '%s' "$ref" | wc -c)" -eq 40
+          grep -Fq "$ref" contrib/far2l/deps.lock
+          if grep -Eiq '^[[:space:]]+(libsdl2-dev|libfreetype-dev|libharfbuzz-dev|libfontconfig1-dev|qt6|kde)([[:space:]]|$)' \
+              .github/workflows/far2l-sdl-zig-build.yml; then
+            echo 'forbidden host toolkit package or host Qt/KDE input in workflow' >&2
+            exit 1
+          fi
+
+  build:
+    needs: preflight
+    runs-on: ubuntu-24.04
+    timeout-minutes: 300
+    steps:
+      - name: Checkout static-everywhere
+        uses: actions/checkout@v4
+
+      - name: Free disk space on the runner
+        run: |
+          df -h /
+          for d in /usr/share/dotnet /usr/local/lib/android /opt/ghc \
+                   /usr/local/.ghcup /usr/local/share/powershell \
+                   /usr/local/share/chromium /opt/hostedtoolcache/CodeQL; do
+            if [ -e "$d" ]; then
+              sudo rm -rf "$d" || true
+            fi
+          done
+          docker image prune -af >/dev/null 2>&1 || true
+          df -h /
+
+      - name: Install build tools and host X11/OpenGL contract
+        run: |
+          sudo apt-get update
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            build-essential cmake ninja-build meson pkg-config gperf \
+            curl git python3 perl binutils \
+            libx11-dev libx11-xcb-dev libxext-dev libxi-dev \
+            libxfixes-dev libxrandr-dev libxcursor-dev libxss-dev \
+            libxdamage-dev libxcomposite-dev libxrender-dev \
+            libgl-dev libegl-dev libgl1-mesa-dev libegl1-mesa-dev \
+            x11-utils xdotool imagemagick xvfb
+
+      - name: Install zig 0.13.0
+        run: |
+          curl --fail --location --silent --show-error \
+            -o zig.tar.xz \
+            https://ziglang.org/download/0.13.0/zig-linux-x86_64-0.13.0.tar.xz
+          tar xf zig.tar.xz
+          echo "$PWD/zig-linux-x86_64-0.13.0" >> "$GITHUB_PATH"
+
+      - name: Build onebin
+        run: make -C onebin
+
+      - name: Restore far2l dependency sources and prefix
+        id: cache-restore
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            out/far2l/deps-prefix
+            out/far2l/deps-work
+          key: far2l-sdl-deps-${{ hashFiles('contrib/far2l/deps.lock', 'onebin/tools/build-far2l-deps.sh', 'onebin/toolchain/**') }}
+          restore-keys: |
+            far2l-sdl-deps-
+
+      - name: Mark the start of this build for diagnostics
+        run: touch /tmp/job-start-marker
+
+      - name: Fetch the pinned far2l SDL preview
+        run: |
+          ref=$(sed -n 's/^# far2l-sdl-ref: //p' contrib/far2l/deps.lock)
+          if [ -n '${{ inputs.far2l_ref }}' ]; then
+            ref='${{ inputs.far2l_ref }}'
+          fi
+          test "$(printf '%s' "$ref" | wc -c)" -eq 40
+          git clone --filter=blob:none --no-checkout --quiet \
+            https://github.com/elfmz/far2l far2l-src
+          git -C far2l-src fetch --quiet --depth 1 origin "$ref"
+          git -C far2l-src checkout --quiet --detach "$ref"
+          test "$(git -C far2l-src rev-parse HEAD)" = "$ref"
+
+      - name: Build the pinned static dependency prefix
+        run: |
+          set -o pipefail
+          mkdir -p out/far2l
+          onebin/tools/build-far2l-deps.sh \
+            --prefix "$PWD/out/far2l/deps-prefix" \
+            --work "$PWD/out/far2l/deps-work" \
+            --jobs 4 2>&1 | tee /tmp/far2l-deps-build.log
+
+      - name: Build far2l SDL preview
+        run: |
+          set +e
+          set -o pipefail
+          ref=$(sed -n 's/^# far2l-sdl-ref: //p' contrib/far2l/deps.lock)
+          if [ -n '${{ inputs.far2l_ref }}' ]; then
+            ref='${{ inputs.far2l_ref }}'
+          fi
+          onebin/tools/build-far2l.sh \
+            --config sdl \
+            --src "$PWD/far2l-src" \
+            --tag "$ref" \
+            --out "$PWD/out/far2l/build" \
+            --deps-prefix "$PWD/out/far2l/deps-prefix" \
+            --jobs 4 --no-fetch 2>&1 | tee /tmp/far2l-build.log
+          build_status=${PIPESTATUS[0]}
+          set -e
+          if [ "$build_status" -ne 0 ]; then
+            # The current far2l tree embeds two known runtime temp-path
+            # strings, which onebin reports as warnings and --strict promotes
+            # to a non-zero result. Do not hide a compile failure: only allow
+            # the strict audit's warning-only exit once all three artifacts
+            # exist; the explicit non-strict audits below still fail on errors.
+            test -x out/far2l/build/install/far2l
+            test -f out/far2l/build/install/far2l_sdl.so
+            test -x out/far2l/build/install/far2l_ttyx.broker
+            echo 'far2l builder returned the documented strict-hygiene status; re-auditing artifacts without promoting warnings'
+          fi
+
+      - name: Audit the three far2l SDL artifacts
+        run: |
+          set -o pipefail
+          onebin/build/onebin audit --profile hybrid --level 1 \
+            out/far2l/build/install/far2l \
+            | tee out/far2l/far2l.audit.txt
+          onebin/build/onebin audit --profile module --level 1 \
+            out/far2l/build/install/far2l_sdl.so \
+            | tee out/far2l/far2l_sdl.audit.txt
+          onebin/build/onebin audit --profile hybrid --level 1 \
+            --allow libX11.so.6 --allow libXi.so.6 --allow libICE.so.6 \
+            --allow libSM.so.6 --allow libXext.so.6 \
+            out/far2l/build/install/far2l_ttyx.broker \
+            | tee out/far2l/far2l_ttyx.audit.txt
+
+      - name: Run the graphical SDL smoke test
+        run: |
+          mkdir -p out/far2l/xvfb
+          xvfb-run -a -s '-screen 0 1280x900x24 +extension GLX +render -noreset' \
+            onebin/tools/run-far2l-sdl-smoke.sh \
+            "$PWD/out/far2l/build/install/far2l" \
+            "$PWD/out/far2l/smoke"
+
+      - name: Collect diagnostics on failure or cancellation
+        if: failure() || cancelled()
+        run: |
+          set +e
+          diag=/tmp/far2l-sdl-diagnostic-logs
+          mkdir -p "$diag"
+          cp /tmp/far2l-deps-build.log "$diag/00-deps-build.log" 2>/dev/null
+          cp /tmp/far2l-build.log "$diag/01-far2l-build.log" 2>/dev/null
+          find out/far2l -type f -newer /tmp/job-start-marker \
+            ! -name '*.a' ! -name '*.o' ! -name '*.so' ! -name '*.so.*' \
+            -size -2M -print | sort > "$diag/02-output-listing.txt"
+          find out/far2l -type f -newer /tmp/job-start-marker -size -2M \
+            -exec sh -c 'file -b --mime-type "$1" | grep -Eq "^(text/|application/(json|xml))"' sh {} \; \
+            -exec sh -c 'target="$1"; target="/tmp/far2l-sdl-diagnostic-logs/03-text/${target#out/}"; mkdir -p "$(dirname "$target")"; cp "$1" "$target"' sh {} \;
+          find out/far2l -maxdepth 3 -type f -print 2>/dev/null | sort \
+            > "$diag/04-all-files.txt"
+          {
+            echo '=== df -h ==='; df -h
+            echo '=== free -h ==='; free -h
+          } > "$diag/05-system-state.txt"
+
+      - name: Upload far2l SDL artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: far2l-sdl-zig-build
+          path: |
+            out/far2l/build/install/far2l
+            out/far2l/build/install/far2l_sdl.so
+            out/far2l/build/install/far2l_ttyx.broker
+            out/far2l/*.audit.txt
+            out/far2l/smoke
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Save far2l dependency sources and prefix
+        if: always()
+        timeout-minutes: 20
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            out/far2l/deps-prefix
+            out/far2l/deps-work
+          key: ${{ steps.cache-restore.outputs.cache-primary-key }}

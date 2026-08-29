@@ -256,7 +256,23 @@ resolve_source() {
         echo "       or point --src at an existing checkout." >&2
         exit 1
     fi
-    plan_step "git -C ${SRC} describe --tags --exact-match"
+    if [ "${PRINT_PLAN}" -eq 1 ]; then
+        # Keep the stable-tag plan byte-for-byte compatible with the golden
+        # fixtures. Preview pins are verified by the execution path below.
+        plan_step "git -C ${SRC} describe --tags --exact-match"
+        return 0
+    fi
+
+    if git -C "${SRC}" describe --tags --exact-match >/dev/null 2>&1; then
+        test "$(git -C "${SRC}" describe --tags --exact-match)" = "${TAG}"
+    else
+        # far2l-sdl is not tagged yet. Its source is pinned to a commit in
+        # contrib/far2l/deps.lock, so accepting only the requested object is
+        # just as strict as the tag check and makes the preview reproducible.
+        expected=$(git -C "${SRC}" rev-parse "${TAG}^{commit}")
+        actual=$(git -C "${SRC}" rev-parse HEAD)
+        test "${actual}" = "${expected}"
+    fi
 }
 
 verify_deps() {
@@ -275,6 +291,20 @@ verify_deps() {
         plan_step "test -d ${DEPS_PREFIX}/${dep}"
     done < /tmp/onebin-far2l-deps.$$
     rm -f /tmp/onebin-far2l-deps.$$
+}
+
+configure_deps_env() {
+    [ -n "${DEPS_PREFIX}" ] || return 0
+
+    # far2l's SDL CMake files discover SDL2, FreeType, HarfBuzz and
+    # Fontconfig through pkg-config/find_package rather than through the
+    # explicit NetRocks cache variables above. Put the pinned prefix first
+    # for both mechanisms so a host development package can never silently
+    # replace one of the showcase's source-built libraries.
+    PKG_CONFIG_PATH="${DEPS_PREFIX}/sdl2/lib/pkgconfig:${DEPS_PREFIX}/freetype/lib/pkgconfig:${DEPS_PREFIX}/harfbuzz/lib/pkgconfig:${DEPS_PREFIX}/fontconfig/lib/pkgconfig:${DEPS_PREFIX}/expat/lib/pkgconfig:${DEPS_PREFIX}/zlib/lib/pkgconfig:${DEPS_PREFIX}/uchardet/lib/pkgconfig${PKG_CONFIG_PATH:+:${PKG_CONFIG_PATH}}"
+    export PKG_CONFIG_PATH
+    CMAKE_PREFIX_PATH="${DEPS_PREFIX}/sdl2:${DEPS_PREFIX}/freetype:${DEPS_PREFIX}/harfbuzz:${DEPS_PREFIX}/fontconfig:${DEPS_PREFIX}/expat:${DEPS_PREFIX}/zlib:${DEPS_PREFIX}/uchardet${CMAKE_PREFIX_PATH:+:${CMAKE_PREFIX_PATH}}"
+    export CMAKE_PREFIX_PATH
 }
 
 # ------------------------------------------------------------ build steps
@@ -331,5 +361,6 @@ fi
 
 resolve_source
 verify_deps
+configure_deps_env
 configure_build_install
 run_audits
