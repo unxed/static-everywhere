@@ -32,21 +32,42 @@
 #include <stdlib.h>
 #include <stdio.h>
 
-/* Report the render-backend decision when SE_RENDER_DEBUG is set.
+/* Report the render-backend decision when debugging is requested.
  *
  * The switch to software rendering happens before main(), silently, which
  * is right for normal use but leaves a user with a black window no way to
  * tell whether the fallback fired, chose wrong, or never ran. One opt-in
- * line closes that gap. Off by default so a normal launch stays quiet;
- * f4-diag sets it, and a user can too. */
+ * line closes that gap. Off by default so a normal launch stays quiet.
+ *
+ * SE_RENDER_DEBUG keeps the original stderr behaviour for a direct launch.
+ * SE_RENDER_DEBUG_FILE is the protocol-safe mode used by f4-diag: it makes
+ * the same one line go to a sidecar file instead, and takes precedence over
+ * stderr when both variables are set. A failed sidecar open is deliberately
+ * silent; writing an error to stderr would put the diagnostic back into the
+ * f4 stream that this mode exists to avoid. */
 static void se_render_log(const char *msg, const char *soname)
 {
-    if (getenv("SE_RENDER_DEBUG")) {
-        if (soname) {
-            fprintf(stderr, "[se-render] %s (libGL: %s)\n", msg, soname);
-        } else {
-            fprintf(stderr, "[se-render] %s\n", msg);
+    const char *path = getenv("SE_RENDER_DEBUG_FILE");
+    FILE *stream = stderr;
+    int close_stream = 0;
+
+    if (path && *path) {
+        stream = fopen(path, "a");
+        if (!stream) {
+            return;
         }
+        close_stream = 1;
+    } else if (!getenv("SE_RENDER_DEBUG")) {
+        return;
+    }
+
+    if (soname) {
+        fprintf(stream, "[se-render] %s (libGL: %s)\n", msg, soname);
+    } else {
+        fprintf(stream, "[se-render] %s\n", msg);
+    }
+    if (close_stream) {
+        fclose(stream);
     }
 }
 

@@ -7,6 +7,46 @@ Everything below this section is a reverse-chronological log (newest
 first). Read *this* section first; consult the log below only for the
 detail behind a specific claim.
 
+### 2026-08-29: X11 graphics are proven; the remaining failure is f4's host lifecycle
+
+The packaged Qt host was launched directly on a live X11 desktop and passed
+the last graphics boundary: `[se-render] libGL present`, the `xcb` platform
+plugin, MIT-SHM, XInput 2.4, EDID for eDP-1 at 3072x1728, and all input
+devices initialized without an error. `plugins are disabled in static
+builds` also confirms that static Qt plugin registration is working as
+designed. The graphical stack in this repository is therefore proven.
+
+Launching through f4 is a different failure. With `--gui qt --attached`,
+the window appears and immediately disappears with exit code 1. The empty
+terminal output is expected from the current observation method: f4's
+`extui_host.go` takes over the host streams for its protocol, so Qt's output
+does not reach the terminal. `[f4] FATAL GUI ERROR` is absent, which places
+the failure after stream handoff; this is f4/Qt-host lifecycle territory,
+not a Qt toolchain or graphics-stack failure. The new `exit 1` versus the
+earlier `0` is useful evidence that the GUI branch now reaches a real error.
+
+The existing `f4-diag` wrapper is consequently not sufficient for this
+case: capturing stderr still observes the protocol-owned stream. The host
+now supports `SE_RENDER_DEBUG_FILE=/path/to/log`; when set, the render
+decision is written to that sidecar and not stderr. `f4-diag` assigns a
+timestamped `f4-render-*.log` next to its main log and prints both paths.
+`tools/test-optional-gl.sh` verifies the fallback decision reaches the file,
+and `tools/test-f4-diag.sh` verifies the wrapper exports and announces the
+sidecar path.
+
+The f4 source version matters while diagnosing this: the pinned build has
+`package main` in the repository root, while a newer upstream checkout has
+moved it to `cmd/f4`; on that newer tree `go build .` correctly produces an
+`ar archive` because the root is no longer the command package. Do not mix
+those trees when interpreting launch results. The next integration step is
+to run the pinned f4 with the new host-side sidecar and inspect why the
+attached GUI exits 1.
+
+The CI hardening is already present and remains required: the plan builds f4
+with `-buildmode=pie -ldflags='-s -w -bindnow'`, and the preflight asserts
+those exact flags in the emitted plan. That closes `OB0050`/`OB0051` (and
+the non-PIE warning) independently of the live-window investigation.
+
 ### The empty log was f4 detaching — a correct launch that looked like a silent failure
 
 Studying the desktop run before spending another two hours of CI paid
@@ -161,17 +201,20 @@ Two pieces.
 **The render-backend fallback now reports its decision.** It switched to
 software silently before main(), which is right for normal use but leaves
 someone with a black window unable to tell whether the fallback fired,
-chose wrong, or never ran. Under `SE_RENDER_DEBUG` it prints one line
-naming the choice and the libGL it probed; silent otherwise. Both
-directions are tested -- a logger stuck on is as bad as one that never
-speaks -- with negative controls.
+chose wrong, or never ran. Under `SE_RENDER_DEBUG` it prints one line to
+stderr; under `SE_RENDER_DEBUG_FILE` it writes the same line to a sidecar
+instead, which is safe when f4 owns stderr. Silent otherwise. Both
+directions and both channels are tested -- a logger stuck on or routed into
+the wrong stream is as bad as one that never speaks -- with negative
+controls.
 
 **`contrib/f4-qt/f4-diag.sh` ships next to the binary in the artifact.**
 It runs f4 with Qt's own diagnostics turned on -- `QT_DEBUG_PLUGINS`,
 `QSG_INFO`, the `qt.qpa.*` / `qt.scenegraph.*` / `qt.rhi.*` logging
 categories (all confirmed against Qt sources), plus our `SE_RENDER_DEBUG`
--- and captures them with the host environment (display vars, libGL
-presence, font count) into one timestamped log. `--software`, `--x11` and
+and `SE_RENDER_DEBUG_FILE` -- and captures them with the host environment
+(display vars, libGL presence, font count) into a main log plus a render
+decision sidecar. `--software`, `--x11` and
 `--wayland` force the paths a headless run never exercises. The log ends
 with a short reading guide pointing at the lines that explain a
 display/plugin/render failure.

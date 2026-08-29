@@ -140,6 +140,26 @@ case "$loud" in
     *) printf 'SE_RENDER_DEBUG did not report the software-fallback decision: %s\n' "$loud" >&2; exit 1 ;;
 esac
 
+# f4 owns the host process streams for its external-UI protocol, so stderr
+# is not a safe diagnostic channel there. A file path must redirect the same
+# decision out of that protocol stream; test it without SE_RENDER_DEBUG too,
+# since the path itself is the opt-in for this mode.
+render_log="$PROBE/render.log"
+file_output=$(SE_FORWARD_SE_GL_SONAME=libGL-absent.so.999 \
+    SE_RENDER_DEBUG_FILE="$render_log" "$PROBE/app" 2>&1)
+case "$file_output" in
+    *"[se-render]"*)
+        printf 'SE_RENDER_DEBUG_FILE still wrote the decision to stderr: %s\n' \
+            "$file_output" >&2
+        exit 1
+        ;;
+esac
+if ! grep -Fq '[se-render] libGL absent; selecting software rendering' \
+        "$render_log"; then
+    printf 'SE_RENDER_DEBUG_FILE did not receive the render decision\n' >&2
+    exit 1
+fi
+
 # A choice already made is never overridden.
 chosen=$(SE_FORWARD_SE_GL_SONAME=libGL-absent.so.999 QT_QUICK_BACKEND=rhi "$PROBE/app")
 case "$chosen" in

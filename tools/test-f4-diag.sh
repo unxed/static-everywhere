@@ -128,4 +128,21 @@ grep -q 'POST-DETACH-OUTPUT' "$DETACHLOG" \
     || { printf 'f4 detached and its output was lost; F4_DETACHED not honoured\n' >&2
          exit 1; }
 
+# The f4 external-UI protocol owns the child's streams, so the render
+# decision needs a sidecar file rather than stderr. The wrapper must export
+# that path to the host and announce it in the main log.
+cat >"$PROBE/f4" <<'EOF'
+#!/usr/bin/env bash
+printf 'RENDER-DEBUG-FILE=%s\n' "${SE_RENDER_DEBUG_FILE:-}"
+EOF
+chmod +x "$PROBE/f4"
+rm -f "$PROBE"/f4-diag-*.log "$PROBE"/f4-render-*.log
+( cd "$PROBE" && ./f4-diag >/dev/null 2>&1 ) || true
+# shellcheck disable=SC2012
+FILELOG=$(ls -t "$PROBE"/f4-diag-*.log 2>/dev/null | head -1)
+grep -q 'RENDER-DEBUG-FILE=.*f4-render-' "$FILELOG" \
+    || { printf 'f4-diag did not export the render sidecar path\n' >&2; exit 1; }
+grep -q 'SE_RENDER_DEBUG_FILE=.*f4-render-' "$FILELOG" \
+    || { printf 'f4-diag did not announce the render sidecar path\n' >&2; exit 1; }
+
 printf 'f4-diag: no printf errors, child output and exit code captured\n'

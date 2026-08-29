@@ -57,6 +57,7 @@ done
 
 STAMP=$(date +%Y%m%d-%H%M%S)
 LOG="${SCRIPT_DIR}/f4-diag-${STAMP}.log"
+RENDER_LOG="${SCRIPT_DIR}/f4-render-${STAMP}.log"
 
 {
     printf '===== f4-diag %s =====\n\n' "$STAMP"
@@ -116,6 +117,7 @@ LOG="${SCRIPT_DIR}/f4-diag-${STAMP}.log"
     printf 'binary: %s\n' "$F4"
     printf 'args:   %s\n' "${passthrough[*]:-(none)}"
     printf 'env:    QT_DEBUG_PLUGINS=1 QSG_INFO=1 SE_RENDER_DEBUG=1\n'
+    printf '        SE_RENDER_DEBUG_FILE=%s (render decision sidecar)\n' "$RENDER_LOG"
     printf '        F4_DETACHED=1  (keeps f4 in the foreground: it would\n'
     printf '                        otherwise re-exec detached with stdio\n'
     printf '                        on /dev/null and this log would be empty)\n'
@@ -140,6 +142,7 @@ LOG="${SCRIPT_DIR}/f4-diag-${STAMP}.log"
 # (--attached does the same via the command line). Either keeps the real
 # work in our process, where its output reaches the log.
 export F4_DETACHED=1
+export SE_RENDER_DEBUG_FILE="$RENDER_LOG"
 
 # Run f4 and capture everything, but keep it attached to a terminal.
 #
@@ -181,6 +184,7 @@ fi
 {
     printf '\n%s\n' '----- exit -----'
     printf 'f4 exited with code %d\n' "$rc"
+    printf 'render decision log path: %s\n' "$RENDER_LOG"
     # An empty capture is itself a finding; name the likely causes rather
     # than leaving the reader with a blank section. (Computed before this
     # block opens, so the log is not read and written in one pipeline.)
@@ -202,5 +206,10 @@ fi
 } >>"$LOG" 2>&1
 
 printf 'f4-diag: full log written to\n  %s\n' "$LOG"
+if [ -e "$RENDER_LOG" ]; then
+    printf 'f4-diag: render decision log written to\n  %s\n' "$RENDER_LOG"
+else
+    printf 'f4-diag: render decision log was not created; expected path\n  %s\n' "$RENDER_LOG"
+fi
 printf 'Attach that file to a bug report. Exit code was %d.\n' "$rc"
 exit "$rc"
