@@ -93,6 +93,7 @@ printf '# Konsole showcase plan\n'
 printf 'konsole_ref=%s\nkde_builder_ref=%s\nglibc_baseline=%s\n' \
     "$KONSOLE_REF" "$KDE_BUILDER_REF" "$GLIBC_BASELINE"
 printf 'host contract: X11/xcb/ICE/SM and runtime-loaded OpenGL; Qt/KF6: source-built\n'
+# shellcheck disable=SC2034  # lock-file fields are deliberately read for a plan-only inventory
 while IFS=' ' read -r name version _hash url; do
     [[ -z $name || $name == \#* ]] && continue
     printf '# dependency: %s %s\n' "$name" "$version"
@@ -132,6 +133,7 @@ run_env PATH="$CONAN_VENV/bin:$PATH" CONAN_HOME="$CONAN_HOME" \
 run_env PATH="$CONAN_VENV/bin:$PATH" CONAN_HOME="$CONAN_HOME" \
     conan download fontconfig/2.15.0 --only-recipe --remote=conancenter
 if [[ $PRINT_PLAN -eq 1 ]]; then
+    # shellcheck disable=SC2016  # this command is printed for a later shell, not expanded here
     quote_cmd bash -c 'fontconfig_recipe=$(conan cache path fontconfig/2.15.0); copy=$(mktemp -d /tmp/static-everywhere-fontconfig.XXXXXX); cp "$fontconfig_recipe/conanfile.py" "$fontconfig_recipe/conandata.yml" "$copy/"; sed -i "s#https://www.freedesktop.org/software/fontconfig/release/#https://distfiles.macports.org/fontconfig/#" "$copy/conandata.yml"; grep -q "https://distfiles.macports.org/fontconfig/fontconfig-2.15.0.tar.xz" "$copy/conandata.yml"; conan export "$copy" --name=fontconfig --version=2.15.0'
 else
     fontconfig_recipe=$(env PATH="$CONAN_VENV/bin:$PATH" CONAN_HOME="$CONAN_HOME" \
@@ -185,6 +187,7 @@ run_env PATH="$CONAN_VENV/bin:$PATH" CONAN_HOME="$CONAN_HOME" \
     conan cache clean '*' --build --temp
 
 if [[ $PRINT_PLAN -eq 1 ]]; then
+    # shellcheck disable=SC2016  # variables belong to the printed inner shell
     quote_cmd bash -c 'pc_dirs=$(find "$CONAN_HOME/p/b" -type f -name "*.pc" -printf "%h\\n" 2>/dev/null | sort -u | paste -sd: -); export PKG_CONFIG_PATH="$pc_dirs:/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/lib/pkgconfig:/usr/share/pkgconfig:${PKG_CONFIG_PATH:-}"; pkg-config --modversion xkbcommon'
 else
     pc_dirs=$(find "$CONAN_HOME/p/b" -type f -name '*.pc' -printf '%h\n' 2>/dev/null | sort -u | paste -sd: -)

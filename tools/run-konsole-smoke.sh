@@ -19,8 +19,10 @@ Xvfb "$display" -screen 0 1280x900x24 -ac +extension GLX +render -noreset >"$ser
 xvfb_pid=$!
 app_pid=
 cleanup() {
-    [[ -n ${app_pid:-} ]] && kill "$app_pid" 2>/dev/null || true
-    [[ -n ${app_pid:-} ]] && wait "$app_pid" 2>/dev/null || true
+    if [[ -n ${app_pid:-} ]]; then
+        kill "$app_pid" 2>/dev/null || true
+        wait "$app_pid" 2>/dev/null || true
+    fi
     kill "$xvfb_pid" 2>/dev/null || true
     wait "$xvfb_pid" 2>/dev/null || true
 }
