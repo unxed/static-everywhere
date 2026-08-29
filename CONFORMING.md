@@ -56,7 +56,7 @@ intended to be linked statically from the pinned dependency prefix described in
 
 | Build | Target level | Profile | Baseline | Status |
 |---|---|---|---|---|
-| `gnome-terminal-static` — static GTK3 `gnome-terminal-server` | 1 | H | 2.28 | build recipe in progress |
+| `gnome-terminal-hybrid-static-gtk` — hybrid profile with static GTK3 `gnome-terminal-server` | 1 | H | 2.28 | build recipe in progress |
 
 ## Prior art that does not conform, and is worth studying anyway
 

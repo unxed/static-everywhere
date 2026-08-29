@@ -1,4 +1,4 @@
-name: gnome-terminal-static
+name: gnome-terminal-hybrid-static-gtk
 
 on:
   pull_request:
