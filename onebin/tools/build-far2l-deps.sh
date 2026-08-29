@@ -9,7 +9,9 @@
 
 set -euo pipefail
 
+# shellcheck disable=SC1007
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+# shellcheck disable=SC1007
 REPO_ROOT=$(CDPATH= cd -- "${SCRIPT_DIR}/../.." && pwd)
 LOCK="${REPO_ROOT}/contrib/far2l/deps.lock"
 TOOLCHAIN="${REPO_ROOT}/onebin/toolchain"
@@ -68,10 +70,10 @@ source_tree() {
     version=$(lock_field "${name}" 2)
     sha=$(lock_field "${name}" 3)
     url=$(lock_field "${name}" 4)
-    [ -n "${version}" ] && [ -n "${sha}" ] && [ -n "${url}" ] || {
+    if [ -z "${version}" ] || [ -z "${sha}" ] || [ -z "${url}" ]; then
         echo "build-far2l-deps.sh: no lock entry for ${name}" >&2
         exit 1
-    }
+    fi
 
     mkdir -p "${WORK}/archives" "${WORK}/sources"
     archive="${WORK}/archives/$(basename "${url%%\?*}")"
@@ -162,6 +164,7 @@ if ! built zlib; then
     find "${PREFIX}/zlib/lib" -maxdepth 1 \
         \( -name 'libz.so' -o -name 'libz.so.*' \) -delete
     mkdir -p "${PREFIX}/zlib/lib/pkgconfig"
+    # shellcheck disable=SC2016  # pkg-config variables must remain literal in zlib.pc
     printf 'prefix=%s\nexec_prefix=\${prefix}\nlibdir=\${prefix}/lib\nincludedir=\${prefix}/include\n\nName: zlib\nDescription: zlib\nVersion: 1.3.2\nLibs: -L\${libdir} -lz\nCflags: -I\${includedir}\n' \
         "${PREFIX}/zlib" > "${PREFIX}/zlib/lib/pkgconfig/zlib.pc"
     mark zlib
@@ -258,10 +261,10 @@ if ! built fontconfig; then
     meson compile -C "${fontconfig_build}" -j "${JOBS}"
     fontconfig_lib=$(find "${fontconfig_build}" -type f -name libfontconfig.a -print -quit)
     fontconfig_pc=$(find "${fontconfig_build}" -type f -name fontconfig.pc -print -quit)
-    [ -n "${fontconfig_lib}" ] && [ -n "${fontconfig_pc}" ] || {
+    if [ -z "${fontconfig_lib}" ] || [ -z "${fontconfig_pc}" ]; then
         echo 'build-far2l-deps.sh: Fontconfig outputs were not found' >&2
         exit 1
-    }
+    fi
     cp "${fontconfig_lib}" "${PREFIX}/fontconfig/lib/libfontconfig.a"
     cp "${fontconfig_pc}" "${PREFIX}/fontconfig/lib/pkgconfig/fontconfig.pc"
     mkdir -p "${PREFIX}/fontconfig/include/fontconfig"
