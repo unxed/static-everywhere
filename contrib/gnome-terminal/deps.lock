@@ -1,0 +1,26 @@
+# contrib/gnome-terminal/deps.lock — pinned dependencies for the GNOME Terminal
+# reference build.
+#
+# Versions are the ones the probe has actually been run against (ubuntu-24.04),
+# not the newest available: a lockfile whose numbers nobody has executed is a
+# wish list. Hashes are '-' for the same reason as contrib/f4-qt/deps.lock —
+# see 00-AGENT-TASK.md rule 1.
+#
+# NOTE the GTK major version. GNOME Terminal 3.52 is a GTK*3* application and
+# uses libhandy, not GTK4 and libadwaita. This was checked against the shipped
+# binary's DT_NEEDED, not assumed from the GNOME version number, and it matters:
+# the settings-portal integration measured in probe report II lives in
+# libadwaita, so GNOME Terminal does not get it for free.
+gnome-terminal 3.52.0 - https://gitlab.gnome.org/GNOME/gnome-terminal
+vte 0.76.0 - https://gitlab.gnome.org/GNOME/vte
+gtk 3.24.41 - https://gitlab.gnome.org/GNOME/gtk
+libhandy 1.8.3 - https://gitlab.gnome.org/GNOME/libhandy
+glib 2.80.0 - https://gitlab.gnome.org/GNOME/glib
+pango 1.52.1 - https://gitlab.gnome.org/GNOME/pango
+cairo 1.18.0 - https://gitlab.freedesktop.org/cairo/cairo
+harfbuzz 8.3.0 - https://github.com/harfbuzz/harfbuzz
+freetype 2.13.2 - https://gitlab.freedesktop.org/freetype/freetype
+fontconfig 2.15.0 - https://gitlab.freedesktop.org/fontconfig/fontconfig
+gdk-pixbuf 2.42.10 - https://gitlab.gnome.org/GNOME/gdk-pixbuf
+pcre2 10.42 - https://github.com/PCRE2Project/pcre2
+util-linux 2.39.3 - https://github.com/util-linux/util-linux

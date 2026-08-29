@@ -47,6 +47,27 @@ The blocker on the first row is a private submodule (`third_party/ZoinGallery`),
 not a technical one. Details and the two acceptable fixes are in
 [05-REFERENCE-f4-qt.md §7.8](./05-REFERENCE-f4-qt.md).
 
+## The GNOME reference application
+
+[GNOME Terminal](https://gitlab.gnome.org/GNOME/gnome-terminal) — the target
+that tests the one claim this repository has so far only asserted: that GTK
+cannot be bundled. Measured, not assumed: 3.52 is a **GTK3 + libhandy**
+application, not GTK4 + libadwaita, and it has **no plugin ABI**, which removes
+the symbol-interposition failure mode entirely (06-REFERENCE-gnome-terminal.md
+§4.1).
+
+| Build | Target level | Profile | Baseline | Status |
+|---|---|---|---|---|
+| `gt-probe` — links and exercises the whole dependency set | 1 | H | 2.28 | **builds, runs, passes `--strict`** |
+| `gnome-terminal-static` — one file | 1 | H | 2.28 | plan only |
+| `gnome-terminal-portal` — host integration via portals only | 2 | H | 2.28 | not started |
+
+The probe exists because the build is hours and the questions are seconds. It
+links exactly what `gnome-terminal-server` links, drives every dependency hard
+enough that nothing can stay unloaded and still pass, and checks the result
+against a declared soname contract. Details in
+[06-REFERENCE-gnome-terminal.md](./06-REFERENCE-gnome-terminal.md).
+
 ## Prior art that does not conform, and is worth studying anyway
 
 [far2l-portable](https://github.com/spvkgn/far2l-portable) ships far2l as one
