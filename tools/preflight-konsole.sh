@@ -37,6 +37,7 @@ for needle in \
     'core.sources:download_cache' \
     'core.sources:download_urls' \
     'conan cache clean' \
+    'setproctitle' \
     'qtmultimedia=True' \
     'qtwayland=False' \
     'with_egl=True' \

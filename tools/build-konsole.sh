@@ -124,7 +124,7 @@ run "$ZIGCC" -target "$TARGET_TRIPLE" -O2 -fPIC -c \
 run mkdir -p "$CONAN_VENV"
 run uv venv --python 3.12 --clear "$CONAN_VENV"
 run uv pip install --python "$CONAN_VENV/bin/python" \
-    conan==2.29.1 cmake==3.31.6 ninja==1.13.0
+    conan==2.29.1 cmake==3.31.6 ninja==1.13.0 setproctitle
 run_env PATH="$CONAN_VENV/bin:$PATH" CONAN_HOME="$CONAN_HOME" \
     conan profile detect --force
 
