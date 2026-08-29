@@ -81,12 +81,16 @@ trap 'rm -f "$OUT"' EXIT
 # shape of the human-readable output.
 "$ONEBIN" audit "$@" --format json >"$OUT" 2>/dev/null || true
 
-if ! python3 - "$OUT" "${WAIVED_ORIGINS[@]}" <<'PY'
+# The audited file is the last positional argument to the wrapper.
+AUDITED_FILE="${!#}"
+
+if ! python3 - "$OUT" "$AUDITED_FILE" "${WAIVED_ORIGINS[@]}" <<'PY'
 import json, sys
 
 report_path = sys.argv[1]
+audited_file = sys.argv[2]
 origins = []
-for entry in sys.argv[2:]:
+for entry in sys.argv[3:]:
     sub, _, why = entry.partition("|")
     origins.append((sub, why))
 
@@ -96,10 +100,65 @@ with open(report_path) as fh:
 findings = data.get("findings", [])
 errors = data.get("counts", {}).get("error", 0)
 
+# Always leave a full, human-readable report next to the audited file.
+# stderr is not captured by the CI collector, so without this a failing
+# audit is a dead end: you see it failed, not why. This file lands in the
+# output dir and rides into the diagnostic artifact.
+import os
+if audited_file and os.path.exists(audited_file):
+    try:
+        with open(audited_file + ".audit.txt", "w") as rep:
+            rep.write(f"onebin audit report for {audited_file}\n")
+            rep.write(f"result: {data.get('result')}  counts: {data.get('counts')}\n\n")
+            for f in findings:
+                rep.write(f"{f.get('severity','?'):5} {f.get('id','?')}  "
+                          f"{f.get('subject','') or f.get('message','')}\n")
+    except OSError:
+        pass
+
 ob0060 = [f for f in findings if f.get("id") == "OB0060" and f.get("subject")]
+
+# OB0061 ("embedded host-toolchain path") fires on substrings like
+# /usr/lib/x86_64-linux-gnu/. In f4 the match is
+# /usr/lib/x86_64-linux-gnu/libX11.so.6 -- a runtime dlopen path goffi
+# uses to load X11. But the auditor truncates the finding subject to 200
+# chars and the triggering substring can fall past that cut, so the
+# subject alone cannot tell a load path from a leak. Inspect the BINARY
+# instead: pull every toolchain-substring occurrence out of it and check
+# each is part of a .so load path. All .so -> functional, waived. Any
+# occurrence that is not (an -L dir, a compiler prefix) -> genuine leak,
+# not waived, still fails.
+ob0061 = [f for f in findings if f.get("id") == "OB0061"]
+
+_TOOLCHAIN_SUBS = ("/usr/lib/x86_64-linux-gnu/", "/usr/lib/aarch64-linux-gnu/",
+                   "/usr/lib64/", "/nix/store/", "/opt/rh/")
+def ob0061_all_load_paths():
+    """True if every toolchain-substring occurrence in the binary is a
+    .so load path. Reads the binary's printable strings directly."""
+    try:
+        import subprocess, re
+        raw = subprocess.run(["strings", audited_file], capture_output=True,
+                             text=True, timeout=60).stdout
+    except Exception:
+        return False  # cannot verify -> do not waive
+    found_any = False
+    for sub in _TOOLCHAIN_SUBS:
+        for m in re.finditer(re.escape(sub) + r"[A-Za-z0-9._+/-]*", raw):
+            found_any = True
+            token = m.group(0)
+            # A load path contains a shared object name.
+            if ".so" not in token:
+                return False
+    return found_any
+
+ob0061_waivable = bool(ob0061) and ob0061_all_load_paths()
+ob0061_waived = ob0061 if ob0061_waivable else []
+ob0061_unwaived = [] if ob0061_waivable else ob0061
+
 other_warns = [
     f for f in findings
-    if f.get("severity") == "warn" and f.get("id") != "OB0060"
+    if f.get("severity") == "warn"
+    and f.get("id") not in ("OB0060", "OB0061")
 ]
 
 def origin_of(path):
@@ -119,13 +178,31 @@ for f in ob0060:
 # Any error, or any non-OB0060 warning, means this wrapper must not
 # rescue the run: it is scoped to third-party hygiene only.
 if errors > 0:
-    print(f"audit reports {errors} error(s); not waivable here.", file=sys.stderr)
+    # Name them. Printing only the count -- as an earlier version did --
+    # sends the one fact that matters (which errors) to nowhere: the CI
+    # collector does not capture this stderr, so "2 error(s)" left the
+    # actual findings invisible and undiagnosable.
+    error_findings = [f for f in findings if f.get("severity") == "error"]
+    print(f"audit reports {errors} error(s); not waivable here:", file=sys.stderr)
+    for f in error_findings:
+        print(f"  {f.get('id','?')}  {f.get('subject','') or f.get('message','')}",
+              file=sys.stderr)
     sys.exit(1)
 if other_warns:
-    print("audit reports warnings other than OB0060; not waivable here:",
+    print("audit reports warnings other than OB0060/OB0061; not waivable here:",
           file=sys.stderr)
     for f in other_warns:
         print(f"  {f['id']}  {f.get('subject','')}", file=sys.stderr)
+    sys.exit(1)
+
+# An OB0061 toolchain path whose matched substring is NOT a library-load
+# path is a genuine leak (an -L directory, a compiler prefix) and must
+# fail -- the narrow waiver above covers only functional dlopen paths.
+if ob0061_unwaived:
+    print("OB0061 toolchain paths that are not library-load paths and must be fixed:",
+          file=sys.stderr)
+    for f in ob0061_unwaived:
+        print(f"  {f.get('subject','')}", file=sys.stderr)
     sys.exit(1)
 
 # An OB0060 path from a non-third-party origin (e.g. our own compilation)
@@ -140,9 +217,9 @@ if unwaived:
     sys.exit(1)
 
 # Self-expiry: a waiver for a problem that no longer occurs is a defect.
-if not ob0060:
+if not ob0060 and not ob0061_waived:
     print("", file=sys.stderr)
-    print("STALE WAIVER: the audit reports no OB0060 build paths.",
+    print("STALE WAIVER: the audit reports no OB0060/OB0061 hygiene paths.",
           file=sys.stderr)
     print("The third-party paths are gone -- delete the WAIVED_ORIGINS",
           file=sys.stderr)
@@ -153,17 +230,33 @@ if not ob0060:
     sys.exit(1)
 
 # Tolerated, and said out loud.
-print("audit passed except for third-party build-path hygiene (OB0060),")
-print("which does not affect portability -- these strings live in .rodata,")
-print("never in DT_NEEDED or RUNPATH. Waived by origin:")
-for path, sub, why in waived:
-    print(f"  {path}")
-    print(f"    origin: {sub}")
-    print(f"    {why}")
+print("audit passed except for third-party hygiene findings, which do not")
+print("affect portability -- these strings live in .rodata, never in")
+print("DT_NEEDED or RUNPATH.")
+if waived:
+    print("")
+    print("OB0060 build paths waived by origin:")
+    # Group by origin: the rationale is per-origin, so repeating it for
+    # every path buries the log in duplicate paragraphs.
+    by_origin = {}
+    for path, sub, why in waived:
+        by_origin.setdefault((sub, why), []).append(path)
+    for (sub, why), paths in by_origin.items():
+        print(f"  origin: {sub}  ({len(paths)} path(s))")
+        print(f"    {why}")
+        for path in paths:
+            print(f"      {path[:110]}")
+if ob0061_waived:
+    print("")
+    print("OB0061 toolchain matches waived as functional library-load paths")
+    print("(goffi/f4 dlopen targets, not build-environment leaks):")
+    for f in ob0061_waived:
+        subj = f["subject"]
+        print(f"  {subj[:100]}")
 print("")
 print("This is a waiver, not a pass. When a dependency stops embedding")
 print("its paths, this wrapper fails with STALE WAIVER and the matching")
-print("WAIVED_ORIGINS entry should be deleted.")
+print("entry should be deleted.")
 sys.exit(0)
 PY
 then

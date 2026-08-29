@@ -7,6 +7,61 @@ Everything below this section is a reverse-chronological log (newest
 first). Read *this* section first; consult the log below only for the
 detail behind a specific claim.
 
+### f4 runs on a real desktop — and both diagnostics had bugs that hid the evidence
+
+The binary launched on Linux Mint 22.3, X11, `DISPLAY=:0`, 2527 fonts,
+libGL found, and exited 0. That is the graphical milestone CI structurally
+cannot test. But the run also exposed two defects in the diagnostics I
+had just added, and both were of the same kind: the tool meant to explain
+a failure was discarding the explanation.
+
+**f4-diag lost the entire "f4 output" section.** The header was written
+`printf '----- host -----\n'` — a format string starting with a dash, so
+bash's printf parsed it as options and errored. The section that captures
+the child's stdout and stderr never got written. So the one log that was
+supposed to answer "what did f4 print" answered nothing. Fixed by passing
+every header as data (`printf '%s\n' '----- host -----'`), for all six
+headers rather than only the one that fired — the class, not the
+instance. `tools/test-f4-diag.sh` now asserts no printf errors appear in
+the produced log, that both child streams and the exit code are captured,
+and that every section exists; two negative controls (reintroduce the
+dash, drop the output redirect) both fail it.
+
+**The audit wrapper reported a count without the findings.** CI failed
+with `audit reports 2 error(s); not waivable here.` and nothing else: the
+wrapper printed only the number, to a stderr the collector does not
+capture. Two errors, unnamed, unreproducible locally — a dead end
+manufactured by my own code. Now it prints each finding, and, more
+importantly, always writes a full report to `<binary>.audit.txt` beside
+the audited file, which the collector copies into the diagnostic artifact
+first thing.
+
+### OB0061, and why it is waived only narrowly
+
+Building the real f4 locally (`./cmd/f4` — the root package is a library,
+which is why a plain `go build .` yields an `ar archive`) surfaced a
+warning class the waiver did not cover: `OB0061`, embedded host-toolchain
+path. Its subject is unreadable because onebin captures a slice of Go's
+glued string pool. Reading the binary directly showed the real match:
+`/usr/lib/x86_64-linux-gnu/libX11.so.6` — goffi's runtime dlopen target,
+a functional string, not a build leak.
+
+So the wrapper now waives OB0061, but decides by inspecting the binary
+rather than trusting the mangled subject: every toolchain-substring
+occurrence must be part of a `.so` load path. One occurrence that is not
+— an `-L` directory, a compiler prefix — and it fails. The test pins both
+directions, and additionally asserts the leak fails *for the right
+reason*: with the branch removed the run still exits non-zero, but as
+STALE WAIVER, which would send a reader to delete a waiver instead of
+fixing a leak. Same exit code, opposite diagnosis.
+
+Also removed a duplicated goffi-hardening block in the preflight (the
+same check ran twice).
+
+The two CI errors remain unidentified: they appear only with the embedded
+Qt host, which cannot be reproduced locally without the generated
+package. The next run will name them in `00-audit-f4.audit.txt`.
+
 ### Diagnostics for the graphical launch CI cannot test
 
 CI proves f4 builds, audits clean, and runs headless. It cannot prove f4

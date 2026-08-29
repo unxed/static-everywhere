@@ -61,7 +61,7 @@ LOG="${SCRIPT_DIR}/f4-diag-${STAMP}.log"
 {
     printf '===== f4-diag %s =====\n\n' "$STAMP"
 
-    printf '----- host -----\n'
+    printf '%s\n' '----- host -----'
     uname -a
     printf 'distro: '
     # shellcheck disable=SC1091
@@ -70,7 +70,7 @@ LOG="${SCRIPT_DIR}/f4-diag-${STAMP}.log"
         "${DISPLAY:-}" "${WAYLAND_DISPLAY:-}" "${XDG_SESSION_TYPE:-}"
     printf 'XDG_RUNTIME_DIR=%s\n' "${XDG_RUNTIME_DIR:-}"
 
-    printf '\n----- is there a GPU / libGL on this host? -----\n'
+    printf '\n%s\n' '----- is there a GPU / libGL on this host? -----'
     # The optional-GL forwarder means the binary starts either way; this
     # just records which path it will take.
     for cand in libGL.so.1 /usr/lib/x86_64-linux-gnu/libGL.so.1 \
@@ -81,7 +81,7 @@ LOG="${SCRIPT_DIR}/f4-diag-${STAMP}.log"
     done
     [ -n "${found_gl:-}" ] || printf 'libGL: NOT found -> software rendering expected\n'
 
-    printf '\n----- fonts -----\n'
+    printf '\n%s\n' '----- fonts -----'
     # The headless run showed a Fontconfig warning; on a desktop a missing
     # config usually is not fatal, but record it so a blank-text failure
     # is not a mystery.
@@ -91,7 +91,7 @@ LOG="${SCRIPT_DIR}/f4-diag-${STAMP}.log"
         printf 'fc-list not present; cannot enumerate fonts\n'
     fi
 
-    printf '\n----- launch configuration -----\n'
+    printf '\n%s\n' '----- launch configuration -----'
     # Turn on Qt's own diagnostics. These are the real channels, confirmed
     # against Qt sources:
     #   QT_DEBUG_PLUGINS   plugin load attempts and why each fails
@@ -120,7 +120,7 @@ LOG="${SCRIPT_DIR}/f4-diag-${STAMP}.log"
     [ -n "${QT_QPA_PLATFORM:-}" ] && printf '        QT_QPA_PLATFORM=%s\n' "$QT_QPA_PLATFORM"
     [ -n "${QT_QUICK_BACKEND:-}" ] && printf '        QT_QUICK_BACKEND=%s\n' "$QT_QUICK_BACKEND"
 
-    printf '\n----- f4 output (stderr+stdout) -----\n'
+    printf '\n%s\n' '----- f4 output (stderr+stdout) -----'
 } >"$LOG" 2>&1
 
 # Run f4, teeing everything into the log. Do not let a crash abort the
@@ -129,7 +129,7 @@ LOG="${SCRIPT_DIR}/f4-diag-${STAMP}.log"
 rc=$?
 
 {
-    printf '\n----- exit -----\n'
+    printf '\n%s\n' '----- exit -----'
     printf 'f4 exited with code %d\n' "$rc"
     if [ "$rc" -ne 0 ]; then
         printf '\nIf the window never appeared, the most telling lines above are:\n'

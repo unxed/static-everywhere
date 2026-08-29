@@ -329,6 +329,18 @@ jobs:
           OUT=/tmp/diagnostic-logs
           mkdir -p "$OUT"
 
+          # (0) Audit reports. The hygiene wrapper writes a full,
+          #     human-readable finding list next to each audited binary,
+          #     because its own stderr is NOT captured here -- a failing
+          #     audit previously reached us as the bare line "audit
+          #     reports 2 error(s)" with the findings themselves lost,
+          #     which is undiagnosable. Copy them first so they survive
+          #     even if a later collection step fails.
+          for report in out/f4-qt/*.audit.txt; do
+            [ -e "$report" ] || continue
+            cp "$report" "$OUT/00-audit-$(basename "$report")" 2>/dev/null || true
+          done
+
           # (1) Listings: paths + sizes, no content. Structurally
           #     incapable of "missing" a log from a build system we
           #     haven't met yet -- which is exactly how meson-log.txt got

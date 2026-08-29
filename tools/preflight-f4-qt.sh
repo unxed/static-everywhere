@@ -170,15 +170,15 @@ else
     printf '%s\n' "$GOFFI_TEST" | sed 's/^/       /'
 fi
 
-# f4 is a goffi binary: dynamic on the C runtime by construction, so
-# Profile H, and it needs PIE+bindnow to satisfy RELRO/BIND_NOW without
-# cgo. Skips cleanly if the Go toolchain is absent (as in the minimal
-# preflight image), so it never blocks, but runs wherever Go exists.
-if GOFFI_TEST=$("${REPO_ROOT}/tools/test-goffi-hardening.sh" 2>&1); then
-    pass "$(printf '%s' "$GOFFI_TEST" | tail -1)"
+# f4-diag turns a failed graphical launch into a readable report, so a bug
+# in it costs a whole round trip with the user. The first real run lost
+# the entire "f4 output" section to a printf format beginning with a dash;
+# this keeps that class out.
+if DIAG_TEST=$("${REPO_ROOT}/tools/test-f4-diag.sh" 2>&1); then
+    pass "f4-diag captures the child output and errors on nothing"
 else
-    fail "goffi hardening regression"
-    printf '%s\n' "$GOFFI_TEST" | sed 's/^/       /'
+    fail "f4-diag regression"
+    printf '%s\n' "$DIAG_TEST" | sed 's/^/       /'
 fi
 
 if GL_CXX_TEST=$("${REPO_ROOT}/tools/test-optional-gl-cxx-only.sh" 2>&1); then
