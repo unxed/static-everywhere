@@ -181,6 +181,23 @@ else
     printf '%s\n' "$DIAG_TEST" | sed 's/^/       /'
 fi
 
+# The plan must assert the GL integrations are in the binary, and the
+# checker must actually reject a binary without them. Missing GL
+# integrations is what made the first desktop launch die -- and the smoke
+# run cannot see it, because it forces software rendering.
+if ! grep -q 'check-gl-integrations.sh' "${REPO_ROOT}/tools/build-f4-qt.sh"; then
+    fail "the plan no longer checks for the xcb GL integrations"
+else
+    printf 'no gl plugin here\n' >"${TMPDIR:-/tmp}/se-nogl-probe.bin"
+    if "${REPO_ROOT}/tools/check-gl-integrations.sh" \
+            "${TMPDIR:-/tmp}/se-nogl-probe.bin" >/dev/null 2>&1; then
+        fail "check-gl-integrations accepts a binary with no GL integration"
+    else
+        pass "the GL integrations are required and their absence is caught"
+    fi
+    rm -f "${TMPDIR:-/tmp}/se-nogl-probe.bin"
+fi
+
 if GL_CXX_TEST=$("${REPO_ROOT}/tools/test-optional-gl-cxx-only.sh" 2>&1); then
     pass "optional-GL sources stay in a CXX-only CMake project"
 else

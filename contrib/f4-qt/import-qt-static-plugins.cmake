@@ -371,6 +371,50 @@ function(_static_everywhere_import_qt_plugins)
         list(APPEND _libs Qt6::QXcbIntegrationPlugin)
     endif()
 
+    # xcb GL integrations: the plugins that let the xcb platform create an
+    # OpenGL context at all.
+    #
+    # Missing these is what made the first real desktop launch die. The
+    # host started, brought up xcb, the screen and every input device,
+    # then said:
+    #
+    #   QXcbIntegration: Cannot create platform OpenGL context, neither
+    #                    GLX nor EGL are enabled
+    #   QRhiGles2: Failed to create context
+    #   Failed to initialize graphics backend for OpenGL.
+    #
+    # and exited, which reset the TCP link to f4 and closed the window
+    # half a second after it appeared. Qt was built with GLX and EGL --
+    # the archives are right there in plugins/xcbglintegrations -- but in
+    # a static build these are separate plugins, and nothing was emitting
+    # Q_IMPORT_PLUGIN for them. The platform plugin alone gets you a
+    # window and no way to draw in it.
+    #
+    # Unlike the list above these are NOT fatal when absent: a Qt built
+    # without GLX/EGL is a legitimate configuration, and the runtime probe
+    # in render-backend-fallback.c then selects software rendering. So
+    # import what exists and say what happened.
+    set(_se_gl_integrations "")
+    foreach(_gl qxcb-glx-integration qxcb-egl-integration)
+        find_library(_se_plug_${_gl} NAMES "${_gl}"
+            PATHS "${qt_PACKAGE_FOLDER_RELEASE}/plugins/xcbglintegrations"
+                  "${Qt6_PACKAGE_FOLDER_RELEASE}/plugins/xcbglintegrations"
+            NO_DEFAULT_PATH)
+        if(_se_plug_${_gl})
+            _se_import_plugin_archive("${_se_plug_${_gl}}" _imports _libs)
+            list(APPEND _se_gl_integrations "${_gl}")
+        endif()
+    endforeach()
+    if(_se_gl_integrations)
+        message(STATUS
+            "static-everywhere: xcb GL integrations imported: "
+            "${_se_gl_integrations}")
+    else()
+        message(STATUS
+            "static-everywhere: no xcb GL integration plugins in the Qt "
+            "package; the binary will run with software rendering")
+    endif()
+
         # Everything QML is Qt's own job, and it does it: the package ships
     # Qt6QmlMacros.cmake, and qt6_import_qml_plugins runs automatically
     # from _qt_internal_finalize_executable for every executable.

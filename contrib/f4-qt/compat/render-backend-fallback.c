@@ -71,6 +71,96 @@ static void se_render_log(const char *msg, const char *soname)
     }
 }
 
+/* Can this process actually obtain an OpenGL context?
+ *
+ * The first version of this probe asked only whether libGL.so.1 could be
+ * dlopen'd, and that answer was wrong on the first real desktop: libGL
+ * was present, the probe said "leave it to Qt", and Qt then died with
+ *
+ *   QXcbIntegration: Cannot create platform OpenGL context, neither GLX
+ *                    nor EGL are enabled
+ *   Failed to initialize graphics backend for OpenGL.
+ *
+ * because presence of the library says nothing about whether a context
+ * can be created here -- the GL integration may be missing, the display
+ * may not offer GLX, the driver may be unusable. So the probe now
+ * exercises the thing it is deciding about: it opens the display and
+ * asks GLX for its version, then falls back to asking EGL to initialise.
+ * Either succeeding means Qt has a real chance; both failing means
+ * software rendering, chosen here rather than discovered by Qt at the
+ * cost of the process.
+ *
+ * Everything is done through dlopen/dlsym so this file links with no GL
+ * or X headers and no new load-time dependency: a binary that must run
+ * where these libraries are absent cannot afford to need them to start.
+ */
+static int se_glx_works(const char *gl_soname)
+{
+    void *gl = NULL, *x11 = NULL;
+    void *(*p_XOpenDisplay)(const char *) = NULL;
+    int (*p_XCloseDisplay)(void *) = NULL;
+    int (*p_glXQueryVersion)(void *, int *, int *) = NULL;
+    void *dpy = NULL;
+    int major = 0, minor = 0, ok = 0;
+
+    gl = dlopen(gl_soname, RTLD_LAZY | RTLD_LOCAL);
+    if (!gl) {
+        return 0;
+    }
+    /* glXQueryVersion is the cheapest call that proves the GLX extension
+       is actually answering on this display, not merely that the client
+       library exists. */
+    *(void **)(&p_glXQueryVersion) = dlsym(gl, "glXQueryVersion");
+    if (!p_glXQueryVersion) {
+        dlclose(gl);
+        return 0;
+    }
+
+    x11 = dlopen("libX11.so.6", RTLD_LAZY | RTLD_LOCAL);
+    if (!x11) {
+        dlclose(gl);
+        return 0;
+    }
+    *(void **)(&p_XOpenDisplay) = dlsym(x11, "XOpenDisplay");
+    *(void **)(&p_XCloseDisplay) = dlsym(x11, "XCloseDisplay");
+    if (p_XOpenDisplay && p_XCloseDisplay) {
+        dpy = p_XOpenDisplay(NULL);
+        if (dpy) {
+            ok = p_glXQueryVersion(dpy, &major, &minor) ? 1 : 0;
+            p_XCloseDisplay(dpy);
+        }
+    }
+
+    dlclose(x11);
+    dlclose(gl);
+    return ok;
+}
+
+static int se_egl_works(void)
+{
+    void *egl = NULL;
+    void *(*p_eglGetDisplay)(void *) = NULL;
+    unsigned int (*p_eglInitialize)(void *, int *, int *) = NULL;
+    void *dpy = NULL;
+    int major = 0, minor = 0, ok = 0;
+
+    egl = dlopen("libEGL.so.1", RTLD_LAZY | RTLD_LOCAL);
+    if (!egl) {
+        return 0;
+    }
+    *(void **)(&p_eglGetDisplay) = dlsym(egl, "eglGetDisplay");
+    *(void **)(&p_eglInitialize) = dlsym(egl, "eglInitialize");
+    if (p_eglGetDisplay && p_eglInitialize) {
+        /* EGL_DEFAULT_DISPLAY is (void *)0. */
+        dpy = p_eglGetDisplay((void *)0);
+        if (dpy) {
+            ok = p_eglInitialize(dpy, &major, &minor) ? 1 : 0;
+        }
+    }
+    dlclose(egl);
+    return ok;
+}
+
 __attribute__((constructor)) static void se_select_render_backend(void)
 {
     /* Same override the forwarder honours, so the no-GL path can be
@@ -79,14 +169,25 @@ __attribute__((constructor)) static void se_select_render_backend(void)
     const char *override = getenv("SE_FORWARD_SE_GL_SONAME");
     const char *soname = (override && *override) ? override : "libGL.so.1";
 
-    void *h = dlopen(soname, RTLD_LAZY | RTLD_LOCAL);
-    if (h) {
-        dlclose(h);
-        se_render_log("libGL present; leaving the render backend to Qt", soname);
+    /* An explicit choice by the user or the caller is not second-guessed:
+       setenv below uses overwrite=0, but the probe itself is skipped too,
+       so forcing software costs nothing at startup. */
+    if (getenv("QT_QUICK_BACKEND")) {
+        se_render_log("QT_QUICK_BACKEND already set; leaving it alone", NULL);
         return;
     }
 
-    se_render_log("libGL absent; selecting software rendering", soname);
+    if (se_glx_works(soname)) {
+        se_render_log("GLX context available; leaving the render backend to Qt",
+                      soname);
+        return;
+    }
+    if (se_egl_works()) {
+        se_render_log("EGL available; leaving the render backend to Qt", NULL);
+        return;
+    }
+
+    se_render_log("no usable GLX or EGL; selecting software rendering", soname);
     setenv("QT_QUICK_BACKEND", "software", 0);
     setenv("QT_XCB_GL_INTEGRATION", "none", 0);
 }

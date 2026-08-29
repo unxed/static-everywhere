@@ -281,6 +281,9 @@ if [ "${CONFIG}" = "linux" ] && [ "${TOOLCHAIN}" = "host" ]; then
     plan_step "timeout --kill-after=30s 120s env QT_QPA_PLATFORM=offscreen QSG_RHI_BACKEND=software ${SRC}/build-qt/f4-qt-host --f4-ext-connect=127.0.0.1:1 > ${OUT}/smoke.log 2>&1 || [ \$? -eq 2 ]"
     plan_step "! grep -q 'QQmlApplicationEngine failed to load component' ${OUT}/smoke.log"
     plan_step "! grep -q 'Could not find the Qt platform plugin' ${OUT}/smoke.log"
+    plan_step "! grep -q 'Failed to initialize graphics backend' ${OUT}/smoke.log"
+    plan_step "! grep -q 'neither GLX nor EGL are enabled' ${OUT}/smoke.log"
+    plan_step "${REPO_ROOT}/tools/check-gl-integrations.sh ${SRC}/build-qt/f4-qt-host"
 
 elif [ "${CONFIG}" = "linux" ] && [ "${TOOLCHAIN}" = "zig" ]; then
     # Diagnostics audit (prompted directly by losing a real CI cycle to
@@ -791,6 +794,17 @@ HOOKEOF"
     plan_step "timeout --kill-after=30s 120s env QT_QPA_PLATFORM=offscreen QSG_RHI_BACKEND=software ${SRC}/qt/host/build-portable-linux/bin/Release/f4-qt-host --f4-ext-connect=127.0.0.1:1 --f4-ext-nonce=ci-smoke > ${OUT}/smoke.log 2>&1 || [ \$? -eq 2 ]"
     plan_step "! grep -q 'QQmlApplicationEngine failed to load component' ${OUT}/smoke.log"
     plan_step "! grep -q 'Could not find the Qt platform plugin' ${OUT}/smoke.log"
+    # The graphics-backend failures that killed the first desktop launch.
+    # The smoke run forces QSG_RHI_BACKEND=software, so it would never
+    # have produced these lines -- which is exactly why a host that could
+    # not create a GL context shipped green. They are checked anyway: if
+    # they ever appear here, something is wrong far earlier than rendering.
+    plan_step "! grep -q 'Failed to initialize graphics backend' ${OUT}/smoke.log"
+    plan_step "! grep -q 'neither GLX nor EGL are enabled' ${OUT}/smoke.log"
+    # And the GL integrations must actually be in the binary. This is the
+    # positive check the smoke run cannot make: with software forced, the
+    # host starts fine whether or not it could ever use a GPU.
+    plan_step "${REPO_ROOT}/tools/check-gl-integrations.sh ${SRC}/qt/host/build-portable-linux/bin/Release/f4-qt-host"
 
     plan_step "cd ${SRC} && python ci/package-embedded-qt-host.py qt/host/build-portable-linux/bin/Release/f4-qt-host"
     plan_step "cd ${SRC} && go test -tags f4_embedded_qt_host -run 'TestMaterializeEmbeddedQtHost|TestGeneratedEmbeddedQtHostPayload' ."

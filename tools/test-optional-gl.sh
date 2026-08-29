@@ -107,9 +107,21 @@ case "$with_gl" in
     *"proc=1"*) ;;
     *) printf 'a GLX entry point did not forward: %s\n' "$with_gl" >&2; exit 1 ;;
 esac
+# The render-backend decision is deliberately NOT "libGL is present".
+# That was the original rule and it was wrong on the first real desktop:
+# libGL was there, the rule said "leave it to Qt", and Qt then died with
+# "neither GLX nor EGL are enabled". The rule is now whether a context can
+# actually be obtained -- GLX on the current display, or EGL -- so on a
+# host with the library but no usable display (every CI runner, this
+# sandbox) the correct answer is software, and asserting "(unset)" here
+# would be asserting the bug.
+#
+# What must hold is that the two halves stay independent: the forwarder
+# resolves GL when the library exists (checked above), while the backend
+# choice follows the probe. Both outcomes are legitimate; a crash is not.
 case "$with_gl" in
-    *"backend=(unset)"*) ;;
-    *) printf 'software rendering was forced on a GL-capable host: %s\n' "$with_gl" >&2; exit 1 ;;
+    *"backend=(unset)"*|*"backend=software"*) ;;
+    *) printf 'the backend choice is neither Qt-default nor software: %s\n' "$with_gl" >&2; exit 1 ;;
 esac
 
 without_gl=$(SE_FORWARD_SE_GL_SONAME=libGL-absent.so.999 "$PROBE/app")
@@ -154,8 +166,7 @@ case "$file_output" in
         exit 1
         ;;
 esac
-if ! grep -Fq '[se-render] libGL absent; selecting software rendering' \
-        "$render_log"; then
+if ! grep -Fq 'selecting software rendering' "$render_log"; then
     printf 'SE_RENDER_DEBUG_FILE did not receive the render decision\n' >&2
     exit 1
 fi

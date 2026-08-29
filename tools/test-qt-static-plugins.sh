@@ -362,4 +362,20 @@ case "$archive_symbols" in
     ;;
 esac
 
+# The xcb GL integrations must be imported, or the host gets a window it
+# cannot draw into: "neither GLX nor EGL are enabled", context creation
+# fails, the process exits and the window vanishes. This is asserted
+# against the cmake module rather than a build, because a build with
+# software rendering forced -- which is what the smoke run does -- starts
+# fine either way and would not notice.
+MODULE="${REPO_ROOT}/contrib/f4-qt/import-qt-static-plugins.cmake"
+for _p in qxcb-glx-integration qxcb-egl-integration; do
+    grep -qF "$_p" "$MODULE" \
+        || { printf 'the plugin import module never mentions %s\n' "$_p" >&2
+             exit 1; }
+done
+grep -qF 'plugins/xcbglintegrations' "$MODULE" \
+    || { printf 'the module does not search plugins/xcbglintegrations\n' >&2
+         exit 1; }
+
 printf 'static Qt plugin import: both plugins in both consumers: pass\n'

@@ -7,6 +7,60 @@ Everything below this section is a reverse-chronological log (newest
 first). Read *this* section first; consult the log below only for the
 detail behind a specific claim.
 
+### The window vanished because the host had no way to draw — fixed at the source
+
+f4 runs on a real desktop with `QT_QUICK_BACKEND=software`: full UI, both
+panels, menus, function keys, embedded terminal, from a static binary on
+a glibc 2.27 baseline. With GL, it died. The crash log f4 keeps at
+`~/.config/f4/crashes/stderr_*.log` (f4 redirects stderr there and the
+host inherits it -- which is why every earlier capture was empty) said:
+
+```
+QXcbIntegration: Cannot create platform OpenGL context, neither GLX nor EGL are enabled
+QRhiGles2: Failed to create context
+Failed to initialize graphics backend for OpenGL.
+```
+
+The host exited, resetting the TCP link to f4 (`connection reset by
+peer`), and the window closed half a second after appearing.
+
+**Cause.** In a static build the xcb GL integrations are separate
+plugins. `plugins/xcbglintegrations/libqxcb-glx-integration.a` and
+`libqxcb-egl-integration.a` were in the Qt package, but nothing emitted
+`Q_IMPORT_PLUGIN` for them: the import list covered platforms,
+imageformats, iconengines and QML, and this plugin type was simply not in
+it. The platform plugin alone gets you a window and no way to draw in it.
+
+**Three fixes, so the next run decides for itself and cannot die of it.**
+
+1. **Import the GL integrations** (`import-qt-static-plugins.cmake`).
+   Deliberately non-fatal when absent, unlike the platform plugins: a Qt
+   without GLX/EGL is a legitimate configuration, and the runtime probe
+   then picks software.
+
+2. **Make the probe answer the right question.** It asked whether
+   `libGL.so.1` could be dlopen'd -- and on that desktop libGL *was*
+   present, so it said "leave it to Qt" and Qt died. Presence of a
+   library says nothing about whether a context can be created. It now
+   opens the display and calls `glXQueryVersion`, falling back to
+   `eglInitialize`; either succeeding leaves the GPU path alone, both
+   failing selects software. All via dlopen/dlsym, so no GL or X headers
+   and no new load-time dependency. An explicit `QT_QUICK_BACKEND` is
+   never second-guessed.
+
+3. **Close the CI blind spot.** The smoke run forces
+   `QSG_RHI_BACKEND=software` under offscreen, so it never asks for a
+   context and starts happily either way -- a host incapable of using a
+   GPU shipped green twice. `tools/check-gl-integrations.sh` now reads
+   the produced binary for the plugin class names, and the plan asserts
+   the smoke log is free of "Failed to initialize graphics backend" and
+   "neither GLX nor EGL are enabled". Wired into the preflight, which
+   also verifies the checker rejects a binary without them.
+
+The lesson is the same one as the diagnostics: a check that forces the
+easy path proves the easy path. Software rendering in smoke was
+convenient and it hid exactly the failure that mattered.
+
 ### 2026-08-29: X11 graphics are proven; the remaining failure is f4's host lifecycle
 
 The packaged Qt host was launched directly on a live X11 desktop and passed
