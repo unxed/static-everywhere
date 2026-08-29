@@ -86,12 +86,19 @@ if [ "$total" -eq 0 ] || [ "$total" -ne "$strict" ]; then
     exit 1
 fi
 
-# And every one of them must carry the declared contract, or the audit
-# would fail on libraries the project has already accounted for.
-allowed=$(grep 'plan_step .*--profile hybrid' "$REPO_ROOT/tools/build-f4-qt.sh" \
-          | grep -c 'f4_qt_allow_flags' || true)
-if [ "$total" -ne "$allowed" ]; then
-    printf '%s of %s hybrid audits pass the host contract\n' "$allowed" "$total" >&2
+# And every one of them must carry a declared contract, or the audit
+# would fail on libraries the project has already accounted for. There
+# are two kinds of hybrid audit and each carries its own contract:
+#   - the Qt host binaries, via f4_qt_allow_flags (the GUI library set);
+#   - the packaged goffi f4, via explicit --allow of the C runtime it
+#     binds through cgo_import_dynamic (libc/libdl/libpthread).
+# Every hybrid audit must carry ONE of the two, so count the audits that
+# carry NEITHER -- that number must be zero.
+uncovered=$(grep 'plan_step .*--profile hybrid' "$REPO_ROOT/tools/build-f4-qt.sh" \
+            | grep -v 'f4_qt_allow_flags' \
+            | grep -vc -- '--allow libc.so.6' || true)
+if [ "$uncovered" -ne 0 ]; then
+    printf '%s hybrid audit(s) carry no host contract at all\n' "$uncovered" >&2
     exit 1
 fi
 

@@ -262,7 +262,11 @@ if [ "${CONFIG}" = "linux" ] && [ "${TOOLCHAIN}" = "host" ]; then
     plan_step "cp ${SRC}/f4 ${OUT}/f4"
     plan_step "cp ${SRC}/embedded/f4-qt-host.gz ${OUT}/"
 
-    plan_step "${ONEBIN_BIN} audit --profile static --level 1 --strict ${OUT}/f4"
+    # Profile H, not S: goffi makes f4 dynamic on the C runtime by
+    # construction (see the go build step). Contract is exactly
+    # libc/libdl/libpthread, and through the hygiene wrapper for the
+    # OB0060 build-path strings from prebuilt Go modules (colorer4go).
+    plan_step "${REPO_ROOT}/tools/audit-with-hygiene-waivers.sh ${ONEBIN_BIN} --profile hybrid --glibc-max ${GLIBC_BASELINE} --allow libc.so.6 --allow libdl.so.2 --allow libpthread.so.0 --level 1 --strict ${OUT}/f4"
     # Through tools/audit-with-hygiene-waivers.sh, not onebin directly.
     # The host audit reaches 0 errors and fails --strict only on OB0060
     # build-path warnings baked into prebuilt Qt and libheif archives --
@@ -794,7 +798,11 @@ HOOKEOF"
     plan_step "cd ${SRC} && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -tags f4_embedded_qt_host -ldflags='-s -w' -o dist/f4-linux-amd64/f4 ."
 
     plan_step "cp ${SRC}/dist/f4-linux-amd64/f4 ${OUT}/f4"
-    plan_step "${ONEBIN_BIN} audit --profile static --level 1 --strict ${OUT}/f4"
+    # Profile H, not S: goffi makes f4 dynamic on the C runtime by
+    # construction (see the go build step). Contract is exactly
+    # libc/libdl/libpthread, and through the hygiene wrapper for the
+    # OB0060 build-path strings from prebuilt Go modules (colorer4go).
+    plan_step "${REPO_ROOT}/tools/audit-with-hygiene-waivers.sh ${ONEBIN_BIN} --profile hybrid --glibc-max ${GLIBC_BASELINE} --allow libc.so.6 --allow libdl.so.2 --allow libpthread.so.0 --level 1 --strict ${OUT}/f4"
 
 elif [ "${CONFIG}" = "windows" ]; then
     plan_step "cd ${SRC} && pwsh ci/build-portable-qt-windows.ps1"

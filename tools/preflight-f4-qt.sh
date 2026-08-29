@@ -159,6 +159,28 @@ else
     printf '%s\n' "$HYGIENE_TEST" | sed 's/^/       /'
 fi
 
+# The packaged f4 is a goffi binary: dynamic on the C runtime by
+# construction, so Profile H, and it needs PIE+bindnow to carry RELRO and
+# BIND_NOW without cgo. This proves the flags do that and the result
+# audits clean. Skips only if the Go toolchain is unavailable.
+if GOFFI_TEST=$("${REPO_ROOT}/tools/test-goffi-hardening.sh" 2>&1); then
+    pass "the goffi build is hardened and passes a strict Profile H audit"
+else
+    fail "goffi hardening regression"
+    printf '%s\n' "$GOFFI_TEST" | sed 's/^/       /'
+fi
+
+# f4 is a goffi binary: dynamic on the C runtime by construction, so
+# Profile H, and it needs PIE+bindnow to satisfy RELRO/BIND_NOW without
+# cgo. Skips cleanly if the Go toolchain is absent (as in the minimal
+# preflight image), so it never blocks, but runs wherever Go exists.
+if GOFFI_TEST=$("${REPO_ROOT}/tools/test-goffi-hardening.sh" 2>&1); then
+    pass "$(printf '%s' "$GOFFI_TEST" | tail -1)"
+else
+    fail "goffi hardening regression"
+    printf '%s\n' "$GOFFI_TEST" | sed 's/^/       /'
+fi
+
 if GL_CXX_TEST=$("${REPO_ROOT}/tools/test-optional-gl-cxx-only.sh" 2>&1); then
     pass "optional-GL sources stay in a CXX-only CMake project"
 else

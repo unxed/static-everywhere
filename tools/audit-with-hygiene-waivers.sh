@@ -63,6 +63,8 @@ WAIVED_ORIGINS=(
 "perf-%1.map|a libheif/HEVC profiling artefact path string, from prebuilt code."
 "/src/qtbase/|Qt's own source paths, __FILE__ in prebuilt Qt archives."
 "=/tmp/|libheif's bare temp-prefix string (a format prefix it appends a name to at runtime). Matched exactly, so a real path UNDER /tmp is not waived."
+"colorer4go/|colorer4go (f4's syntax highlighting): __FILE__ strings from Colorer (far2l) compiled to a .wasm module that ships as data inside the Go binary. Baked into the prebuilt wasm on the author's machine (/home/unxed/dev/...); unremovable without rebuilding Colorer. Third-party, not our compilation."
+"/tmp/.X11-unix|an X11 protocol string table baked into prebuilt Qt (socket-path prefix concatenated with event names). Qt's, not ours."
 )
 
 if [ "$#" -lt 2 ]; then

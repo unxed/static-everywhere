@@ -23,6 +23,69 @@ for this entire stretch of work.
   changes cheaply.
 - Compiler wrappers: `onebin/toolchain/zig-cc`, `zig-c++`.
 
+### The packaged f4 audits clean as Profile H — and it runs headless
+
+Two milestones in one run. The smoke log shows the binary **running with
+no graphical shell**: Qt Quick started, the static image plugins are
+registered (`bmp cur gif ico png svg svgz …`), the full format list
+includes RAW and HEIF (`heic avif dng cr2 nef arw …`), the multithreaded
+decoder came up and shut down cleanly. `Connection refused` and the
+Fontconfig line are the expected headless notes, not failures — the
+optional-GL + software path did exactly what it was built for.
+
+And the final audit reached the packaged `f4` for the first time. It
+failed with four errors that turned out to be one diagnosis, and the
+diagnosis was not what it looked like.
+
+### f4 is a goffi binary, so Profile H by construction — not a defect
+
+`f4` is built **without cgo** (`CGO_ENABLED=0`): it reaches system
+libraries through goffi. goffi's fakecgo path uses
+`//go:cgo_import_dynamic … "libc.so.6"`, and that directive makes the Go
+linker emit `PT_INTERP` and `DT_NEEDED` (libc/libdl/libpthread) **even
+with cgo disabled**. Reproduced exactly on Go 1.27 + goffi 0.6.3: the
+ELF signature matches CI byte for byte, and glibc requirement is *none*
+because goffi resolves symbols itself.
+
+So `OB0030`/`OB0031` (interp + needed under Profile S) are not defects —
+the profile was wrong. `f4` is Profile H: static in everything but the C
+runtime, contract exactly `libc`/`libdl`/`libpthread`, the same set
+already declared for the Qt host.
+
+### RELRO and BIND_NOW without cgo — the part worth checking, not waiving
+
+`OB0050`/`OB0051` (no RELRO, no BIND_NOW) are real and are ERROR, so
+dropping `--strict` would not have helped. External linking supplies both
+but needs cgo, which f4 avoids on purpose. The instinct was a waiver;
+checking first was the better call. Go's **internal** linker does both
+alone: `-buildmode=pie` emits `PT_GNU_RELRO` (and PIE, clearing the
+`OB0032` ASLR warning), and `-ldflags=-bindnow` sets `DT_BIND_NOW` and
+`DF_1_NOW`. Verified: the hardened binary passes a strict Profile H audit
+with **0 findings**, no waiver at all.
+
+### Fix
+
+- Go build gains `-buildmode=pie` and `-bindnow`.
+- The `f4` audit moves from Profile S to Profile H with the C-runtime
+  contract, through the hygiene wrapper.
+- The wrapper learns two more third-party OB0060 origins: `colorer4go`
+  (Colorer from far2l, compiled to a **wasm** module shipped as data in
+  the Go binary — `__FILE__` strings baked into the prebuilt wasm, not
+  ours) and `/tmp/.X11-unix` (an X11 protocol string table inside
+  prebuilt Qt).
+- `tools/test-goffi-hardening.sh` builds a real goffi binary with the
+  plan's flags and asserts RELRO, BIND_NOW and a clean strict Profile H
+  audit, with a negative control that the un-hardened build fails
+  `OB0051`. Wired into the preflight; skips only if Go is unavailable.
+- The host-contract test now accepts either contract on a hybrid audit —
+  the GUI set for the Qt host, the C-runtime set for f4 — and fails any
+  hybrid audit carrying neither, or not `--strict`. Both re-checked by
+  negative control.
+
+Installing Go locally is what made this provable instead of guessed: the
+"cgo is unavoidable, so static is impossible" reasoning was wrong in both
+halves — cgo is absent, and the binary is hardenable without it.
+
 ### Latest diagnostic run — **0 errors**; host audit fails --strict only on third-party build-path hygiene
 
 libGL is gone from the binary's `needed` list: the CXX-only fix landed,
