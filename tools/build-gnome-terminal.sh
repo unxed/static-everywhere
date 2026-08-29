@@ -128,7 +128,8 @@ if [ "$PRINT_PLAN" -eq 1 ]; then
         meson setup --wipe "$BUILD_DIR" "$SRC_ABS" \
         --native-file "$NATIVE_FILE" \
         --prefix "$INSTALL_PREFIX" --libdir lib --libexecdir libexec --buildtype release \
-        --prefer-static -Ddefault_library=static
+        --prefer-static --wrap-mode nodownload -Ddefault_library=static \
+        -Ddocs=false -Dnautilus_extension=false -Dsearch_provider=false
     quote_cmd env "PKG_CONFIG_PATH=${PKG_CONFIG_PATH_VALUE}" \
         meson compile -C "$BUILD_DIR" -j "$JOBS"
     quote_cmd env "PKG_CONFIG_PATH=${PKG_CONFIG_PATH_VALUE}" \
@@ -171,7 +172,8 @@ pkg-config --exists gtk+-3.0 vte-2.91 libhandy-1 || {
 run meson setup --wipe "$BUILD_DIR" "$SRC_ABS" \
     --native-file "$NATIVE_FILE" \
     --prefix "$INSTALL_PREFIX" --libdir lib --libexecdir libexec --buildtype release \
-    --prefer-static -Ddefault_library=static
+    --prefer-static --wrap-mode nodownload -Ddefault_library=static \
+    -Ddocs=false -Dnautilus_extension=false -Dsearch_provider=false
 run meson compile -C "$BUILD_DIR" -j "$JOBS"
 run meson install -C "$BUILD_DIR"
 run install -D "$INSTALL_PREFIX/libexec/gnome-terminal-server" "$ARTIFACT"

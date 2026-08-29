@@ -1,12 +1,29 @@
 name: gnome-terminal-hybrid-static-gtk
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - 'contrib/gnome-terminal/**'
+      - 'tools/build-gnome-terminal.sh'
+      - 'tools/build-gnome-terminal-deps.sh'
+      - 'tools/preflight-gnome-terminal.sh'
+      - 'tools/verify-gnome-terminal-static.sh'
+      - 'onebin/toolchain/**'
+      - '06-REFERENCE-gnome-terminal.md'
+      - 'STATIC-EVERYWHERE.md'
+      - 'DESIGN-onebin.md'
+      - 'README.md'
+      - 'CONFORMING.md'
+      - 'FUTURE-IDEAS.md'
   pull_request:
     paths:
       - 'contrib/gnome-terminal/**'
       - 'tools/build-gnome-terminal.sh'
+      - 'tools/build-gnome-terminal-deps.sh'
       - 'tools/preflight-gnome-terminal.sh'
       - 'tools/verify-gnome-terminal-static.sh'
+      - 'onebin/toolchain/**'
       - '06-REFERENCE-gnome-terminal.md'
       - 'STATIC-EVERYWHERE.md'
       - 'DESIGN-onebin.md'
@@ -33,3 +50,91 @@ jobs:
 
       - name: Check the static GTK recipe
         run: ./tools/preflight-gnome-terminal.sh
+
+  build:
+    needs: preflight
+    runs-on: ubuntu-24.04
+    timeout-minutes: 300
+    steps:
+      - name: Checkout static-everywhere
+        uses: actions/checkout@v4
+
+      - name: Install build tools and the host display contract
+        # Only the display/desktop boundary is supplied by the runner. GTK,
+        # GLib, Pango, Cairo, GdkPixbuf, VTE and libhandy come from deps.lock.
+        run: |
+          sudo apt-get update
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            build-essential cmake ninja-build meson pkg-config gawk gettext xsltproc \
+            autoconf automake libtool curl git python3 perl binutils \
+            libx11-dev libxext-dev libxi-dev libxrandr-dev libxrender-dev \
+            libxcursor-dev libxdamage-dev libxfixes-dev libxcomposite-dev \
+            libgl-dev libegl-dev libatspi2.0-dev libatk-bridge2.0-dev \
+            libdbus-1-dev uuid-dev gsettings-desktop-schemas
+
+      - name: Install zig 0.13.0
+        run: |
+          curl --fail --location --silent --show-error \
+            -o zig.tar.xz \
+            https://ziglang.org/download/0.13.0/zig-linux-x86_64-0.13.0.tar.xz
+          tar xf zig.tar.xz
+          echo "$PWD/zig-linux-x86_64-0.13.0" >> "$GITHUB_PATH"
+          echo "$PWD/onebin/toolchain" >> "$GITHUB_PATH"
+
+      - name: Build onebin toolchain
+        run: make -C onebin
+
+      - name: Build the pinned static GTK dependency prefix
+        run: |
+          set -o pipefail
+          mkdir -p out/gnome-terminal
+          export ZIG_GLOBAL_CACHE_DIR="$RUNNER_TEMP/zig-global-cache"
+          export ZIG_LOCAL_CACHE_DIR="$RUNNER_TEMP/zig-local-cache"
+          tools/build-gnome-terminal-deps.sh \
+            --prefix "$PWD/out/gnome-terminal/static-prefix" \
+            --work "$PWD/out/gnome-terminal/deps-work" \
+            --jobs 4 2>&1 | tee "$RUNNER_TEMP/gnome-terminal-deps-build.log"
+
+      - name: Fetch the pinned GNOME Terminal source
+        run: |
+          ref=$(awk '$1 == "gnome-terminal" { print $3; exit }' contrib/gnome-terminal/deps.lock)
+          url=$(awk '$1 == "gnome-terminal" { print $4; exit }' contrib/gnome-terminal/deps.lock)
+          test "${#ref}" -eq 40
+          git clone --filter=blob:none --no-checkout --quiet "$url" gnome-terminal-src
+          git -C gnome-terminal-src fetch --quiet --depth 1 origin "$ref"
+          git -C gnome-terminal-src checkout --quiet --detach "$ref"
+          test "$(git -C gnome-terminal-src rev-parse HEAD)" = "$ref"
+
+      - name: Build and verify GNOME Terminal
+        run: |
+          set -o pipefail
+          export ZIG_GLOBAL_CACHE_DIR="$RUNNER_TEMP/zig-global-cache"
+          export ZIG_LOCAL_CACHE_DIR="$RUNNER_TEMP/zig-local-cache"
+          tools/build-gnome-terminal.sh \
+            --src "$PWD/gnome-terminal-src" \
+            --deps-prefix "$PWD/out/gnome-terminal/static-prefix" \
+            --out "$PWD/out/gnome-terminal" \
+            --jobs 4 2>&1 | tee "$RUNNER_TEMP/gnome-terminal-build.log"
+
+      - name: Upload GNOME Terminal artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gnome-terminal-hybrid-static-gtk
+          path: |
+            out/gnome-terminal/gnome-terminal-server
+            out/gnome-terminal/*.audit.txt
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Upload build diagnostics
+        if: failure() || cancelled()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gnome-terminal-hybrid-static-gtk-diagnostics
+          path: |
+            ${{ runner.temp }}/gnome-terminal-deps-build.log
+            ${{ runner.temp }}/gnome-terminal-build.log
+            out/gnome-terminal/build/meson-logs/meson-log.txt
+          if-no-files-found: warn
+          retention-days: 14

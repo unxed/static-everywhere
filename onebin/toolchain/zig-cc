@@ -6,6 +6,25 @@
 # its own — DESIGN-onebin.md §8.
 set -eu
 
+# Meson identifies the linker by running the compiler with -Wl,--version and,
+# after seeing an LLD banner, with -Wl,-v. Zig 0.13 handles the first probe
+# internally and prints "zig ld", then rejects the second diagnostic flag.
+# The actual linker is LLD; expose that fact only for these flag-only probes
+# so Meson can select its normal LLD argument handling. Real compile and link
+# invocations still go through Zig unchanged.
+_onebin_linker_probe=0
+_onebin_linker_input=0
+for _onebin_arg in "$@"; do
+    case "$_onebin_arg" in
+        -Wl,--version|-Wl,-v) _onebin_linker_probe=1 ;;
+        *.c|*.cc|*.cpp|*.cxx|*.o|*.a|*.so|*.s|*.S) _onebin_linker_input=1 ;;
+    esac
+done
+if [ "$_onebin_linker_probe" = 1 ] && [ "$_onebin_linker_input" = 0 ]; then
+    printf 'LLD\n'
+    exit 0
+fi
+
 if ! command -v zig >/dev/null 2>&1; then
     echo "zig-cc: 'zig' not found on PATH. Install it: https://ziglang.org/download/" >&2
     exit 127

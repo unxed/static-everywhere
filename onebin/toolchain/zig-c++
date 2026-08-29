@@ -2,6 +2,21 @@
 # zig-c++ — see zig-cc for why this wrapper exists at all.
 set -eu
 
+# Keep Meson's linker probes compatible with Zig 0.13. See zig-cc for why
+# these flag-only diagnostics must report LLD without changing real links.
+_onebin_linker_probe=0
+_onebin_linker_input=0
+for _onebin_arg in "$@"; do
+    case "$_onebin_arg" in
+        -Wl,--version|-Wl,-v) _onebin_linker_probe=1 ;;
+        *.c|*.cc|*.cpp|*.cxx|*.o|*.a|*.so|*.s|*.S) _onebin_linker_input=1 ;;
+    esac
+done
+if [ "$_onebin_linker_probe" = 1 ] && [ "$_onebin_linker_input" = 0 ]; then
+    printf 'LLD\n'
+    exit 0
+fi
+
 if ! command -v zig >/dev/null 2>&1; then
     echo "zig-c++: 'zig' not found on PATH. Install it: https://ziglang.org/download/" >&2
     exit 127

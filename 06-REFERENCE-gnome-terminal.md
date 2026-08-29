@@ -50,6 +50,19 @@ the GTK code dynamic.
 
 ## 4. Build interface
 
+First produce the prefix from the commit pins:
+
+```sh
+./tools/build-gnome-terminal-deps.sh \
+  --prefix ./out/gnome-terminal/static-prefix \
+  --work ./out/gnome-terminal/deps-work
+```
+
+The producer verifies every source checkout against `contrib/gnome-terminal/deps.lock`
+and builds the Layer-1 archives in dependency order. It deliberately leaves
+X11, OpenGL/EGL, accessibility IPC, schemas, fonts and session services to the
+Profile H host contract.
+
 `tools/build-gnome-terminal.sh` accepts:
 
 ```sh
