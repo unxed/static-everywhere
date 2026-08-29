@@ -86,6 +86,33 @@ Installing Go locally is what made this provable instead of guessed: the
 "cgo is unavoidable, so static is impossible" reasoning was wrong in both
 halves — cgo is absent, and the binary is hardenable without it.
 
+### CI installs Go — the plan built and audited f4 with whatever Go the runner happened to ship
+
+A gap that had been invisible because the runner image happened to carry
+a usable Go: nothing in the workflow installed one. `go test` and `go
+build` in the plan, and the new goffi-hardening check, all depended on
+that accident. f4's `go.mod` requires `go 1.26.0`; a mismatched
+preinstalled Go would either fail outright or trigger a silent
+`GOTOOLCHAIN` download mid-build.
+
+`actions/setup-go@v5` pinned to `1.26` (with `check-latest`) is added to
+**both** jobs:
+
+- **build**, before the plan runs, so `go build -buildmode=pie
+  -ldflags=-bindnow` and `go test` use the pinned toolchain;
+- **preflight**, so `tools/test-goffi-hardening.sh` actually runs there
+  instead of skipping on "go unavailable". That check proves PIE+bindnow
+  give RELRO and BIND_NOW and a clean Profile H audit — the exact
+  property whose failure would otherwise only surface two hours in, at
+  the final f4 audit. A gate that skips its most expensive-to-learn check
+  is not a gate.
+
+Recorded also because of a mistake on my side worth owning: I reset the
+tree to origin/main while the goffi work was only in the working tree and
+in a handed-off patch, not yet upstream, and the reset discarded it. It
+was recoverable from the patch and reapplied cleanly, but the lesson is
+to check `git status` before a hard reset, not after.
+
 ### Latest diagnostic run — **0 errors**; host audit fails --strict only on third-party build-path hygiene
 
 libGL is gone from the binary's `needed` list: the CXX-only fix landed,

@@ -77,6 +77,19 @@ jobs:
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq \
             libgl-dev libegl-dev libx11-dev libxcb1-dev
 
+      - name: Set up Go
+        # So the preflight's goffi-hardening check actually runs here
+        # rather than skipping. That check builds a real goffi binary and
+        # proves -buildmode=pie + -bindnow yield RELRO and BIND_NOW and a
+        # clean Profile H audit -- exactly the property that, if it broke,
+        # would otherwise only surface two hours into the build job at the
+        # final f4 audit. A gate that skips its own most expensive-to-learn
+        # check is not a gate. Same version the build job pins.
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+          check-latest: true
+
       - name: Fast invariant checks
         # After the zig install and the dev packages, deliberately: the preflight's last check
         # links against the host's GL/X11/xcb/EGL through the wrappers, and
@@ -167,6 +180,22 @@ jobs:
         run: |
           curl -LsSf https://astral.sh/uv/install.sh | sh
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Set up Go
+        # The packaged f4 is a Go binary; the plan runs `go test` and
+        # `go build` to produce and audit it. The runner's preinstalled Go
+        # is whatever the image happens to ship, which is not something to
+        # depend on -- pin it. f4's go.mod requires go 1.26.0, so pin that:
+        # a lower version would make the toolchain silently download 1.26
+        # at build time (GOTOOLCHAIN), which is slow and implicit. The
+        # build uses -buildmode=pie with -ldflags=-bindnow so the goffi
+        # binary -- dynamic by construction via cgo_import_dynamic -- gets
+        # RELRO and BIND_NOW without cgo. check-latest keeps patch releases
+        # current.
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+          check-latest: true
 
       - name: Configure ccache
         # See quickstart-f4-qt.sh for why base_dir/sloppiness matter even
