@@ -537,6 +537,101 @@ glibc emulator.
 research programme, and it is the rung that decides whether the rest is
 worth anything.
 
+### 1.10.3 The wire is the ABI
+
+There is no need to negotiate with X11 at all. The X protocol is a
+published specification; `xcb` is *generated* from machine-readable
+protocol descriptions. Bundling our own X client statically — which this
+project already does — means the display connection is a socket and a
+byte stream, and `libX11` never enters the picture on either side of any
+boundary.
+
+That is not a convenience. It deletes libcapsule's failure mode by
+construction: there is no second `libX11` to disagree with the first,
+because there is no first.
+
+And it generalises into the doctrine the rest of this file has been
+circling:
+
+> **Prefer a specified wire protocol or a kernel uAPI over a library
+> ABI.** Protocols are versioned, documented and negotiated because they
+> were designed to be spoken by strangers. Library ABIs are none of those
+> things, because they were designed to be linked by the distribution
+> that built both sides.
+
+Every place this project has been hurt is a library ABI: glibc symbol
+versions, GLX's per-process screen state, `.prl` grammar, Qt's static
+plugin registration, `libXi` freeing across two heaps. Every place it has
+stood on rock is a specification: the syscall table, DRM ioctls, the X
+protocol, and now the Vulkan ICD contract. The pattern is not luck. It is
+the difference between an interface someone promised and an interface
+someone documented.
+
+#### What the X protocol already hands us
+
+DRI3 is worth reading rather than assuming, because it is more generous
+than the shape of §1.10.2 suggested. From the specification: buffers
+cross *the protocol* by POSIX fd passing, and on Linux those buffers are
+dma-bufs. Better, `DRI3Open` has the **X server** open the DRM device and
+pass the file descriptor back to the client.
+
+So on an X session the client does not need to find `/dev/dri`, does not
+need permission on it, and does not need to guess a render node. It opens
+one socket, speaks a documented protocol, and receives the GPU as a file
+descriptor. `PixmapFromBuffers` (DRI3 1.2, with format modifiers) sends
+the rendered dma-buf back the same way, and `Present` puts it on screen.
+
+The Profile U contract therefore tightens to something almost
+embarrassingly small:
+
+> One connection to the display socket. Everything else — the GPU device,
+> the rendered buffer, the fences — arrives and leaves as file
+> descriptors over it. No `PT_INTERP`, no `DT_NEEDED`, no host library of
+> any kind.
+
+#### The honest edge
+
+File descriptors pass only over `AF_UNIX`. A display reached over TCP —
+`ssh -X`, a remote session — cannot do DRI3, and therefore cannot do
+zero-copy hardware presentation. That case degrades to software
+rendering with `PutImage` or MIT-SHM, which is what remote X has always
+done and what users of it already expect.
+
+This is the same shape as the GL probe we shipped: ask whether the
+capability is actually available *here*, take the good path if it is, and
+have a working path when it is not. The failure mode is slower pixels,
+not a dead process.
+
+#### The same lens on the rest of the desktop
+
+| Need | Specified interface | Library ABI we avoid |
+|---|---|---|
+| Window, input, presentation | X11 wire protocol + DRI3/Present | `libX11`, `libGL`, `libglvnd` |
+| Wayland session | `wayland.xml`, `zwp_linux_dmabuf_v1` | `libwayland-client` from the host |
+| Keyboard layout | server sends the XKB keymap; we parse it with bundled `xkbcommon` | host `libxkbcommon` |
+| Portals, notifications | D-Bus wire protocol over its socket | `libdbus` |
+| GPU | Vulkan ICD contract; DRM ioctls | `libGL`, `libvulkan` |
+| Fonts, cursors, icons | data files with documented formats | host `fontconfig` |
+| Audio | `/dev/snd` uAPI is stable; PulseAudio's native protocol is documented | host `libasound`, `libpulse` |
+
+Audio is the row that is honestly weaker: PipeWire's native protocol is
+not specified with the same care, and the practical answer there is
+likely its PulseAudio-compatible endpoint rather than its own wire
+format. Worth knowing before the row gets quoted as settled.
+
+#### It makes the contract testable, not just auditable
+
+§1.10.2 noted that `onebin` can check the static half — no interpreter,
+no needed libraries. The wire-protocol framing makes the *runtime* half
+checkable too, and cheaply: run the binary in a sandbox that allows
+nothing but the display socket, and let the kernel enforce the claim.
+`bwrap` or a `unshare` + Landlock ruleset in CI, with no `/usr/lib`
+mounted at all, turns "contacts the host only through fds" from a design
+intention into a test that fails when it stops being true.
+
+Which is the standard the rest of this project holds itself to: a claim
+nobody can check is a claim that quietly stops being true.
+
 ```
 Profile U — one image, N heads
 
