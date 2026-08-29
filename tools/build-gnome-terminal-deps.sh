@@ -323,7 +323,7 @@ require_pc zlib libffi libpcre2-8
 meson_dep glib "${glib_src}" glib \
     -Dtests=false -Dinstalled_tests=false -Dman=false -Dman-pages=disabled \
     -Ddocumentation=false -Dintrospection=disabled -Dselinux=disabled \
-    -Dlibmount=disabled -Dsysprof=disabled -Dsystemtap=false \
+    -Dlibmount=disabled -Dlibelf=disabled -Dsysprof=disabled -Dsystemtap=false \
     -Dglib_debug=disabled -Dnls=disabled
 
 fribidi_src=$(source_tree fribidi)
@@ -342,7 +342,7 @@ meson_dep harfbuzz "${harfbuzz_src}" harfbuzz \
     -Dglib=disabled -Dicu=disabled -Dgraphite2=disabled -Dcairo=disabled \
     -Dgobject=disabled -Dintrospection=disabled -Ddocs=disabled \
     -Dtests=disabled -Dutilities=disabled -Dbenchmark=disabled \
-    -Dsubset=disabled -Dfreetype=enabled
+    -Dfreetype=enabled
 
 if [ ! -f "${PREFIX}/.built-freetype-harfbuzz" ]; then
     freetype_build="${WORK}/build/freetype-harfbuzz"
