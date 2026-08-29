@@ -164,7 +164,8 @@ fi
 #   libX11-xcb       the one imported in contrib/f4-qt/import-qt-static-
 #                    plugins.cmake -- links the xcb helper libraries
 #   libxcb-*         directly; they are its published dependencies, not
-#                    ours.
+#                    ours. The xcb GL integrations additionally bring
+#                    libxcb-glx and the EGL loader as host ABI libraries.
 #   libICE, libSM    X11 session management, pulled in by the same plugin.
 #
 # Deliberately NOT here: fontconfig, freetype, harfbuzz, ssl, zlib and the
@@ -176,7 +177,7 @@ F4_QT_HOST_CONTRACT="libX11.so.6 libX11-xcb.so.1 libxcb.so.1 \
 libxcb-cursor.so.0 libxcb-icccm.so.4 libxcb-image.so.0 libxcb-keysyms.so.1 \
 libxcb-randr.so.0 libxcb-render.so.0 libxcb-render-util.so.0 \
 libxcb-shape.so.0 libxcb-shm.so.0 libxcb-sync.so.1 libxcb-xfixes.so.0 \
-libxcb-xkb.so.1 libICE.so.6 libSM.so.6"
+libxcb-xkb.so.1 libxcb-glx.so.0 libEGL.so.1 libICE.so.6 libSM.so.6"
 
 f4_qt_allow_flags() {
     for _soname in ${F4_QT_HOST_CONTRACT}; do
