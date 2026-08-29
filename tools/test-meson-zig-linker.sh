@@ -39,7 +39,7 @@ for compiler in zig-cc zig-c++; do
             -L/usr/lib/x86_64-linux-gnu -L/usr/lib -L/lib/x86_64-linux-gnu
     )
     case "$version" in
-        LLD\ *) ;;
+        LLD|LLD\ *) ;;
         *)
             printf '%s did not expose an LLD linker signature: %s\n' \
                 "$compiler" "$version" >&2
