@@ -7,6 +7,39 @@ Everything below this section is a reverse-chronological log (newest
 first). Read *this* section first; consult the log below only for the
 detail behind a specific claim.
 
+### Diagnostics for the graphical launch CI cannot test
+
+CI proves f4 builds, audits clean, and runs headless. It cannot prove f4
+draws a window on a real display -- no step opens one. So the first true
+graphical test is a user launching the binary, and "it didn't work" is
+not diagnosable. Rather than wait for a symptom and then add logging,
+the diagnostics ship with the binary.
+
+Two pieces.
+
+**The render-backend fallback now reports its decision.** It switched to
+software silently before main(), which is right for normal use but leaves
+someone with a black window unable to tell whether the fallback fired,
+chose wrong, or never ran. Under `SE_RENDER_DEBUG` it prints one line
+naming the choice and the libGL it probed; silent otherwise. Both
+directions are tested -- a logger stuck on is as bad as one that never
+speaks -- with negative controls.
+
+**`contrib/f4-qt/f4-diag.sh` ships next to the binary in the artifact.**
+It runs f4 with Qt's own diagnostics turned on -- `QT_DEBUG_PLUGINS`,
+`QSG_INFO`, the `qt.qpa.*` / `qt.scenegraph.*` / `qt.rhi.*` logging
+categories (all confirmed against Qt sources), plus our `SE_RENDER_DEBUG`
+-- and captures them with the host environment (display vars, libGL
+presence, font count) into one timestamped log. `--software`, `--x11` and
+`--wayland` force the paths a headless run never exercises. The log ends
+with a short reading guide pointing at the lines that explain a
+display/plugin/render failure.
+
+So when the first real graphical launch fails, the answer is one file to
+attach, not a round trip of "what does it print". The wrapper is
+verified end to end against a stand-in binary: silent-by-default logging,
+the forced-mode env, and the captured sections all present.
+
 ### Where the work is
 
 Task in flight: **`f4-qt` built with the zig toolchain, no container**,

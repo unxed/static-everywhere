@@ -126,6 +126,20 @@ case "$without_gl" in
     *) printf 'the xcb GL integration was not disabled: %s\n' "$without_gl" >&2; exit 1 ;;
 esac
 
+# The render decision is silent by default but reports itself under
+# SE_RENDER_DEBUG -- the one line that tells a user with a black window
+# whether the fallback fired. Both directions, since a logger stuck on is
+# as bad as one that never speaks.
+quiet=$(SE_FORWARD_SE_GL_SONAME=libGL-absent.so.999 "$PROBE/app" 2>&1)
+case "$quiet" in
+    *"[se-render]"*) printf 'the render decision logged without SE_RENDER_DEBUG\n' >&2; exit 1 ;;
+esac
+loud=$(SE_RENDER_DEBUG=1 SE_FORWARD_SE_GL_SONAME=libGL-absent.so.999 "$PROBE/app" 2>&1)
+case "$loud" in
+    *"[se-render]"*"software"*) ;;
+    *) printf 'SE_RENDER_DEBUG did not report the software-fallback decision: %s\n' "$loud" >&2; exit 1 ;;
+esac
+
 # A choice already made is never overridden.
 chosen=$(SE_FORWARD_SE_GL_SONAME=libGL-absent.so.999 QT_QUICK_BACKEND=rhi "$PROBE/app")
 case "$chosen" in

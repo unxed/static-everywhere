@@ -798,6 +798,11 @@ HOOKEOF"
     plan_step "cd ${SRC} && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -tags f4_embedded_qt_host -ldflags='-s -w' -o dist/f4-linux-amd64/f4 ."
 
     plan_step "cp ${SRC}/dist/f4-linux-amd64/f4 ${OUT}/f4"
+    # Ship the diagnostic wrapper next to the binary. CI cannot test a
+    # real display; when a user's first graphical launch fails, this is
+    # what turns "it didn't work" into a log that says why.
+    plan_step "cp ${REPO_ROOT}/contrib/f4-qt/f4-diag.sh ${OUT}/f4-diag"
+    plan_step "chmod +x ${OUT}/f4-diag"
     # Profile H, not S: goffi makes f4 dynamic on the C runtime by
     # construction (see the go build step). Contract is exactly
     # libc/libdl/libpthread, and through the hygiene wrapper for the

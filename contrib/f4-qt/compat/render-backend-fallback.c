@@ -30,6 +30,25 @@
  */
 #include <dlfcn.h>
 #include <stdlib.h>
+#include <stdio.h>
+
+/* Report the render-backend decision when SE_RENDER_DEBUG is set.
+ *
+ * The switch to software rendering happens before main(), silently, which
+ * is right for normal use but leaves a user with a black window no way to
+ * tell whether the fallback fired, chose wrong, or never ran. One opt-in
+ * line closes that gap. Off by default so a normal launch stays quiet;
+ * f4-diag sets it, and a user can too. */
+static void se_render_log(const char *msg, const char *soname)
+{
+    if (getenv("SE_RENDER_DEBUG")) {
+        if (soname) {
+            fprintf(stderr, "[se-render] %s (libGL: %s)\n", msg, soname);
+        } else {
+            fprintf(stderr, "[se-render] %s\n", msg);
+        }
+    }
+}
 
 __attribute__((constructor)) static void se_select_render_backend(void)
 {
@@ -42,9 +61,11 @@ __attribute__((constructor)) static void se_select_render_backend(void)
     void *h = dlopen(soname, RTLD_LAZY | RTLD_LOCAL);
     if (h) {
         dlclose(h);
+        se_render_log("libGL present; leaving the render backend to Qt", soname);
         return;
     }
 
+    se_render_log("libGL absent; selecting software rendering", soname);
     setenv("QT_QUICK_BACKEND", "software", 0);
     setenv("QT_XCB_GL_INTEGRATION", "none", 0);
 }
