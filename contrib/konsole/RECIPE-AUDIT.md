@@ -77,6 +77,12 @@ grep caused by the plan's inherited `PATH`, and YAML `@...@` placeholders that
 were not valid unquoted scalars. The current preflight renders the template
 and parses it, so those failures cannot reach the two-hour job silently.
 
+After the final workflow edit, the preflight package-install block received a
+separate shell-continuation audit: every package line except the final package
+has a trailing `\\`, and the two independent gates (workflow/templated YAML
+parse plus the full Konsole preflight) were rerun. No workflow dispatch is
+made until both gates pass.
+
 The remaining proof is necessarily hosted: the full Conan Qt graph, the
 source-built KF6 dependency closure, the final onebin audit, and a Konsole
 window captured from Xvfb.

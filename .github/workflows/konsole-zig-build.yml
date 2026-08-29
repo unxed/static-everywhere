@@ -23,7 +23,7 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq \
-            libgl-dev libegl-dev libx11-dev libxcb1-dev libxcb-xkb-dev
+            libgl-dev libegl-dev libx11-dev libxcb1-dev libxcb-xkb-dev \
             python3-yaml
 
       - name: Install zig 0.13.0
