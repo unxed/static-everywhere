@@ -253,7 +253,10 @@ autotools_dep() {
     built "${name}" && return 0
     local build_dir="${WORK}/build/${build_name}"
     if [ ! -x "${source}/configure" ]; then
-        run bash -c "cd \"${source}\" && ./autogen.sh"
+        # libffi's autogen.sh only passes -I m4. With the current libtool,
+        # LT_SYS_SYMBOL_USCORE is supplied by the system ltdl.m4 and must be
+        # visible to aclocal explicitly.
+        run bash -c "cd \"${source}\" && autoreconf -v -i -I m4 -I /usr/share/aclocal"
     fi
     run mkdir -p "${build_dir}"
     (
