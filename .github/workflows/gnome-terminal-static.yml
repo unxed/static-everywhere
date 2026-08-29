@@ -1,0 +1,35 @@
+name: gnome-terminal-static
+
+on:
+  pull_request:
+    paths:
+      - 'contrib/gnome-terminal/**'
+      - 'tools/build-gnome-terminal.sh'
+      - 'tools/preflight-gnome-terminal.sh'
+      - 'tools/verify-gnome-terminal-static.sh'
+      - '06-REFERENCE-gnome-terminal.md'
+      - 'STATIC-EVERYWHERE.md'
+      - 'DESIGN-onebin.md'
+      - 'README.md'
+      - 'CONFORMING.md'
+      - 'FUTURE-IDEAS.md'
+  workflow_dispatch:
+
+jobs:
+  preflight:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install recipe-check tools
+        run: |
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq \
+            binutils make
+
+      - name: Test onebin
+        run: make -sC onebin test
+
+      - name: Check the static GTK recipe
+        run: ./tools/preflight-gnome-terminal.sh

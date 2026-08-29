@@ -1,16 +1,10 @@
-# contrib/gnome-terminal/deps.lock — pinned dependencies for the GNOME Terminal
-# reference build.
+# contrib/gnome-terminal/deps.lock — pinned sources for the static GTK
+# reference build. Every entry must be built into one dependency prefix with
+# static archives and matching pkg-config metadata before GNOME Terminal is
+# configured.
 #
-# Versions are the ones the probe has actually been run against (ubuntu-24.04),
-# not the newest available: a lockfile whose numbers nobody has executed is a
-# wish list. Hashes are '-' for the same reason as contrib/f4-qt/deps.lock —
-# see 00-AGENT-TASK.md rule 1.
-#
-# NOTE the GTK major version. GNOME Terminal 3.52 is a GTK*3* application and
-# uses libhandy, not GTK4 and libadwaita. This was checked against the shipped
-# binary's DT_NEEDED, not assumed from the GNOME version number, and it matters:
-# the settings-portal integration measured in probe report II lives in
-# libadwaita, so GNOME Terminal does not get it for free.
+# Hashes are '-' until they are computed and verified locally. Do not replace a
+# missing hash with a guess.
 gnome-terminal 3.52.0 - https://gitlab.gnome.org/GNOME/gnome-terminal
 vte 0.76.0 - https://gitlab.gnome.org/GNOME/vte
 gtk 3.24.41 - https://gitlab.gnome.org/GNOME/gtk

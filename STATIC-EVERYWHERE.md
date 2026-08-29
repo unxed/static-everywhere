@@ -326,8 +326,8 @@ Fallbacks: `xxd -i`, `ld -r -b binary`, `incbin.h`, or `objcopy --add-section`. 
 | **SDL2 / SDL3** | ✅✅ static, ideal | **The reference implementation of this manifesto.** SDL `dlopen`s X11, Wayland, GL, ALSA, PulseAudio and PipeWire at runtime by design. `-DSDL_STATIC=ON -DSDL_SHARED=OFF`. If you are starting a GUI/game project, start here. |
 | **GLFW** | ✅ static | Modern versions load X11/Wayland dynamically. |
 | **Qt** | ✅ static, ⚠️ licence | `configure -static`; static plugins need `Q_IMPORT_PLUGIN`. **LGPL static linking obligates you to ship relinkable objects** (§9) — or buy a commercial licence. |
-| **GTK** | ❌ hostile | GIO modules, pixbuf loaders, input methods and print backends are all `dlopen`'d from host paths. GTK is architecturally opposed to being bundled. If portability is a goal, this is a toolkit choice, not a build flag. |
-| **wxWidgets** | ⚠️ | Static build works; it inherits GTK's problems on Linux. |
+| **GTK** | ✅ static, with an explicit module policy | Build GTK and its UI dependencies with `default_library=static`; build required pixbuf loaders in and select input-method/print backends explicitly. GNOME Terminal is the reference recipe. |
+| **wxWidgets** | ⚠️ | Static build works, but its runtime module surface must be audited separately. |
 | **OpenGL / EGL / GLES** | ⛔ never link | Use **glad** (dlopen mode) or **libepoxy**. `dlopen("libGL.so.1")` / `libEGL.so.1`. |
 | **Vulkan** | ⛔ never link | Use **volk**; it `dlopen`s `libvulkan.so.1`. |
 | **CUDA / ROCm / OpenCL** | ⛔ never link the driver | `libcudart_static.a` is fine; `libcuda.so.1` **must** be `dlopen`'d. |
@@ -475,7 +475,7 @@ Four configurations, and what each is for:
 | Terminal only, no plugins | S | 1 | One musl static-PIE file. Runs on `FROM scratch`. |
 | Terminal + plugins + X11 helper | H | 1 | Executable plus `$ORIGIN`-relative modules. |
 | SDL graphical backend | H | 1 | A GUI application with no toolkit on the target: SDL `dlopen`s X11/Wayland/GL, FreeType and HarfBuzz are static, fontconfig reads the **host's** fonts. |
-| wxWidgets graphical backend | H | 0 | **Expected to fail Level 1.** GTK arrives through wxWidgets and cannot be bundled. We publish the `DT_NEEDED` list rather than asserting that GTK is a problem. |
+| wxWidgets graphical backend | H | 0 | **Expected to fail Level 1.** wxWidgets' runtime module surface is not yet handled. |
 
 The exercise has already paid for itself twice, before a single far2l object file
 was compiled: it found a flag in this document's own CMake recipe that breaks any
@@ -491,8 +491,7 @@ a real program made this argument more complicated.
 ### 6.5 The Qt reference application
 
 far2l is C++ with plugins and three UI backends. It says nothing about the
-question every project asks once GTK is ruled out: **what does a static Qt
-cost?**
+separate question: **what does a static Qt cost?**
 
 So there is a second target, and this one we did not have to convince:
 [f4-qt](https://github.com/Zoinen/f4/tree/zoin) already ships one executable per
@@ -654,7 +653,8 @@ Correct, and this document says so plainly (§2.3, §3). The claim is not "no dy
 
 Fair, and the reason §6.4 exists. The reference application is far2l — a file manager with a terminal backend, two graphical backends, a plugin ABI, a helper process and a GPLv2 licence — and its build is kept in CI so that "we tried it on something real" is a link rather than a claim. That exercise is also where this document gets its corrections: §5.2's warning about `--exclude-libs,ALL` is there because far2l's plugins stopped loading, and the honest answer to "one binary?" for an application with `dlopen`'d plugins is "one binary and its modules, or a packer, and here is the cost of each" (see [04-REFERENCE-far2l.md §7.5](./04-REFERENCE-far2l.md)).
 
-The parts that *don't* work are published too. GTK cannot be bundled; the wxWidgets build of far2l is kept in the matrix as a measured failure rather than deleted from the argument.
+The parts that *don't* work are published too. The wxWidgets build of far2l is
+kept in the matrix as a measured failure rather than deleted from the argument.
 
 **"musl is slower than glibc."**
 

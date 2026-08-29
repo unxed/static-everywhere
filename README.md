@@ -42,7 +42,7 @@ Flatpak, Snap and Docker apply Layer-1 thinking to Layers 2 and 3: they ship a u
 | **[CONFORMING.md](./CONFORMING.md)** | Projects that conform, and at what level. Add yours. |
 | **[05-REFERENCE-f4-qt.md](./05-REFERENCE-f4-qt.md)** | The Qt reference application. Everything about [f4-qt](https://github.com/Zoinen/f4/tree/zoin) — a static Qt Quick front end inside a single Go executable — and the five places it corrected us. |
 | **[04-REFERENCE-far2l.md](./04-REFERENCE-far2l.md)** | The reference application. Everything about building [far2l](https://github.com/elfmz/far2l) — a real file manager with three UI backends, a plugin ABI and a copyleft licence — under this doctrine, and every place it made the doctrine more specific. |
-| **[06-REFERENCE-gnome-terminal.md](./06-REFERENCE-gnome-terminal.md)** | The GNOME reference application. Whether GTK can be bundled at all — the one claim this repository asserted without testing. Includes `gt-probe`, which answers in thirty seconds what the build would answer at minute ninety. |
+| **[06-REFERENCE-gnome-terminal.md](./06-REFERENCE-gnome-terminal.md)** | The GNOME reference application: a GNOME Terminal build with GTK3, VTE and the surrounding UI stack linked statically. |
 | **[tools/audit.sh](./tools/audit.sh)** | A 30-line shell audit you can drop into CI today, before any of the above exists. |
 | **[FUTURE-IDEAS.md](./FUTURE-IDEAS.md)** | Speculation, clearly labelled as such. Currently: could one binary per *architecture* replace one binary per *operating system*? Could `contrib/`'s per-project build recipes generalise into a shared, Homebrew-formula-like database? Nothing here is scheduled; arguments against are the point. |
 
@@ -177,7 +177,7 @@ those included, once you have `--deps-prefix` populated.
 | `far2l-tiny` | S | 1 | Terminal-only, no plugins. One musl static-PIE file, runs on `FROM scratch`. The thing you scp onto a 2014 server. **Not currently achievable — see the note below.** |
 | `far2l-tty` | H | 1 | Full plugin set as `$ORIGIN`-relative modules, X11 clipboard through a helper process. |
 | `far2l-sdl` | H | 1 | **The headline.** A graphical file manager with no toolkit on the target: SDL `dlopen`s X11/Wayland/GL itself, FreeType and HarfBuzz are static, and fontconfig reads the *host's* fonts so the text looks native. |
-| `far2l-wx` | H | 0 only | Built to fail, on purpose. GTK arrives through wxWidgets and cannot be bundled. We publish its `DT_NEEDED` list instead of asserting that GTK is a problem. |
+| `far2l-wx` | H | 0 only | Kept as a measured failure case until wxWidgets' runtime module surface is handled. |
 
 > **`far2l-tiny` (Profile S) is confirmed broken, not just difficult**:
 > `utils/src/InstallPath.cpp` calls `dlsym(RTLD_DEFAULT, ...)` in core code
@@ -211,8 +211,8 @@ Clone the **tag**, not a commit and not a tarball: far2l's CMake runs `git descr
 ## The Qt reference application: f4-qt
 
 far2l answers "can a C++ application with plugins and three UI backends ship this
-way?". It does not answer "what does a **static Qt** cost?" — the question every
-project asks the moment GTK is ruled out.
+way?". It does not answer "what does a **static Qt** cost?" — a separate question
+for a different toolkit and build graph.
 
 **[f4-qt](https://github.com/Zoinen/f4/tree/zoin)** answers that one. It is a Go
 file manager with a Qt Quick front end, and its Linux and Windows downloads are

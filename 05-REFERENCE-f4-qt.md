@@ -6,9 +6,7 @@ without network access can work from it.
 
 far2l ([04-REFERENCE-far2l.md](./04-REFERENCE-far2l.md)) is the reference for a
 C++ application with a plugin ABI and three UI backends. **f4-qt is the reference
-for Qt** — the toolkit everyone is told to reach for once GTK has been ruled out
-(manifesto §5.4, `DESIGN-onebin.md §11` row 5), and the one whose static build
-nobody wants to be the first to attempt.
+for Qt** and the one whose static build nobody wants to be the first to attempt.
 
 It is also the first project this repository has looked at that **arrived at the
 doctrine independently, wrote it down, and enforces it in CI.** That makes it

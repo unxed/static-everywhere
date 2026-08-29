@@ -1,53 +1,6 @@
 # STATUS
 
 <!-- ------------------------------------------------------------------ -->
-## GNOME Terminal adopted as the GNOME reference application; `gt-probe` works and passes strictly
-
-The repository asserted that GTK "cannot be bundled" and had never tested it.
-GNOME Terminal is now the target that does, and the first deliverable is a probe
-rather than a build, because the build is hours and the questions are seconds.
-
-**Measured, having nearly been assumed.** GNOME Terminal 3.52 is **GTK3 +
-libhandy-1**, not GTK4 + libadwaita — read off `gnome-terminal-server`'s own
-`DT_NEEDED`, not off the GNOME version number. That has a consequence: the
-settings-portal appearance integration lives in libadwaita, so GNOME Terminal
-does not get host dark-mode for free.
-
-**`gt-probe`** links exactly that dependency set and drives each piece hard
-enough that nothing can stay unloaded and still pass — a real child on a real
-pty checked by exit status, a compiled `VteRegex` (the only thing that reaches
-pcre2), a PNG actually encoded through a gdk-pixbuf loader module, mixed-script
-text required to produce non-zero ink, and the **relocatable** profile schema
-instantiated at a generated UUID path. Then it diffs `/proc/self/maps` against a
-declared contract file. Current result on ubuntu-24.04: **26 passed, 0 failed,
-0 warnings** under `--strict`.
-
-**Three things the probe found that were not known before:**
-
-1. GNOME Terminal has **no plugin ABI**, so it never needs `-rdynamic`, so the
-   symbol-interposition collision measured in probe report I §A2 simply does not
-   apply to it. This is the largest single reason it is an easier target than
-   far2l, and it was not obvious in advance.
-2. The **GLX and EGL paths have different host contracts**. `libXxf86vm` and
-   `libpciaccess` appear on GTK3/GLX and not on the GTK4/EGL path measured
-   earlier. The manifesto's single "about ten sonames" figure does not currently
-   make that distinction.
-3. A normal run maps `libdconfsettings.so` and reports `DConfSettingsBackend` —
-   the host-GIO-module path is live on an ordinary desktop, not exotic.
-
-**Two bugs found by running rather than by reading**, both now covered by
-regression tests: VTE silently refuses a search regex compiled without the
-multiline flag (everything passed while the regex was never installed), and
-`--print-plan` printed pkg-config's *expanded* flags, so the preflight's "still
-links GTK3" assertion was matching `-I/usr/include/libhandy-1` and proving
-nothing. The second was caught by the preflight on its own first run, which is
-exactly what `--print-plan` assertions are for.
-
-`tools/build-gnome-terminal.sh` renders the full build plan and refuses to
-execute it, following `tools/build-far2l.sh`'s precedent. The CI job for it is
-opt-in, because a job that always fails is noise.
-
-
 ## ⟶ RESUME HERE — current state, for a session starting with no context
 
 Everything below this section is a reverse-chronological log (newest

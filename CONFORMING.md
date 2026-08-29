@@ -49,24 +49,14 @@ not a technical one. Details and the two acceptable fixes are in
 
 ## The GNOME reference application
 
-[GNOME Terminal](https://gitlab.gnome.org/GNOME/gnome-terminal) — the target
-that tests the one claim this repository has so far only asserted: that GTK
-cannot be bundled. Measured, not assumed: 3.52 is a **GTK3 + libhandy**
-application, not GTK4 + libadwaita, and it has **no plugin ABI**, which removes
-the symbol-interposition failure mode entirely (06-REFERENCE-gnome-terminal.md
-§4.1).
+[GNOME Terminal](https://gitlab.gnome.org/GNOME/gnome-terminal) is the GNOME
+reference target. Its GTK3, libhandy, VTE and text/rendering dependencies are
+intended to be linked statically from the pinned dependency prefix described in
+[06-REFERENCE-gnome-terminal.md](./06-REFERENCE-gnome-terminal.md).
 
 | Build | Target level | Profile | Baseline | Status |
 |---|---|---|---|---|
-| `gt-probe` — links and exercises the whole dependency set | 1 | H | 2.28 | **builds, runs, passes `--strict`** |
-| `gnome-terminal-static` — one file | 1 | H | 2.28 | plan only |
-| `gnome-terminal-portal` — host integration via portals only | 2 | H | 2.28 | not started |
-
-The probe exists because the build is hours and the questions are seconds. It
-links exactly what `gnome-terminal-server` links, drives every dependency hard
-enough that nothing can stay unloaded and still pass, and checks the result
-against a declared soname contract. Details in
-[06-REFERENCE-gnome-terminal.md](./06-REFERENCE-gnome-terminal.md).
+| `gnome-terminal-static` — static GTK3 `gnome-terminal-server` | 1 | H | 2.28 | build recipe in progress |
 
 ## Prior art that does not conform, and is worth studying anyway
 

@@ -378,7 +378,7 @@ files. **Everything under it is an audit target** — see §9.
 | Library | Needed for | Verdict for our build |
 |---|---|---|
 | wxWidgets 3.0/3.2 (`libwxgtk3.2-dev`) | GUI\|WX | ⚠️ static build works but inherits GTK. **Excluded from the Level-1 configurations**; kept as the documented failure case. |
-| GTK3 (transitively) | GUI\|WX | ❌ unbundleable by design — GIO modules, pixbuf loaders, IM modules, print backends all `dlopen` from host paths. |
+| GTK3 (transitively) | GUI\|WX | ⚠️ the wxWidgets configuration has a large runtime module surface; keep it outside the Level-1 matrix until those modules are handled explicitly. |
 | SDL2 (`libsdl2-dev`) | GUI\|SDL | ✅✅ static (`-DSDL_STATIC=ON -DSDL_SHARED=OFF`). SDL `dlopen`s X11, Wayland, GL, ALSA, Pulse, PipeWire itself. |
 | FreeType, HarfBuzz | GUI\|SDL text | ✅ static, trivial. |
 | Fontconfig | GUI\|SDL font lookup | ✅ static — **but it reads the host's `/etc/fonts` and font directories.** Layer 1 code, Layer 2 data. Do not bundle fonts. |
@@ -609,8 +609,8 @@ cmake -DCMAKE_TOOLCHAIN_FILE=<repo>/onebin/toolchain/onebin-linux-hybrid.cmake \
 ### 6.4 `far2l-wx` — Profile H, Level 0 only, **expected to fail Level 1**
 
 Built solely so the failure is measured rather than asserted. Record its actual
-`DT_NEEDED` list in the CI artifact; that list *is* the argument for the GTK row
-in the cheat sheet.
+`DT_NEEDED` list in the CI artifact; that list documents the wxWidgets
+configuration's unresolved runtime module surface.
 
 ```sh
 cmake -DCMAKE_TOOLCHAIN_FILE=<repo>/onebin/toolchain/onebin-linux-hybrid.cmake \
@@ -657,12 +657,12 @@ registering them through a table — requires upstream changes to far2l's plugin
 manager. **Do not attempt it in this milestone.** Record it as an upstream
 proposal.
 
-### 7.4 GTK is where the doctrine stops
+### 7.4 The wxWidgets module surface remains a separate failure case
 
-`far2l-wx` will show a `DT_NEEDED` list dozens of entries long. That is not our
-bug and not far2l's bug; it is the toolkit's architecture. The value of building
-it is the artifact: a measured list beats an assertion in an argument with a
-GTK developer.
+`far2l-wx` is retained as a measured failure until its runtime modules are
+handled explicitly. That is a property of this configuration, not a reason to
+make GTK a general Layer-3 exception; the GNOME Terminal reference build keeps
+its GTK stack in Layer 1.
 
 ### 7.5 "One file" vs. a binary plus modules
 
