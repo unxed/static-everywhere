@@ -51,11 +51,25 @@ PREFIX=${PREFIX}
 WORK=${WORK}
 source archives: contrib/far2l/deps.lock (sha256 verified)
 toolchain: ${CMAKE_TOOLCHAIN}
+Meson: >= 1.11.0 (fontconfig 2.18.3 requirement)
 order: zlib -> mbedtls -> openssl -> expat -> freetype(pass 1) -> harfbuzz -> freetype(pass 2) -> fontconfig -> sdl2 -> uchardet -> libssh -> libnfs -> neon
 fontconfig install: copy static archive, generated pc and headers; never run meson install
 host link inputs: X11/OpenGL only; no host SDL/Qt/KDE/FreeType/HarfBuzz/Fontconfig
 PLAN
     exit 0
+fi
+
+MESON_MIN_VERSION=1.11.0
+meson_version=$(meson --version 2>/dev/null || true)
+if [ -z "${meson_version}" ]; then
+    echo 'build-far2l-deps.sh: Meson is required (fontconfig 2.18.3 needs >= 1.11.0)' >&2
+    exit 1
+fi
+meson_floor=$(printf '%s\n' "${MESON_MIN_VERSION}" "${meson_version}" | sort -V | head -n 1)
+if [ "${meson_floor}" != "${MESON_MIN_VERSION}" ]; then
+    printf 'build-far2l-deps.sh: Meson %s is too old; need >= %s\n' \
+        "${meson_version}" "${MESON_MIN_VERSION}" >&2
+    exit 1
 fi
 
 lock_field() {
@@ -141,11 +155,14 @@ meson_dep() {
     fi
     local build_dir="${WORK}/build/${build_name}"
     mkdir -p "${build_dir}" "${PREFIX}/${prefix_name}"
-    meson setup "${build_dir}" "${source}" \
+    meson setup --wipe "${build_dir}" "${source}" \
         --native-file "${MESON_NATIVE}" \
         --prefix "${PREFIX}/${prefix_name}" \
         --libdir lib \
         --buildtype release \
+        --prefer-static \
+        --wrap-mode nodownload \
+        -Ddefault_library=static \
         "$@"
     meson compile -C "${build_dir}" -j "${JOBS}"
     meson install -C "${build_dir}"
@@ -232,6 +249,8 @@ meson_dep harfbuzz harfbuzz "${harfbuzz_src}" harfbuzz \
 # FreeType's FindHarfBuzz.cmake expects the directory containing hb.h.
 # HarfBuzz installs that header below include/harfbuzz; using its parent
 # makes the module's hb-version.h fallback miss the version.
+# This raw Meson flag is the equivalent of f4-qt's Conan option
+# `harfbuzz/*:with_glib=False`; keep the two recipes semantically aligned.
 if ! built freetype-p2; then
     cmake_dep freetype-p2 freetype "${freetype_src}" freetype-p2 \
         -DFT_DISABLE_HARFBUZZ=OFF \
@@ -248,11 +267,13 @@ fontconfig_src=$(source_tree fontconfig)
 if ! built fontconfig; then
     fontconfig_build="${WORK}/build/fontconfig"
     mkdir -p "${fontconfig_build}" "${PREFIX}/fontconfig/lib/pkgconfig" "${PREFIX}/fontconfig/include"
-    meson setup "${fontconfig_build}" "${fontconfig_src}" \
+    meson setup --wipe "${fontconfig_build}" "${fontconfig_src}" \
         --native-file "${MESON_NATIVE}" \
         --prefix "${PREFIX}/fontconfig" \
         --libdir lib \
         --buildtype release \
+        --prefer-static \
+        --wrap-mode nodownload \
         -Ddefault_library=static \
         -Ddoc=disabled \
         -Dtests=disabled \

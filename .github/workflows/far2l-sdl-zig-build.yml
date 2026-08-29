@@ -38,13 +38,24 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq \
-            build-essential cmake ninja-build meson pkg-config gperf \
-            curl git python3 perl shellcheck binutils \
+            build-essential cmake ninja-build pkg-config gperf \
+            curl git python3 python3-venv perl shellcheck binutils \
             libx11-dev libx11-xcb-dev libxext-dev libxi-dev \
             libxfixes-dev libxrandr-dev libxcursor-dev libxss-dev \
             libxdamage-dev libxcomposite-dev libxrender-dev \
             libgl-dev libegl-dev libgl1-mesa-dev libegl1-mesa-dev \
             x11-utils xdotool imagemagick xvfb
+
+      - name: Install pinned Meson
+        run: |
+          meson_version=$(tr -d '[:space:]' < onebin/toolchain/meson-version)
+          meson_venv="$RUNNER_TEMP/far2l-meson"
+          python3 -m venv "$meson_venv"
+          "$meson_venv/bin/python" -m pip install \
+            --disable-pip-version-check --no-input --only-binary=:all: \
+            "meson==${meson_version}"
+          echo "$meson_venv/bin" >> "$GITHUB_PATH"
+          test "$("$meson_venv/bin/meson" --version)" = "$meson_version"
 
       - name: Install zig 0.13.0
         run: |
@@ -107,13 +118,24 @@ jobs:
         run: |
           sudo apt-get update
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-            build-essential cmake ninja-build meson pkg-config gperf \
-            curl git python3 perl binutils \
+            build-essential cmake ninja-build pkg-config gperf \
+            curl git python3 python3-venv perl binutils \
             libx11-dev libx11-xcb-dev libxext-dev libxi-dev \
             libxfixes-dev libxrandr-dev libxcursor-dev libxss-dev \
             libxdamage-dev libxcomposite-dev libxrender-dev \
             libgl-dev libegl-dev libgl1-mesa-dev libegl1-mesa-dev \
             x11-utils xdotool imagemagick xvfb
+
+      - name: Install pinned Meson
+        run: |
+          meson_version=$(tr -d '[:space:]' < onebin/toolchain/meson-version)
+          meson_venv="$RUNNER_TEMP/far2l-meson"
+          python3 -m venv "$meson_venv"
+          "$meson_venv/bin/python" -m pip install \
+            --disable-pip-version-check --no-input --only-binary=:all: \
+            "meson==${meson_version}"
+          echo "$meson_venv/bin" >> "$GITHUB_PATH"
+          test "$("$meson_venv/bin/meson" --version)" = "$meson_version"
 
       - name: Install zig 0.13.0
         run: |
