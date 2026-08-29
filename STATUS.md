@@ -7,6 +7,27 @@ Everything below this section is a reverse-chronological log (newest
 first). Read *this* section first; consult the log below only for the
 detail behind a specific claim.
 
+### 2026-08-29: last known launch combination on this desktop
+
+The following invocation is the one that made the required Qt window appear
+with the current `/home/unxed/4/qt/f4` binary:
+
+```sh
+F4_EXT_UI_PATH=/home/unxed/.cache/f4/qt-host/f116612e19b9e19fdec97e138212622f6895600ea7d786b0e60520db9d2f9e1f/f4-qt-host \
+QT_QUICK_BACKEND=software QT_XCB_GL_INTEGRATION=none \
+/home/unxed/4/qt/f4 --gui qt --attached
+```
+
+Observed result: the Qt window appears, but then disappears and f4 exits; the
+latest crash log contained only the known QML warning and no graphics error or
+`failed to read extui hello: EOF`. This is the last known launch state, not a
+confirmed persistent working session. The newer host
+`~/.cache/f4/qt-host/971aafd12dd8e719960d49242490da5c4c5f1375d0077ef0214d33cdb0183b6b/f4-qt-host`
+still ends with the ExtUI EOF failure.
+
+The GUI currently shows a black empty area instead of image contents; JPEG
+files, for example, do not render visibly.
+
 ### The window vanished because the host had no way to draw — fixed at the source
 
 f4 runs on a real desktop with `QT_QUICK_BACKEND=software`: full UI, both
