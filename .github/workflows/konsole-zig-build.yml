@@ -1,0 +1,258 @@
+name: Konsole showcase (hybrid Qt/KF6, zig)
+
+# Manual only: Qt plus the KF6 dependency graph is expensive. The preflight
+# job is deliberately separate so a bad command line or missing host package
+# fails in seconds rather than after the source graph has compiled for hours.
+on:
+  workflow_dispatch:
+    inputs:
+      konsole_ref:
+        description: 'Konsole commit (blank = the pinned commit in deps.lock)'
+        required: false
+        default: ''
+
+jobs:
+  preflight:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout static-everywhere
+        uses: actions/checkout@v4
+
+      - name: Install the host probe packages
+        run: |
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq \
+            libgl-dev libegl-dev libx11-dev libxcb1-dev libxcb-xkb-dev \
+            python3-yaml
+
+      - name: Install zig 0.13.0
+        run: |
+          curl -sSL -o zig.tar.xz \
+            https://ziglang.org/download/0.13.0/zig-linux-x86_64-0.13.0.tar.xz
+          tar xf zig.tar.xz
+          echo "$PWD/zig-linux-x86_64-0.13.0" >> "$GITHUB_PATH"
+
+      - name: Build onebin for local checks
+        run: make -C onebin
+
+      - name: Fetch the pinned Konsole source for the glibc scan
+        run: |
+          KONSOLE_REF=$(awk '$1 == "konsole" { print $2 }' contrib/konsole/deps.lock)
+          git clone --filter=blob:none --quiet https://github.com/KDE/konsole.git konsole-src
+          git -C konsole-src fetch --quiet --depth 1 origin "$KONSOLE_REF"
+          git -C konsole-src checkout --quiet "$KONSOLE_REF"
+          test "$(git -C konsole-src rev-parse HEAD)" = "$KONSOLE_REF"
+
+      - name: Fast Konsole invariant checks
+        run: ./tools/preflight-konsole.sh
+
+      - name: Scan Konsole sources for newer glibc symbols
+        run: ./tools/glibc-source-scan.py konsole-src
+
+  build:
+    needs: preflight
+    runs-on: ubuntu-24.04
+    timeout-minutes: 300
+    steps:
+      - name: Checkout static-everywhere
+        uses: actions/checkout@v4
+
+      - name: Free disk space on the runner
+        run: |
+          echo '=== before ==='
+          df -h /
+          for d in /usr/share/dotnet /usr/local/lib/android /opt/ghc \
+                   /usr/local/.ghcup /usr/share/swift \
+                   /usr/local/share/powershell /usr/local/share/chromium \
+                   /usr/local/share/boost /opt/hostedtoolcache/CodeQL; do
+            if [ -e "$d" ]; then
+              printf '  %-8s %s\n' "$(du -sh "$d" 2>/dev/null | cut -f1)" "$d"
+              sudo rm -rf "$d" || true
+            fi
+          done
+          docker image prune -af >/dev/null 2>&1 || true
+          echo '=== after ==='
+          df -h /
+
+      - name: Install host X11/EGL/OpenGL development headers
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y \
+            xorg-dev libx11-xcb-dev uuid-dev libegl1-mesa-dev libgl1-mesa-dev \
+            xkb-data libxkbcommon-dev libxkbcommon-x11-dev \
+            libxcb-util-dev libxcb-util0-dev libxcb-cursor-dev \
+            libxcb-dri3-dev libxcb-dri2-0-dev libxcb-present-dev \
+            libxcb-composite0-dev libxcb-ewmh-dev libxcb-res0-dev \
+            libxcb-glx0-dev libxcb-render0-dev libxcb-render-util0-dev \
+            libxcb-xkb-dev libxcb-icccm4-dev libxcb-image0-dev \
+            libxcb-keysyms1-dev libxcb-randr0-dev libxcb-shape0-dev \
+            libxcb-sync-dev libxcb-xfixes0-dev libxcb-xinerama0-dev \
+            xvfb x11-utils x11-apps xdotool imagemagick ccache \
+            python3-dbus python3-yaml python3-setproctitle
+
+      - name: Build onebin
+        run: make -C onebin
+
+      - name: Download zig 0.13.0
+        run: |
+          curl -LO https://ziglang.org/download/0.13.0/zig-linux-x86_64-0.13.0.tar.xz
+          tar xf zig-linux-x86_64-0.13.0.tar.xz
+          echo "$PWD/zig-linux-x86_64-0.13.0" >> "$GITHUB_PATH"
+
+      - name: Install uv
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Configure ccache
+        run: |
+          ccache --set-config sloppiness=file_macro,time_macros,include_file_mtime,include_file_ctime,pch_defines
+          ccache --set-config base_dir="$HOME/.conan2/p/b"
+          ccache --set-config max_size=5G
+
+      - name: Restore Conan downloads, KDE metadata and ccache
+        id: cache-restore
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            ~/.conan2/p
+            ~/.cache/ccache
+            out/konsole/sources-backup
+            out/konsole/kde-source
+            out/konsole/kde-state
+          key: konsole-zig-ccache-${{ hashFiles('tools/build-konsole.sh', 'contrib/konsole/**', 'onebin/toolchain/**') }}
+          restore-keys: |
+            konsole-zig-ccache-
+
+      - name: Fetch pinned kde-builder
+        run: |
+          KDE_BUILDER_REF=$(awk '$1 == "kde-builder" { print $2 }' contrib/konsole/deps.lock)
+          git clone --filter=blob:none --quiet https://invent.kde.org/sdk/kde-builder.git kde-builder-src
+          git -C kde-builder-src fetch --quiet --depth 1 origin "$KDE_BUILDER_REF"
+          git -C kde-builder-src checkout --quiet "$KDE_BUILDER_REF"
+          test "$(git -C kde-builder-src rev-parse HEAD)" = "$KDE_BUILDER_REF"
+
+      - name: Mark the start of this build for diagnostics
+        run: touch /tmp/job-start-marker
+
+      - name: Build Qt and KF6, then Konsole
+        run: |
+          set -o pipefail
+          KONSOLE_REF='${{ inputs.konsole_ref }}'
+          if [ -z "$KONSOLE_REF" ]; then
+            KONSOLE_REF=$(awk '$1 == "konsole" { print $2 }' contrib/konsole/deps.lock)
+          fi
+          ./tools/build-konsole.sh \
+            --out out/konsole \
+            --kde-builder "$PWD/kde-builder-src" \
+            --konsole-ref "$KONSOLE_REF" \
+            --kde-builder-ref "$(awk '$1 == "kde-builder" { print $2 }' contrib/konsole/deps.lock)" \
+            2>&1 | tee /tmp/build-output.log
+
+      - name: Run the graphical X11 smoke test
+        run: |
+          mkdir -p out/konsole/xdg-runtime
+          chmod 700 out/konsole/xdg-runtime
+          export XDG_RUNTIME_DIR="$PWD/out/konsole/xdg-runtime"
+          export KONSOLE_INSTALL_DIR="$PWD/out/konsole/kde-install"
+          ./tools/run-konsole-smoke.sh \
+            "$PWD/out/konsole/kde-install/bin/konsole" \
+            "$PWD/out/konsole/smoke"
+
+      - name: ccache statistics and disk usage
+        if: always()
+        run: |
+          ccache -s || true
+          echo '=== df -h / ==='
+          df -h /
+          echo '=== largest build stores ==='
+          du -sh "$HOME/.conan2" "$HOME/.cache/ccache" out/konsole 2>/dev/null || true
+
+      - name: Collect diagnostic logs on failure or cancellation
+        if: failure() || cancelled()
+        run: |
+          set +e
+          diag=/tmp/konsole-diagnostic-logs
+          mkdir -p "$diag"
+          cp out/konsole/konsole-audit.txt "$diag/00-konsole-audit.txt" 2>/dev/null || true
+          find "$HOME/.conan2/p/b" -newer /tmp/job-start-marker -type f \
+            ! -name '*.o' ! -name '*.a' ! -name '*.so' ! -name '*.so.*' \
+            -printf '%10s  %p\n' 2>/dev/null | sort -k2 >"$diag/01-conan-listing.txt"
+          grep -ohE 'WARN: Build folder /[^[:space:]]+' /tmp/build-output.log 2>/dev/null \
+            | sed 's|^WARN: Build folder ||' | sort -u >"$diag/02-failing-build-folders.txt"
+          if [ ! -s "$diag/02-failing-build-folders.txt" ]; then
+            find "$HOME/.conan2/p/b" out/konsole/kde-build -maxdepth 4 \
+              -type d -name 'build-*' -newer /tmp/job-start-marker \
+              2>/dev/null | tail -10 >"$diag/02-failing-build-folders.txt"
+          fi
+          find "$HOME/.conan2/p/b" out/konsole -type f \
+            -newer /tmp/job-start-marker ! -name '*.o' ! -name '*.a' \
+            ! -name '*.so' ! -name '*.so.*' -printf '%10s  %p\n' \
+            2>/dev/null | sort -k2 >"$diag/03-output-files.txt"
+          find "$HOME/.conan2/p/b" out/konsole -type f \
+            \( -name config.log -o -name CMakeError.log -o -name CMakeConfigureLog.yaml \
+               -o -name meson-log.txt -o -name LastTest.log \) \
+            -size -2M -exec cp --parents {} "$diag" \; 2>/dev/null || true
+          find "$HOME/.conan2/p/b" out/konsole/kde-build out/konsole/kde-logs \
+            -type f -newer /tmp/job-start-marker -size -2M \
+            ! -path '*/qt_sbom/*' ! -path '*/lib/cmake/*' \
+            ! -path '*_autogen.dir/*' ! -name 'cmake_install.cmake' \
+            ! -name '*.o' ! -name '*.a' ! -name '*.so' ! -name '*.so.*' \
+            2>/dev/null > /tmp/konsole-text-candidates
+          while IFS= read -r candidate; do
+            case "$(file -b --mime-type "$candidate" 2>/dev/null)" in
+              text/*|application/json|application/xml|inode/x-empty)
+                target="$diag/04-text/${candidate#/}"
+                mkdir -p "$(dirname "$target")"
+                cp "$candidate" "$target"
+                ;;
+            esac
+          done < /tmp/konsole-text-candidates
+          tail -n 3000 /tmp/build-output.log >"$diag/05-build-output-tail.txt" 2>/dev/null
+          grep -nE 'error:|ERROR|FAILED|fatal error|Traceback|undefined' \
+            /tmp/build-output.log 2>/dev/null | tail -n 500 >"$diag/06-build-errors.txt"
+          {
+            echo '=== df -h ==='; df -h
+            echo '=== free -h ==='; free -h
+            echo '=== dmesg OOM traces ==='
+            sudo dmesg 2>/dev/null | grep -iE 'killed process|out of memory|oom' || true
+          } >"$diag/07-system-state.txt"
+          du -sh "$diag" >"$diag/08-collection-size.txt" 2>&1
+
+      - name: Upload diagnostics
+        if: failure() || cancelled()
+        uses: actions/upload-artifact@v4
+        with:
+          name: konsole-zig-build-diagnostic-logs
+          path: /tmp/konsole-diagnostic-logs
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Save Conan downloads, KDE metadata and ccache
+        if: always()
+        timeout-minutes: 20
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            ~/.conan2/p
+            ~/.cache/ccache
+            out/konsole/sources-backup
+            out/konsole/kde-source
+            out/konsole/kde-state
+          key: ${{ steps.cache-restore.outputs.cache-primary-key }}
+
+      - name: Upload Konsole and graphical evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: konsole-zig-build
+          path: |
+            out/konsole/kde-install/bin/konsole
+            out/konsole/kde-install/bin/konsole.audit.txt
+            out/konsole/konsole-audit.txt
+            out/konsole/konsole-onebin-audit.txt
+            out/konsole/smoke
+            out/konsole/smoke/render.log
+          if-no-files-found: warn
+          retention-days: 14
