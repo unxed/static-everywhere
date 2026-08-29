@@ -37,7 +37,8 @@ timeout --foreground 45s "$FAR2L" --SDL --notty --mortal --size=100x30 \
 app_pid=$!
 
 window_id=
-for _ in $(seq 1 90); do
+attempts=0
+while [ "${attempts}" -lt 90 ]; do
     window_id=$(xdotool search --onlyvisible --name 'far2l' 2>/dev/null | head -n 1 || true)
     if [ -n "$window_id" ]; then
         break
@@ -48,6 +49,7 @@ for _ in $(seq 1 90); do
         cat "$OUT/far2l.log" >&2 || true
         exit 1
     fi
+    attempts=$((attempts + 1))
     sleep 1
 done
 
