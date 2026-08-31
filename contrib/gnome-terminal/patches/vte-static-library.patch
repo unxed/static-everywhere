@@ -1,5 +1,23 @@
+diff --git a/meson_options.txt b/meson_options.txt
+index b7b6b382..fa9e82d8 100644
+--- a/meson_options.txt
++++ b/meson_options.txt
+@@ -22,6 +22,13 @@ option(
+   description: 'Use -Bsymbolic-functions',
+ )
+ 
++option(
++  'build-app',
++  type: 'boolean',
++  value: true,
++  description: 'Build the VTE demo application',
++)
++
+ option(
+   'a11y',
+   type: 'boolean',
 diff --git a/src/meson.build b/src/meson.build
-index 3f89f492..0bbe2229 100644
+index 3f89f492..bc45afbf 100644
 --- a/src/meson.build
 +++ b/src/meson.build
 @@ -303,7 +303,7 @@ if get_option('gtk3')
@@ -20,3 +38,11 @@ index 3f89f492..0bbe2229 100644
      vte_gtk4_api_name,
      sources: libvte_gtk4_sources,
      version: libvte_gtk4_soversion,
+@@ -746,4 +746,6 @@ endif
+ 
+ # Demo application
+ 
+-subdir('app')
++if get_option('build-app')
++  subdir('app')
++endif

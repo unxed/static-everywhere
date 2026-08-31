@@ -7,6 +7,27 @@ Everything below this section is a reverse-chronological log (newest
 first). Read *this* section first; consult the log below only for the
 detail behind a specific claim.
 
+### Static VTE builds must not build the demo application
+
+The GNOME Terminal dependency build reached the end of VTE's 201-target
+graph, then failed while linking VTE's optional demo application:
+
+```
+ld.lld: error: duplicate symbol: _vte_debug_sequence_to_string
+>>> src/app/vte-2.91.p/.._debug.cc.o
+>>> debug.cc.o in archive src/libvte-2.91.a
+```
+
+The demo target adds `debug.cc` directly while also consuming the static
+VTE archive containing that translation unit. Dynamic linking tolerates the
+duplicate through executable symbol precedence; a static link does not.
+GNOME Terminal consumes the VTE library and its helper, not this demo, so
+the pinned VTE checkout now gets a `build-app` option and the recipe passes
+`-Dbuild-app=false`. The change is captured in the existing VTE patch by
+`git diff` from the pinned checkout, not authored as patch text. The
+preflight checks both the option and the source guard, preventing a future
+static-only recipe from rebuilding this unused class of demo target.
+
 ### Two C++ runtimes in one static link — and I lost a commit to a hard reset
 
 ```

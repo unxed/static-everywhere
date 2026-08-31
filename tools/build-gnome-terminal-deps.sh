@@ -124,6 +124,7 @@ cmake contract: ${CMAKE_COMMON_ARGS[*]}
 source patches: util-linux-libuuid-only.patch gdk-pixbuf-static-loader-deps.patch gtk-no-host-atk-bridge.patch vte-static-library.patch libhandy-static-library.patch
 dependency patch contract: every patch is a valid Git diff captured from its pinned checkout
 VTE linker feature contract: _b_symbolic_functions=false for Zig 0.13 (unsupported -Bsymbolic-functions)
+VTE static application policy: build-app=false; GNOME consumes the VTE library, not its demo application
 subproject policy: materialize pinned gvdb; provide libc gettext through a prefix-local synthetic intl.pc; no Meson downloads
 uuid policy: util-linux libuuid-only=true; install only the pinned static libuuid archive and uuid.pc
 uuid-only graph audit: reject util-linux libcommon and non-UUID lib/ sources before compile
@@ -778,7 +779,7 @@ apply_source_patch "${vte_src}" "${REPO_ROOT}/contrib/gnome-terminal/patches/vte
 meson_dep vte "${vte_src}" vte \
     -Dgtk3=true -Dgtk4=false -Dfribidi=true -Dgnutls=false -Dicu=false \
     -D_systemd=false -Dgir=false -Dvapi=false -Dglade=false -Ddocs=false \
-    -D_b_symbolic_functions=false
+    -D_b_symbolic_functions=false -Dbuild-app=false
 
 libhandy_src=$(source_tree libhandy)
 require_pc gtk+-3.0 glib-2.0

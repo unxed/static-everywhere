@@ -113,6 +113,7 @@ for required in \
     'libhandy-static-library.patch' \
     'dependency patch contract: every patch is a valid Git diff captured from its pinned checkout' \
     'VTE linker feature contract: _b_symbolic_functions=false for Zig 0.13 (unsupported -Bsymbolic-functions)' \
+    'VTE static application policy: build-app=false; GNOME consumes the VTE library, not its demo application' \
     'synthetic intl.pc' \
     'libuuid-only=true' \
     'uuid-only graph audit: reject util-linux libcommon and non-UUID lib/ sources before compile' \
@@ -228,6 +229,19 @@ for required in \
         pass "captured GTK patch contains ${required}"
     else
         fail "captured GTK patch is missing ${required}"
+    fi
+done
+
+VTE_PATCH="${PATCH_DIR}/vte-static-library.patch"
+for required in \
+    'diff --git a/meson_options.txt b/meson_options.txt' \
+    "'build-app'" \
+    'if get_option('\''build-app'\'')' \
+    '-  subdir('\''app'\'')'; do
+    if grep -Fq -- "${required}" "${VTE_PATCH}"; then
+        pass "captured VTE patch contains ${required}"
+    else
+        fail "captured VTE patch is missing ${required}"
     fi
 done
 
