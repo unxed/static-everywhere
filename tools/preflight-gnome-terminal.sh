@@ -57,6 +57,10 @@ for required in \
     'commit verified' \
     'host contract: X11, OpenGL/EGL, accessibility IPC, schemas, fonts and session services' \
     'fontconfig install: manual copy' \
+    'HAVE_XRENDERCREATESOLIDFILL' \
+    'HAVE_XRENDERCREATELINEARGRADIENT' \
+    'HAVE_XRENDERCREATERADIALGRADIENT' \
+    'HAVE_XRENDERCREATECONICALGRADIENT' \
     'zlib libffi pcre2 expat libpng pixman' \
     'gtk lz4 vte libhandy'; do
     if grep -Fq -- "$required" "$DEPS_PLAN"; then
