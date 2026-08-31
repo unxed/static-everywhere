@@ -112,7 +112,7 @@ deps_for_config() {
     case "$1" in
         tiny) ;; # none: every optional subsystem that would need one is off
         tty|wx) printf '%s\n' libssh libnfs mbedtls zlib openssl neon ;;
-        sdl) printf '%s\n' libssh libnfs mbedtls zlib openssl neon sdl2 freetype harfbuzz fontconfig expat uchardet ;;
+        sdl) printf '%s\n' libssh libnfs mbedtls zlib openssl neon sdl2 freetype harfbuzz fontconfig expat ;;
     esac
 }
 
@@ -163,11 +163,11 @@ cmake_config_args() {
                 "-DNR_AWS=no" \
                 "-DCOLORER=no" "-DMULTIARC=no" "-DUSEUCD=no"
             netrocks_crypto_args
-            # COLORER/MULTIARC/USEUCD=no: libxml2/libarchive/uchardet
+            # COLORER/MULTIARC/USEUCD=no: libxml2/libarchive
             # aren't wired into this script's deps yet (libarchive IS
             # pinned in deps.lock but hasn't been proven through a real
-            # far2l MULTIARC build; libxml2/uchardet for Colorer/charset-
-            # detect aren't pinned at all). NETROCKS stays at its far2l
+            # far2l MULTIARC build; libxml2 for Colorer isn't pinned at
+            # all). NETROCKS stays at its far2l
             # default (yes): libssh+libnfs above give it real SFTP/SCP/
             # NFS support, and NetRocks-SHELL/FISHPLUS need nothing at
             # all (04-REFERENCE-far2l.md SS6.2.1) so the plugin already
@@ -301,9 +301,9 @@ configure_deps_env() {
     # explicit NetRocks cache variables above. Put the pinned prefix first
     # for both mechanisms so a host development package can never silently
     # replace one of the showcase's source-built libraries.
-    PKG_CONFIG_PATH="${DEPS_PREFIX}/sdl2/lib/pkgconfig:${DEPS_PREFIX}/freetype/lib/pkgconfig:${DEPS_PREFIX}/harfbuzz/lib/pkgconfig:${DEPS_PREFIX}/fontconfig/lib/pkgconfig:${DEPS_PREFIX}/expat/lib/pkgconfig:${DEPS_PREFIX}/zlib/lib/pkgconfig:${DEPS_PREFIX}/uchardet/lib/pkgconfig${PKG_CONFIG_PATH:+:${PKG_CONFIG_PATH}}"
+    PKG_CONFIG_PATH="${DEPS_PREFIX}/sdl2/lib/pkgconfig:${DEPS_PREFIX}/freetype/lib/pkgconfig:${DEPS_PREFIX}/harfbuzz/lib/pkgconfig:${DEPS_PREFIX}/fontconfig/lib/pkgconfig:${DEPS_PREFIX}/expat/lib/pkgconfig:${DEPS_PREFIX}/zlib/lib/pkgconfig${PKG_CONFIG_PATH:+:${PKG_CONFIG_PATH}}"
     export PKG_CONFIG_PATH
-    CMAKE_PREFIX_PATH="${DEPS_PREFIX}/sdl2:${DEPS_PREFIX}/freetype:${DEPS_PREFIX}/harfbuzz:${DEPS_PREFIX}/fontconfig:${DEPS_PREFIX}/expat:${DEPS_PREFIX}/zlib:${DEPS_PREFIX}/uchardet${CMAKE_PREFIX_PATH:+:${CMAKE_PREFIX_PATH}}"
+    CMAKE_PREFIX_PATH="${DEPS_PREFIX}/sdl2:${DEPS_PREFIX}/freetype:${DEPS_PREFIX}/harfbuzz:${DEPS_PREFIX}/fontconfig:${DEPS_PREFIX}/expat:${DEPS_PREFIX}/zlib${CMAKE_PREFIX_PATH:+:${CMAKE_PREFIX_PATH}}"
     export CMAKE_PREFIX_PATH
 }
 

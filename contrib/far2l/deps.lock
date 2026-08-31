@@ -275,18 +275,14 @@ fontconfig 2.18.3 9ae01e1d53acdef56010c5451cd34aa41d325b2faccd8606448d8fa01b2496
 # TTYX broker and Profile M — SDL2 is the third instance.
 sdl2 2.32.10 5f5993c530f084535c65a6879e9b26ad441169b3e25d789d83287040a9ca5165 https://github.com/libsdl-org/SDL/releases/download/release-2.32.10/SDL2-2.32.10.tar.gz
 
-# uchardet 0.0.8: character-encoding detection, required by far2l's own
-# far2l/CMakeLists.txt whenever USEUCD=YES (the default). Not previously
-# in this file because no far2l build attempted so far had reached this
-# far into the plugin/feature set. CMake support upstream
-# (BUILD_SHARED_LIBS=OFF makes the plain `libuchardet` target itself
-# static, no separate *_STATIC variant needed). Verified: builds clean
-# via onebin-linux-hybrid.cmake, discovered correctly by far2l's own
-# cmake/modules/FindUchardet.cmake (plain FIND_LIBRARY/FIND_PATH) via
-# CMAKE_LIBRARY_PATH/CMAKE_INCLUDE_PATH pointed at this project's
-# install prefix. Not yet exercised by its own smoketest -- verification
-# so far is "far2l's own CMake configure step found and accepted it",
-# not an independent round-trip encoding-detection test.
+# uchardet 0.0.8: optional character-encoding detection, required by
+# far2l/CMakeLists.txt whenever USEUCD=YES (the default). The SDL preview
+# explicitly uses USEUCD=no, so this pin is retained for a future
+# UCD-enabled profile but is not part of the SDL dependency prefix.
+# Upstream unconditionally adds uchardet-tests and forces its C linker even
+# though libuchardet.a contains C++ objects; an UCD-enabled builder must
+# request only the libuchardet target (or patch that upstream test) instead
+# of building every CMake target.
 uchardet 0.0.8 e97a60cfc00a1c147a674b097bb1422abd9fa78a2d9ce3f3fdcc2e78a34ac5f0 https://www.freedesktop.org/software/uchardet/releases/uchardet-0.0.8.tar.xz
 
 # --- network, the hard remainder (NetRocks-SFTP.broker) ------------------
@@ -455,8 +451,9 @@ libnfs 6.0.2 4e5459cc3e0242447879004e9ad28286d4d27daa42cbdcde423248fad911e747 ht
 # reproducible release build, for exactly that reason).
 #
 # far2l-sdl configure succeeded against this project's own static
-# SDL2/FreeType/HarfBuzz/Fontconfig (all found correctly via pkg-config)
-# plus the uchardet pin above. -DCOLORER=no added to this preview's
+# SDL2/FreeType/HarfBuzz/Fontconfig (all found correctly via pkg-config).
+# The SDL preview uses -DUSEUCD=no, so the uchardet pin above is not built
+# for this prefix. -DCOLORER=no added to this preview's
 # flags (not in 04-REFERENCE-far2l.md's §6.3 recipe) because the
 # Colorer plugin needs libxml2, not yet pinned in this file -- adding
 # real libxml2 support is a separate, later step, not a blocker for

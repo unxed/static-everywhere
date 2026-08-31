@@ -52,7 +52,7 @@ WORK=${WORK}
 source archives: contrib/far2l/deps.lock (sha256 verified)
 toolchain: ${CMAKE_TOOLCHAIN}
 Meson: >= 1.11.0 (fontconfig 2.18.3 requirement)
-order: zlib -> mbedtls -> openssl -> expat -> freetype(pass 1) -> harfbuzz -> freetype(pass 2) -> fontconfig -> sdl2 -> uchardet -> libssh -> libnfs -> neon
+order: zlib -> mbedtls -> openssl -> expat -> freetype(pass 1) -> harfbuzz -> freetype(pass 2) -> fontconfig -> sdl2 -> libssh -> libnfs -> neon
 fontconfig install: copy static archive, generated pc and headers; never run meson install
 host link inputs: X11/OpenGL only; no host SDL/Qt/KDE/FreeType/HarfBuzz/Fontconfig
 PLAN
@@ -170,7 +170,7 @@ meson_dep() {
 }
 
 mkdir -p "${PREFIX}" "${WORK}"
-export PKG_CONFIG_PATH="${PREFIX}/zlib/lib/pkgconfig:${PREFIX}/mbedtls/lib/pkgconfig:${PREFIX}/openssl/lib/pkgconfig:${PREFIX}/expat/lib/pkgconfig:${PREFIX}/freetype/lib/pkgconfig:${PREFIX}/harfbuzz/lib/pkgconfig:${PREFIX}/fontconfig/lib/pkgconfig:${PREFIX}/sdl2/lib/pkgconfig:${PREFIX}/uchardet/lib/pkgconfig:${PKG_CONFIG_PATH:-}"
+export PKG_CONFIG_PATH="${PREFIX}/zlib/lib/pkgconfig:${PREFIX}/mbedtls/lib/pkgconfig:${PREFIX}/openssl/lib/pkgconfig:${PREFIX}/expat/lib/pkgconfig:${PREFIX}/freetype/lib/pkgconfig:${PREFIX}/harfbuzz/lib/pkgconfig:${PREFIX}/fontconfig/lib/pkgconfig:${PREFIX}/sdl2/lib/pkgconfig:${PKG_CONFIG_PATH:-}"
 
 zlib_src=$(source_tree zlib)
 if ! built zlib; then
@@ -306,10 +306,6 @@ cmake_dep sdl2 sdl2 "${sdl2_src}" sdl2 \
     -DSDL_TEST=OFF \
     -DSDL_TESTS=OFF \
     -DCMAKE_POSITION_INDEPENDENT_CODE=ON
-
-uchardet_src=$(source_tree uchardet)
-cmake_dep uchardet uchardet "${uchardet_src}" uchardet \
-    -DBUILD_TESTING=OFF
 
 libssh_src=$(source_tree libssh)
 cmake_dep libssh libssh "${libssh_src}" libssh \
