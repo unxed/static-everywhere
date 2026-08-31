@@ -150,7 +150,12 @@ jobs:
             -w /src \
             alpine:3.22 \
             sh -ec '
-              apk add --no-cache build-base clang python3
+              # libc++ as well as clang: Alpine's clang defaults to
+              # libstdc++, and the archive this container produces is
+              # linked by zig, which provides libc++. Two C++ runtimes in
+              # one static link fail at the very end with dozens of
+              # undefined std:: symbols.
+              apk add --no-cache build-base clang python3 libc++-dev libc++-static
               machine=$(uname -m)
               fallback=/tmp/solo-generated
               mkdir -p "$fallback/bits" "$fallback/internal"
@@ -165,7 +170,14 @@ jobs:
                 "$fallback/internal/version.h" \
                 ext/musl/VERSION
               export CFLAGS="-I$fallback"
-              export CXXFLAGS="-I$fallback"
+              # -stdlib=libc++ so the C++ runtime matches the final link.
+              # Without it the archive references libstdc++ internals --
+              # std::__throw_length_error, std::_Hash_bytes,
+              # std::__detail::_Prime_rehash_policy -- which exist in no
+              # library on the far2l side, and the link fails after the
+              # whole program has compiled.
+              export CXXFLAGS="-I$fallback -stdlib=libc++"
+              export LDFLAGS="${LDFLAGS:-} -stdlib=libc++"
               command -v "$CC"
               command -v "$CXX"
               "$CC" --version
@@ -231,6 +243,13 @@ jobs:
             echo "SoLo materialized an empty dlfcn archive: $solo_archive" >&2
             exit 1
           }
+
+          # The archive crosses a toolchain boundary: built here by
+          # Alpine's clang, linked later by zig. Check the C++ runtime
+          # matches now, where the cause is one line away, rather than
+          # after far2l's entire compile, where it arrives as sixty
+          # undefined std:: symbols with no hint of where they came from.
+          tools/check-cxx-runtime-consistency.sh "$solo_archive"
           archive_members=$(ar t "$solo_archive")
           printf 'SoLo archive members:\n%s\n' "$archive_members"
           for member in bionic_shim.cpp.o dlfcn.cpp.o elf_loader.S.o \

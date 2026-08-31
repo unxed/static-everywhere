@@ -452,6 +452,16 @@ else
     printf '%s\n' "$LINKARGS" | sed 's/^/       /'
 fi
 
+# An archive built in one container and linked by another toolchain must
+# reference the same C++ runtime. SoLo's did not, and it surfaced only
+# after far2l's whole compile as sixty undefined std:: symbols.
+if CXXRT=$("${REPO_ROOT}/tools/test-cxx-runtime-check.sh" 2>&1); then
+    pass "the C++ runtime checker tells libstdc++ from libc++"
+else
+    fail "C++ runtime check regression"
+    printf '%s\n' "$CXXRT" | sed 's/^/       /'
+fi
+
 # Cost: would have been a silently unreproducible artifact rather than a
 # failed build -- f4's own script clones qwindowkit from an unpinned
 # branch, so upstream could change what we ship without anything failing.

@@ -7,6 +7,56 @@ Everything below this section is a reverse-chronological log (newest
 first). Read *this* section first; consult the log below only for the
 detail behind a specific claim.
 
+### Two C++ runtimes in one static link — and I lost a commit to a hard reset
+
+```
+ld.lld: error: undefined symbol: std::__throw_length_error(char const*)
+>>> referenced by basic_string.tcc:144
+>>>   (/usr/lib/gcc/x86_64-alpine-linux-musl/14.2.0/...)
+>>>   dlfcn.cpp.o:(...) in archive solo-src/libdlfcn.a
+```
+
+The reference path names the cause outright: `libdlfcn.a` was compiled by
+**Alpine's** g++/clang against **libstdc++**, and far2l is linked by zig,
+which provides **libc++**. Sixty undefined symbols that exist in no
+library on our side, all of them after the entire program had compiled.
+
+The container now installs `libc++-dev`/`libc++-static` and builds with
+`-stdlib=libc++`, so both sides of the handoff agree.
+
+But the real fix is that the mismatch is now caught **where the archive
+is produced**. `tools/check-cxx-runtime-consistency.sh` reads the
+undefined symbols and distinguishes the runtimes by their inline
+namespaces — libstdc++ uses `__cxx11` and exports `_ZSt..__throw..`,
+`_ZSt11_Hash_bytes`, `_ZNSt8__detail..`; libc++ uses `__1`. Four
+independent markers, deliberately: any one of them going stale still
+leaves three. The workflow runs it on `libdlfcn.a` immediately after the
+container exits, so the failure is one line from its cause rather than a
+compile away.
+
+`tools/test-cxx-runtime-check.sh` builds one object with g++ and one with
+zig — real archives from both real compilers, not fixtures — and requires
+opposite verdicts plus a rejection message that names the runtime found.
+Two negative controls, and the first attempt at one was worthless: I
+replaced a single marker and the test still passed, because the detector
+has four. Blinding all of them fails it, as it should.
+
+### The lost commit
+
+Checking whether an f4-qt Profile U variant existed, I ran `git reset
+--hard origin/main` — and the gnome-terminal work from the previous turn
+was committed locally but not yet upstream, so the reset discarded it:
+the artifact allowlist, the 32 MB ceiling, the `close_range` shim, and
+the runtime checker itself. It was recoverable from the handed-off patch
+and has been reapplied.
+
+This is the second time in this project that a hard reset has eaten
+unpushed work, and the first time I wrote the lesson down. Writing it
+down was evidently not enough. The rule that would have prevented both:
+**before `git reset --hard`, run `git log origin/main..HEAD` and stop if
+it prints anything.** `git status` alone does not show it — the work was
+committed, which is exactly why it looked safe.
+
 ### The 178 MB artifact was full of dependency source code
 
 The question was the right one to ask, and the answer is embarrassing.
