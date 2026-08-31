@@ -140,6 +140,8 @@ jobs:
           git -C solo-src fetch --quiet --depth 1 origin "$solo_ref"
           git -C solo-src checkout --quiet --detach "$solo_ref"
           test "$(git -C solo-src rev-parse HEAD)" = "$solo_ref"
+          git -C solo-src cat-file -e "$solo_ref:lib/dlfcn.h"
+          test -f solo-src/lib/dlfcn.h
           set +e
           docker run --rm \
             --env "CC=$solo_cc" \
@@ -190,29 +192,44 @@ jobs:
               grep -Ein '(^|[^[:alpha:]])(fatal )?error:' /tmp/solo-build.log >&2
               exit 1
             fi
-            test -s solo-src/libdlfcn.a || {
-              echo 'SoLo produced no non-empty libdlfcn.a' >&2
+          fi
+          if [ ! -L solo-src/dlfcn ]; then
+            echo 'SoLo did not publish the expected dlfcn archive link' >&2
+            find solo-src -maxdepth 2 -name 'dlfcn*' -print >&2
+            exit 1
+          fi
+          if ! solo_archive=$(readlink -f solo-src/dlfcn); then
+            echo 'SoLo dlfcn archive link is not resolvable' >&2
+            exit 1
+          fi
+          case "$solo_archive" in
+            "$PWD/solo-src/"*) ;;
+            *)
+              echo "SoLo dlfcn archive escapes the pinned checkout: $solo_archive" >&2
               exit 1
-            }
-            test -f solo-src/lib/dlfcn.h || {
-              echo 'SoLo produced no public lib/dlfcn.h' >&2
+              ;;
+          esac
+          test -s "$solo_archive" || {
+            echo "SoLo published an empty dlfcn archive: $solo_archive" >&2
+            exit 1
+          }
+          archive_members=$(ar t "$solo_archive")
+          printf 'SoLo archive members:\n%s\n' "$archive_members"
+          for member in bionic_shim.cpp.o dlfcn.cpp.o elf_loader.S.o \
+                        elf_loader.cpp.o fts.cpp.o glibc_shim.S.o \
+                        glibc_shim.cpp.o glibc_stubs.cpp.o hash.cpp.o \
+                        iface_handle.cpp.o musl_provider.cpp.o \
+                        musl_symbols.cpp.o musl_tls.c.o thread_tls.cpp.o; do
+            if ! printf '%s\n' "$archive_members" \
+              | sed 's#^.*/##' \
+              | grep -Fx "$member"; then
+              echo "SoLo archive is missing required member: $member" >&2
               exit 1
-            }
-            archive_members=$(ar t solo-src/libdlfcn.a)
-            printf 'SoLo archive members:\n%s\n' "$archive_members"
-            for member in dlfcn.cpp.o elf_loader.cpp.o glibc_shim.cpp.o \
-                          musl_provider.cpp.o musl_tls.c.o; do
-              if ! printf '%s\n' "$archive_members" \
-                | sed 's#^.*/##' \
-                | grep -Fx "$member"; then
-                echo "SoLo archive is missing required member: $member" >&2
-                exit 1
-              fi
-            done
+            fi
+          done
+          if [ "${solo_status[0]}" -ne 0 ]; then
             echo 'SoLo completed the pinned graph; its strict-hygiene status was non-zero'
           fi
-          test -f solo-src/libdlfcn.a
-          test -f solo-src/lib/dlfcn.h
 
       - name: Fetch the pinned far2l SDL preview
         run: |
