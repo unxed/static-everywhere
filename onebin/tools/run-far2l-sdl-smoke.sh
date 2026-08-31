@@ -12,7 +12,7 @@ fi
 
 FAR2L=$1
 OUT=$2
-mkdir -p "$OUT" "$OUT/config" "$OUT/runtime"
+mkdir -p "$OUT" "$OUT/config/far2l" "$OUT/runtime"
 chmod 700 "$OUT/runtime"
 
 command -v xdotool >/dev/null || { echo 'run-far2l-sdl-smoke.sh: xdotool is required' >&2; exit 2; }
@@ -22,6 +22,31 @@ export XDG_CONFIG_HOME="$OUT/config"
 export XDG_RUNTIME_DIR="$OUT/runtime"
 export SDL_VIDEODRIVER=x11
 export FAR2L_SDL_DEBUG_REDRAW=1
+
+# The SDL backend opens its font picker on a first run when sdl_font is
+# absent. A headless smoke test cannot answer that interactive dialog, so
+# provide the same kind of ordinary host-font preference a first interactive
+# run would save. Keep the selection deterministic and avoid depending on
+# fontconfig's executable being installed on the runner.
+font_path=
+for candidate in \
+    /usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf \
+    /usr/share/fonts/truetype/dejavu/DejaVuSans.ttf \
+    /usr/share/fonts/truetype/freefont/FreeMono.ttf \
+    /usr/share/fonts/truetype/liberation2/LiberationMono-Regular.ttf; do
+    if [ -f "$candidate" ]; then
+        font_path=$candidate
+        break
+    fi
+done
+if [ -z "$font_path" ]; then
+    echo 'run-far2l-sdl-smoke.sh: no usable host font found for the SDL smoke test' >&2
+    exit 2
+fi
+{
+    printf '%s\n' "$font_path"
+    printf '%s\n' 'size=18'
+} >"$OUT/config/far2l/sdl_font"
 
 app_pid=
 cleanup() {
