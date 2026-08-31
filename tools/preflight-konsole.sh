@@ -14,7 +14,7 @@ bash -n "$REPO_ROOT/tools/build-konsole.sh" "$REPO_ROOT/tools/preflight-konsole.
     "$REPO_ROOT/tools/run-konsole-smoke.sh" "$REPO_ROOT/tools/verify-konsole-artifact.sh"
 pass 'Konsole shell scripts parse'
 
-"$REPO_ROOT/tools/test-konsole-cmake-package-prefixes.sh"
+bash "$REPO_ROOT/tools/test-konsole-cmake-package-prefixes.sh/test-konsole-cmake-package-prefixes.sh"
 pass 'Conan CMake package prefixes are available to CONFIG-mode find_package'
 
 for tool in msgmerge msgfmt flex bison; do
