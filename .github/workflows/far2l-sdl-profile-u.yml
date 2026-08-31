@@ -156,6 +156,7 @@ jobs:
           # runner (and SoLo's dlfcn link is CAS/container-local), so move
           # both the input tree and the regular output through docker cp.
           solo_container=$(docker create \
+            --interactive \
             --env "CC=$solo_cc" \
             --env "CXX=$solo_cxx" \
             -w /src \
