@@ -101,3 +101,26 @@ endif()
 string(JOIN " " _onebin_link_flags_str ${_onebin_link_flags})
 set(CMAKE_EXE_LINKER_FLAGS_INIT    "${_onebin_link_flags_str}")
 set(CMAKE_SHARED_LINKER_FLAGS_INIT "${_onebin_link_flags_str}")
+
+# WHOLE_ARCHIVE without --push-state.
+#
+# CMake's default expansion of $<LINK_LIBRARY:WHOLE_ARCHIVE,...> for a
+# GNU-like linker is
+#
+#   --push-state --whole-archive <item> --pop-state
+#
+# and zig 0.13 rejects --push-state outright: "unsupported linker arg".
+# It accepts --whole-archive and --no-whole-archive, which is what the
+# push/pop pair exists to bracket, so define the feature in those terms.
+#
+# The pair is exact rather than convenient: --no-whole-archive restores
+# the default, which is the state every link here starts in, so nothing
+# that follows the item is swept in.
+foreach(_onebin_lang C CXX)
+    set(CMAKE_${_onebin_lang}_LINK_LIBRARY_USING_WHOLE_ARCHIVE_SUPPORTED TRUE)
+    set(CMAKE_${_onebin_lang}_LINK_LIBRARY_USING_WHOLE_ARCHIVE
+        "LINKER:--whole-archive"
+        "<LINK_ITEM>"
+        "LINKER:--no-whole-archive")
+endforeach()
+unset(_onebin_lang)

@@ -306,6 +306,53 @@ fi
 # standard output ourselves. This works for every mode, unlike simply
 # dropping the flag, which is only equivalent for -E (with -S or -c, zig
 # would write foo.s or foo.o to disk instead).
+# `-Xlinker ARG` must become `-Wl,ARG`.
+#
+# zig 0.13 accepts `-Wl,--whole-archive` and rejects the identical
+# `-Xlinker --whole-archive` with "unsupported linker arg". The two
+# spellings mean the same thing to every other driver, and CMake emits
+# the -Xlinker form for whole-archive, version scripts and rpath, so a
+# CMake project links fine by hand and fails through the generator.
+#
+# Translating is safe: -Wl, splits on commas, so an argument that itself
+# contains a comma would change meaning -- those are passed through
+# unchanged rather than silently corrupted.
+_onebin_xlinker=0
+for _onebin_arg in "$@"; do
+    if [ "$_onebin_arg" = "-Xlinker" ]; then
+        _onebin_xlinker=1
+        break
+    fi
+done
+
+if [ "$_onebin_xlinker" = 1 ]; then
+    _onebin_rebuilt=""
+    _onebin_want_xarg=0
+    for _onebin_arg in "$@"; do
+        if [ "$_onebin_want_xarg" = 1 ]; then
+            _onebin_want_xarg=0
+            case "$_onebin_arg" in
+                *,*)
+                    # A comma would be read as an argument separator by
+                    # -Wl,; keep the original spelling and let the driver
+                    # decide.
+                    _onebin_rebuilt="${_onebin_rebuilt} $(_onebin_shell_quote "-Xlinker") $(_onebin_shell_quote "$_onebin_arg")"
+                    ;;
+                *)
+                    _onebin_rebuilt="${_onebin_rebuilt} $(_onebin_shell_quote "-Wl,${_onebin_arg}")"
+                    ;;
+            esac
+            continue
+        fi
+        if [ "$_onebin_arg" = "-Xlinker" ]; then
+            _onebin_want_xarg=1
+            continue
+        fi
+        _onebin_rebuilt="${_onebin_rebuilt} $(_onebin_shell_quote "$_onebin_arg")"
+    done
+    eval "set --${_onebin_rebuilt}"
+fi
+
 _onebin_stdout_out=0
 _onebin_prev=""
 for _onebin_arg in "$@"; do

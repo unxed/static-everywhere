@@ -442,6 +442,16 @@ else
     printf '%s\n' "$STDOUTOUT" | sed 's/^/       /'
 fi
 
+# zig rejects --push-state, which is what CMake brackets WHOLE_ARCHIVE
+# with, and mishandles -Xlinker, which is how CMake spells every linker
+# flag. far2l compiled fully and then failed to link on both.
+if LINKARGS=$("${REPO_ROOT}/tools/test-linker-arg-compat.sh" 2>&1); then
+    pass "the linker arguments CMake emits are ones zig accepts"
+else
+    fail "linker argument compatibility regression"
+    printf '%s\n' "$LINKARGS" | sed 's/^/       /'
+fi
+
 # Cost: would have been a silently unreproducible artifact rather than a
 # failed build -- f4's own script clones qwindowkit from an unpinned
 # branch, so upstream could change what we ship without anything failing.

@@ -7,6 +7,44 @@ Everything below this section is a reverse-chronological log (newest
 first). Read *this* section first; consult the log below only for the
 detail behind a specific claim.
 
+### far2l compiled entirely, then failed to link on two linker-argument defects
+
+```
+[ 77%] Linking CXX executable ../install/far2l
+error: unsupported linker arg: --push-state
+```
+
+Two problems, both classes, and the first one is nasty to debug because
+the flag works when you paste it into a shell.
+
+**zig 0.13 mishandles `-Xlinker`.** It accepts `-Wl,--whole-archive` and
+rejects the identical `-Xlinker --whole-archive` with "unsupported linker
+arg". Every other driver treats the two spellings as the same thing, and
+CMake emits the `-Xlinker` form — for whole-archive, version scripts,
+rpath. So a link that succeeds by hand fails through the generator, with
+the offending flag sitting in `link.txt` looking perfectly valid. Both
+wrappers now translate `-Xlinker ARG` into `-Wl,ARG`, leaving arguments
+that contain a comma alone rather than silently re-splitting them.
+
+**CMake brackets `WHOLE_ARCHIVE` with `--push-state`/`--pop-state`,**
+which zig rejects in every spelling. The toolchains now define the
+feature as `--whole-archive` / `--no-whole-archive`, which is exactly
+what the push/pop pair exists to bracket — and `--no-whole-archive`
+restores the state every link here starts in, so nothing after the item
+is swept in.
+
+`tools/test-linker-arg-compat.sh` configures a real
+`$<LINK_LIBRARY:WHOLE_ARCHIVE,...>` project against both toolchains and
+**links** it, rather than inspecting flags: the flags looking right was
+the whole illusion here. It also checks that `-Xlinker` survives to the
+linker. Both negative controls fail it.
+
+Third failure in a row where the compile was fine and the toolchain
+wrapper was the problem. The wrappers are now the most-tested part of
+this repository, which is the correct outcome: they are a translation
+layer between two dialects that mostly agree, and mostly is exactly the
+dangerous part.
+
 ### 180 MB of one warning, and the error somewhere inside it
 
 The gnome-terminal run produced a diagnostics artifact too large to
