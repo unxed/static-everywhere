@@ -23,7 +23,8 @@ jobs:
           python3 -m venv "$meson_venv"
           "$meson_venv/bin/python" -m pip install \
             --disable-pip-version-check --no-input --only-binary=:all: \
-            "meson==${meson_version}"
+            "meson==${meson_version}" \
+            packaging==24.1
           echo "$meson_venv/bin" >> "$GITHUB_PATH"
           test "$("$meson_venv/bin/meson" --version)" = "$meson_version"
 
@@ -89,7 +90,8 @@ jobs:
           python3 -m venv "$meson_venv"
           "$meson_venv/bin/python" -m pip install \
             --disable-pip-version-check --no-input --only-binary=:all: \
-            "meson==${meson_version}"
+            "meson==${meson_version}" \
+            packaging==24.1
           echo "$meson_venv/bin" >> "$GITHUB_PATH"
           test "$("$meson_venv/bin/meson" --version)" = "$meson_version"
 
