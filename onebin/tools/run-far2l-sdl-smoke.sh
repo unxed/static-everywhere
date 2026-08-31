@@ -15,6 +15,7 @@ OUT=$2
 mkdir -p "$OUT" "$OUT/config/far2l" "$OUT/runtime"
 chmod 700 "$OUT/runtime"
 
+# shellcheck disable=SC1007
 install_root=$(CDPATH= cd -- "$(dirname -- "$FAR2L")/.." && pwd)
 runtime_data="$install_root/share/far2l"
 for required in FarEng.lng FarEng.hlf; do
