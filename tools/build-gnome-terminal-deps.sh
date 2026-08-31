@@ -69,9 +69,11 @@ CMAKE_COMMON_ARGS=(
 )
 
 dependency_order=(
-    zlib libffi pcre2 expat libpng pixman glib fribidi freetype harfbuzz
+    util-linux zlib libffi pcre2 expat libpng pixman glib fribidi freetype harfbuzz
     fontconfig cairo pango gdk-pixbuf atk epoxy gtk lz4 vte libhandy
 )
+
+subproject_pins=( gvdb )
 
 lock_field() {
     local name=$1 field=$2
@@ -116,9 +118,16 @@ host library policy: pkg-config maps host GUI/desktop -l arguments to shared obj
 fontconfig install: manual copy (no meson install; protects host /etc/fonts)
 cairo XRender function checks: HAVE_XRENDERCREATESOLIDFILL HAVE_XRENDERCREATELINEARGRADIENT HAVE_XRENDERCREATERADIALGRADIENT HAVE_XRENDERCREATECONICALGRADIENT
 cmake contract: ${CMAKE_COMMON_ARGS[*]}
+source patches: util-linux-libuuid-only.patch vte-static-library.patch libhandy-static-library.patch
+subproject policy: materialize pinned gvdb; provide libc gettext through a prefix-local synthetic intl.pc; no Meson downloads
+uuid policy: util-linux libuuid-only=true; install only the pinned static libuuid archive and uuid.pc
 PLAN
     for dependency in "${dependency_order[@]}"; do
         printf '# pinned source: %s %s %s\n' \
+            "${dependency}" "$(lock_field "${dependency}" 2)" "$(lock_field "${dependency}" 3)"
+    done
+    for dependency in "${subproject_pins[@]}"; do
+        printf '# pinned subproject: %s %s %s\n' \
             "${dependency}" "$(lock_field "${dependency}" 2)" "$(lock_field "${dependency}" 3)"
     done
     printf '# final consumer: tools/build-gnome-terminal.sh --deps-prefix %s\n' "${PREFIX}"
@@ -213,6 +222,21 @@ source_tree() {
         exit 1
     }
     printf '%s\n' "${dir}"
+}
+
+apply_source_patch() {
+    local source=$1 patch=$2
+    if git -C "${source}" apply --reverse --check "${patch}" >/dev/null 2>&1; then
+        return 0
+    fi
+    run git -C "${source}" apply --whitespace=nowarn "${patch}"
+}
+
+materialize_subproject() {
+    local source=$1 destination=$2
+    run rm -rf "${destination}"
+    run mkdir -p "${destination}"
+    run cp -a "${source}/." "${destination}/"
 }
 
 mark() {
@@ -327,6 +351,12 @@ cmake_dep zlib "${zlib_src}" zlib \
 find "${PREFIX}/lib" -maxdepth 1 -type f -name 'libz.so*' -delete
 write_simple_pc zlib "$(lock_field zlib 2)" -lz
 
+util_linux_src=$(source_tree util-linux)
+apply_source_patch "${util_linux_src}" "${REPO_ROOT}/contrib/gnome-terminal/patches/util-linux-libuuid-only.patch"
+meson_dep util-linux "${util_linux_src}" util-linux \
+    -Dlibuuid-only=true -Dbuild-libuuid=enabled -Dbuild-bash-completion=disabled
+require_pc uuid
+
 libffi_src=$(source_tree libffi)
 autotools_dep libffi "${libffi_src}" libffi \
     --disable-multi-os-directory --disable-docs
@@ -352,7 +382,13 @@ meson_dep pixman "${pixman_src}" pixman \
     -Dtests=disabled -Ddemos=disabled -Dgtk=disabled -Dopenmp=disabled
 
 glib_src=$(source_tree glib)
-require_pc zlib libffi libpcre2-8
+gvdb_src=$(source_tree gvdb)
+# GLib imports gvdb unconditionally and, when the runner has no intl.pc, its
+# nodownload build otherwise tries proxy-libintl. glibc provides the gettext
+# ABI used here, so expose it as a prefix-local dependency with no extra -l.
+materialize_subproject "${gvdb_src}" "${glib_src}/subprojects/gvdb"
+write_simple_pc intl "$(lock_field glib 2)" ""
+require_pc zlib libffi libpcre2-8 intl
 meson_dep glib "${glib_src}" glib \
     -Dtests=false -Dinstalled_tests=false -Dman=false -Dman-pages=disabled \
     -Ddocumentation=false -Dintrospection=disabled -Dselinux=disabled \
@@ -365,6 +401,7 @@ meson_dep fribidi "${fribidi_src}" fribidi \
 
 freetype_src=$(source_tree freetype)
 cmake_dep freetype "${freetype_src}" freetype \
+    -DFT_DISABLE_ZLIB=OFF -DFT_REQUIRE_ZLIB=ON \
     -DFT_DISABLE_HARFBUZZ=ON -DFT_DISABLE_PNG=ON \
     -DFT_DISABLE_BROTLI=ON -DFT_DISABLE_BZIP2=ON \
     -DZLIB_LIBRARY="${PREFIX}/lib/libz.a" -DZLIB_INCLUDE_DIR="${PREFIX}/include"
@@ -385,7 +422,10 @@ if [ ! -f "${PREFIX}/.built-freetype-harfbuzz" ]; then
         -G Ninja -DCMAKE_TOOLCHAIN_FILE="${CMAKE_TOOLCHAIN}" \
         -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="${PREFIX}" \
         -DCMAKE_INSTALL_LIBDIR=lib -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
-        -DBUILD_SHARED_LIBS=OFF -DFT_DISABLE_HARFBUZZ=OFF \
+        -DBUILD_SHARED_LIBS=OFF -DFT_DISABLE_ZLIB=OFF \
+        -DFT_REQUIRE_ZLIB=ON -DFT_DISABLE_PNG=ON \
+        -DFT_DISABLE_BROTLI=ON -DFT_DISABLE_BZIP2=ON \
+        -DFT_DISABLE_HARFBUZZ=OFF \
         -DFT_DYNAMIC_HARFBUZZ=OFF -DFT_REQUIRE_HARFBUZZ=ON \
         "${CMAKE_COMMON_ARGS[@]}" \
         -DHarfBuzz_INCLUDE_DIR="${PREFIX}/include/harfbuzz" \
@@ -516,18 +556,20 @@ fi
 
 require_pc glib-2.0 pango gtk+-3.0 libpcre2-8 fribidi liblz4
 vte_src=$(source_tree vte)
+apply_source_patch "${vte_src}" "${REPO_ROOT}/contrib/gnome-terminal/patches/vte-static-library.patch"
 meson_dep vte "${vte_src}" vte \
     -Dgtk3=true -Dgtk4=false -Dfribidi=true -Dgnutls=false -Dicu=false \
     -D_systemd=false -Dgir=false -Dvapi=false -Dglade=false -Ddocs=false
 
 libhandy_src=$(source_tree libhandy)
 require_pc gtk+-3.0 glib-2.0
+apply_source_patch "${libhandy_src}" "${REPO_ROOT}/contrib/gnome-terminal/patches/libhandy-static-library.patch"
 meson_dep libhandy "${libhandy_src}" libhandy \
     -Dintrospection=disabled -Dvapi=false -Dgtk_doc=false \
     -Dtests=false -Dexamples=false -Dglade_catalog=disabled
 
 for library in \
-    libz.a libffi.a libpcre2-8.a libexpat.a libpng16.a libpixman-1.a \
+    libuuid.a libz.a libffi.a libpcre2-8.a libexpat.a libpng16.a libpixman-1.a \
     libglib-2.0.a libfribidi.a libfreetype.a libharfbuzz.a libfontconfig.a \
     libcairo.a libpango-1.0.a libpangocairo-1.0.a libgdk_pixbuf-2.0.a \
     libatk-1.0.a libepoxy.a libgtk-3.a liblz4.a libvte-2.91.a libhandy-1.a; do

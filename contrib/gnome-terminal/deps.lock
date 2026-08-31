@@ -1,8 +1,9 @@
 # contrib/gnome-terminal/deps.lock — commit-pinned sources for the hybrid
-# GNOME Terminal reference build. Every Layer-1 code dependency is built into
-# one prefix with static archives and matching pkg-config metadata before
+# GNOME Terminal reference build. Every toolkit/UI code dependency is built
+# into one prefix with static archives and matching pkg-config metadata before
 # GNOME Terminal is configured. X11, OpenGL, accessibility IPC and desktop
-# data remain the host contract of Profile H.
+# data remain the host contract of Profile H; UUID is built from its pinned
+# util-linux source.
 #
 # Format: name version commit repository. The commit is the immutable source
 # pin; the fourth field is only the fetch location.
@@ -11,6 +12,7 @@ vte 0.76.0 3c29bfef30c34afec4982ba5ec37f944cfacbba2 https://gitlab.gnome.org/GNO
 gtk 3.24.41 77ebdd85091833a7869ece48c3114fa6d9966321 https://gitlab.gnome.org/GNOME/gtk.git
 libhandy 1.8.3 9b0071408ce86a3ef843806fddd723a85f6f2416 https://gitlab.gnome.org/GNOME/libhandy.git
 glib 2.80.0 763cc3b238398614c20069fd67642730e3a6519b https://gitlab.gnome.org/GNOME/glib.git
+gvdb 0.0.0 0854af0fdb6d527a8d1999835ac2c5059976c210 https://gitlab.gnome.org/GNOME/gvdb.git
 pango 1.52.1 089aa34fbbc09cec556b818bd634260b4d2124c6 https://gitlab.gnome.org/GNOME/pango.git
 cairo 1.18.0 3909090108bb2db55330e3eb148aebe664735363 https://gitlab.freedesktop.org/cairo/cairo.git
 harfbuzz 8.3.0 894a1f72ee93a1fd8dc1d9218cb3fd8f048be29a https://github.com/harfbuzz/harfbuzz.git

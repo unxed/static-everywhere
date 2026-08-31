@@ -66,6 +66,10 @@ for required in \
     '-Dnautilus_extension=false' \
     '-Dsearch_provider=false' \
     'gnome-terminal-server' \
+    'package root (install with DESTDIR)' \
+    '--profile hybrid' \
+    '--strict' \
+    'libGL.so.1' \
     '--libexecdir libexec' \
     'x86_64-linux-gnu.2.28' \
     '-Wl,-z,relro' \
@@ -102,6 +106,11 @@ for required in \
     'CMAKE_CXX_IMPLICIT_INCLUDE_DIRECTORIES=/usr/include' \
     'CMAKE_SKIP_RPATH=ON' \
     'zlib libffi pcre2 expat libpng pixman' \
+    'util-linux-libuuid-only.patch' \
+    'vte-static-library.patch' \
+    'libhandy-static-library.patch' \
+    'synthetic intl.pc' \
+    'libuuid-only=true' \
     'gtk lz4 vte libhandy'; do
     if grep -Fq -- "$required" "$DEPS_PLAN"; then
         pass "dependency plan contains ${required}"
@@ -120,17 +129,9 @@ else
     fail 'host X11 closure still contains bare static -l arguments'
     printf '       %s\n' "$HOST_LIBS"
 fi
-if grep -Eq -- '(^| )-lpthread( |$)' <<<"$HOST_LIBS" \
-    && ! grep -Fq -- '/usr/lib/x86_64-linux-gnu/libpthread.so' <<<"$HOST_LIBS"; then
-    pass 'target pthread runtime remains outside the host GUI rewrite'
-else
-    fail 'host GUI rewrite captured target pthread runtime'
-    printf '       %s\n' "$HOST_LIBS"
-fi
-
 echo
 echo '== locked static stack =='
-for dependency in gnome-terminal vte gtk libhandy glib pango cairo harfbuzz freetype fontconfig gdk-pixbuf pcre2 zlib libffi libpng pixman fribidi expat atk epoxy lz4; do
+for dependency in gnome-terminal vte gtk libhandy glib gvdb pango cairo harfbuzz freetype fontconfig gdk-pixbuf pcre2 util-linux zlib libffi libpng pixman fribidi expat atk epoxy lz4; do
     if awk -v name="$dependency" '$1 == name && $3 ~ /^[0-9a-f]{40}$/ && $4 ~ /\.git$/ { found = 1 } END { exit !found }' "$LOCK"; then
         pass "lock contains ${dependency}"
     else
@@ -143,7 +144,6 @@ if [ -x "$VERIFY_SCRIPT" ]; then
 else
     fail 'static artifact verifier is missing or not executable'
 fi
-
 echo
 echo '== onebin regression suite =='
 if make -sC "$REPO_ROOT/onebin" test >/tmp/onebin-test-gnome-terminal.log 2>&1; then

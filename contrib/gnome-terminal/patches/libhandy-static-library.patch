@@ -1,0 +1,11 @@
+diff --git a/src/meson.build b/src/meson.build
+--- a/src/meson.build
++++ b/src/meson.build
+@@ -269,7 +269,7 @@ else
+   handy_libdir = libdir
+ endif
+ 
+-libhandy = shared_library(
++libhandy = library(
+   'handy-' + apiversion,
+   libhandy_sources,

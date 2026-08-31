@@ -1,0 +1,79 @@
+diff --git a/meson_options.txt b/meson_options.txt
+--- a/meson_options.txt
++++ b/meson_options.txt
+@@ -36,6 +36,8 @@ option('build-libblkid', type : 'feature',
+ option('build-libuuid', type : 'feature',
+        description : 'build libuuid and uuid utilities')
++option('libuuid-only', type : 'boolean', value : false,
++       description : 'configure only the pinned libuuid library')
+ option('build-libmount', type : 'feature',
+        description : 'build libmount')
+ option('build-libsmartcols', type : 'feature',
+        description : 'build libsmartcols')
+diff --git a/meson.build b/meson.build
+--- a/meson.build
++++ b/meson.build
+@@ -888,14 +888,16 @@ subdir('include')
+ subdir('include')
+ subdir('lib')
+-subdir('libblkid')
+-subdir('libmount')
+-subdir('libsmartcols')
+-subdir('libuuid')
+-subdir('libfdisk')
+-subdir('login-utils')
+-subdir('sys-utils')
+-subdir('disk-utils')
+-subdir('misc-utils')
+-subdir('text-utils')
+-subdir('term-utils')
+-subdir('po')
++if get_option('libuuid-only')
++  subdir('libuuid')
++else
++  subdir('libblkid')
++  subdir('libmount')
++  subdir('libsmartcols')
++  subdir('libfdisk')
++  subdir('login-utils')
++  subdir('sys-utils')
++  subdir('disk-utils')
++  subdir('misc-utils')
++  subdir('text-utils')
++  subdir('term-utils')
++  subdir('po')
+@@ -3453,13 +3453,14 @@ if bash_completion.found()
+ if bash_completion.found()
+   foreach completion : bashcompletions
+     install_data(
+       join_paths('bash-completion', completion),
+       install_dir : bash_completion.get_variable(pkgconfig : 'completionsdir')
+     )
+   endforeach
+   foreach link_name, target : bashcompletionslinks
+     meson.add_install_script(meson_make_symlink,
+       target,
+       join_paths(bash_completion.get_variable(pkgconfig : 'completionsdir'), link_name))
+   endforeach
+ endif
++endif
+diff --git a/libuuid/meson.build b/libuuid/meson.build
+--- a/libuuid/meson.build
++++ b/libuuid/meson.build
+@@ -20,7 +20,7 @@ unparse_c = files('src/unparse.c')
+ 
+ libuuid_sym = 'src/libuuid.sym'
+ libuuid_sym_path = '@0@/@1@'.format(meson.current_source_dir(), libuuid_sym)
+ 
+-lib_uuid = both_libraries(
++lib_uuid = static_library(
+   'uuid',
+   list_h,
+@@ -30,7 +30,6 @@ lib_uuid = both_libraries(
+   randutils_c,
+   md5_c,
+   sha1_c,
+   include_directories : [dir_include, dir_libuuid],
+   link_depends : libuuid_sym,
+-  version : libuuid_version,
+   link_args : ['-Wl,--version-script=@0@'.format(libuuid_sym_path)],

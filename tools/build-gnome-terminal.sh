@@ -3,6 +3,7 @@
 # prefix. Display servers, fonts, schemas and session services remain runtime
 # inputs; the toolkit and its code dependencies do not.
 set -euo pipefail
+set -o pipefail
 
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 REPO_ROOT=$(CDPATH= cd -- "${SCRIPT_DIR}/.." && pwd)
@@ -62,11 +63,30 @@ else
 fi
 
 BUILD_DIR="${OUT_ABS}/build"
-INSTALL_PREFIX="${OUT_ABS}/install"
+INSTALL_PREFIX=/usr
+PACKAGE_ROOT="${OUT_ABS}/package"
 NATIVE_FILE="${OUT_ABS}/meson-static.ini"
 ARTIFACT="${OUT_ABS}/gnome-terminal-server"
 TARGET="x86_64-linux-gnu.${BASELINE}"
 PKG_CONFIG_PATH_VALUE="${DEPS_ABS}/lib/pkgconfig:${DEPS_ABS}/lib/x86_64-linux-gnu/pkgconfig:${DEPS_ABS}/share/pkgconfig:/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/share/pkgconfig"
+ONEBIN="${REPO_ROOT}/onebin/build/onebin"
+GNOME_TERMINAL_HOST_CONTRACT=(
+    --allow libc.so.6 --allow libm.so.6 --allow libdl.so.2
+    --allow libpthread.so.0 --allow librt.so.1
+    --allow libX11.so.6 --allow libX11-xcb.so.1 --allow libXext.so.6
+    --allow libXi.so.6 --allow libXrandr.so.2 --allow libXrender.so.1
+    --allow libXcursor.so.1 --allow libXdamage.so.1 --allow libXfixes.so.3
+    --allow libXcomposite.so.1 --allow libXinerama.so.1
+    --allow libXau.so.6 --allow libXdmcp.so.6 --allow libICE.so.6
+    --allow libSM.so.6 --allow libxcb.so.1 --allow libxcb-render.so.0
+    --allow libxcb-shm.so.0 --allow libxcb-xkb.so.1
+    --allow libxcb-render-util.so.0 --allow libxcb-image.so.0
+    --allow libxcb-keysyms.so.1 --allow libxcb-util.so.1
+    --allow libxcb-xinerama.so.0 --allow libxcb-cursor.so.0
+    --allow libXtst.so.6 --allow libGL.so.1 --allow libEGL.so.1
+    --allow libGLX.so.0 --allow libdbus-1.so.3
+    --allow libatspi.so.0 --allow libatk-bridge-2.0.so.0
+)
 
 quote_cmd() {
     printf '+ '
@@ -115,15 +135,19 @@ cat <<PLAN
 # GNOME Terminal static GTK build
 source: ${SRC}
 static dependency prefix: ${DEPS_PREFIX}
+package root (install with DESTDIR): ${PACKAGE_ROOT}
 target: ${TARGET}
 jobs: ${JOBS}
 
 # The prefix must contain static GTK3, GLib, Pango, Cairo, GdkPixbuf,
-# FreeType, HarfBuzz, Fontconfig, VTE and libhandy archives plus their .pc files.
+# FreeType, HarfBuzz, Fontconfig, VTE, libhandy and libuuid archives plus their
+# .pc files.
 # The dependency lock is contrib/gnome-terminal/deps.lock.
 # Host X11/OpenGL/EGL and desktop libraries remain dynamic through the
 # hybrid pkg-config wrapper; --prefer-static is retained for the prefix's
 # private static dependency closure.
+# The install prefix is /usr and DESTDIR creates a directly installable tree;
+# no runtime path or environment-variable relocation is required.
 # linker hardening: -Wl,-z,relro -Wl,-z,now -Wl,-z,noexecstack
 PLAN
 
@@ -140,9 +164,11 @@ if [ "$PRINT_PLAN" -eq 1 ]; then
     quote_cmd env "PKG_CONFIG_PATH=${PKG_CONFIG_PATH_VALUE}" \
         meson compile -C "$BUILD_DIR" -j "$JOBS"
     quote_cmd env "PKG_CONFIG_PATH=${PKG_CONFIG_PATH_VALUE}" \
-        meson install -C "$BUILD_DIR"
-    quote_cmd install -D "$INSTALL_PREFIX/libexec/gnome-terminal-server" "$ARTIFACT"
+        meson install -C "$BUILD_DIR" --destdir "$PACKAGE_ROOT"
+    quote_cmd install -D "$PACKAGE_ROOT/usr/libexec/gnome-terminal-server" "$ARTIFACT"
     quote_cmd "$REPO_ROOT/tools/verify-gnome-terminal-static.sh" "$ARTIFACT"
+    quote_cmd "$ONEBIN" audit --profile hybrid --glibc-max "$BASELINE" \
+        --level 1 --strict "${GNOME_TERMINAL_HOST_CONTRACT[@]}" "$ARTIFACT"
     exit 0
 fi
 
@@ -158,6 +184,10 @@ for tool in zig-cc zig-c++ zig-ar zig-ranlib; do
         exit 1
     }
 done
+[ -x "$ONEBIN" ] || {
+    printf 'build-gnome-terminal.sh: missing onebin audit tool: %s\n' "$ONEBIN" >&2
+    exit 1
+}
 [ -f "$PKG_CONFIG_WRAPPER" ] || {
     printf 'build-gnome-terminal.sh: host pkg-config wrapper is missing: %s\n' "$PKG_CONFIG_WRAPPER" >&2
     exit 1
@@ -187,7 +217,11 @@ run meson setup --wipe "$BUILD_DIR" "$SRC_ABS" \
     --prefer-static --wrap-mode nodownload -Ddefault_library=static \
     -Ddocs=false -Dnautilus_extension=false -Dsearch_provider=false
 run meson compile -C "$BUILD_DIR" -j "$JOBS"
-run meson install -C "$BUILD_DIR"
-run install -D "$INSTALL_PREFIX/libexec/gnome-terminal-server" "$ARTIFACT"
+run rm -rf "$PACKAGE_ROOT"
+run meson install -C "$BUILD_DIR" --destdir "$PACKAGE_ROOT"
+run install -D "$PACKAGE_ROOT/usr/libexec/gnome-terminal-server" "$ARTIFACT"
 run "$REPO_ROOT/tools/verify-gnome-terminal-static.sh" "$ARTIFACT"
+run "$ONEBIN" audit --profile hybrid --glibc-max "$BASELINE" \
+    --level 1 --strict "${GNOME_TERMINAL_HOST_CONTRACT[@]}" "$ARTIFACT" \
+    2>&1 | tee "$OUT_ABS/gnome-terminal-onebin-audit.txt"
 printf 'GNOME Terminal static GTK build: %s\n' "$ARTIFACT"
