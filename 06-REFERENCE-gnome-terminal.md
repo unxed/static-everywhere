@@ -26,8 +26,9 @@ The initial target is GNOME Terminal 3.52.0, the version recorded in
 | Binary profile | H, glibc baseline 2.28 (`gnome-terminal-server`) |
 
 The lock file is a source inventory, not a claim that the newest dependency
-versions are interchangeable. A reproducible build must populate one prefix
-from those pins and install both static archives and matching pkg-config files.
+versions are interchangeable. A reproducible build must populate one staging
+root from those pins and install both static archives and matching pkg-config
+files below its logical `/usr` prefix.
 
 ## 3. Static boundary
 
@@ -68,7 +69,12 @@ First produce the prefix from the commit pins:
 ```
 
 The producer verifies every source checkout against `contrib/gnome-terminal/deps.lock`
-and builds the Layer-1 archives in dependency order. The hybrid boundary is
+and builds the Layer-1 archives in dependency order. `--prefix` is the physical
+CI staging root; every dependency is configured with the runtime prefix `/usr`
+and installed with `DESTDIR`. The recipe rewrites only the installed
+pkg-config metadata to point at the staging tree for the next build. This
+keeps CI paths out of compiled code while still forcing each consumer to use
+the staged headers and archives. The hybrid boundary is
 the Profile H glibc runtime ABI plus X11 client libraries and the Profile H
 OpenGL/EGL runtime ABI. The GUI portion remains limited to X11/OpenGL/EGL;
 the glibc entries are runtime ABI, not additional desktop libraries.
@@ -84,7 +90,7 @@ used through static GLib rather than a host library dependency.
   --out ./out/gnome-terminal
 ```
 
-The dependency prefix must contain static GTK3, GLib, Pango, Cairo, GdkPixbuf,
+The dependency staging root must contain a `usr/` tree with static GTK3, GLib, Pango, Cairo, GdkPixbuf,
 FreeType, HarfBuzz, Fontconfig, VTE and libhandy archives with their headers
 and `.pc` files. `--print-plan` emits the complete Meson invocation without
 requiring a source checkout, compiler or dependency prefix.
@@ -112,3 +118,6 @@ path and runs:
 The verifier requires a Profile H `PT_INTERP`, hardening, no RPATH/RUNPATH and
 no dynamic GTK/UI-stack SONAMEs. A passing plan check is useful before a
 multi-hour build; only a passing artifact check proves the link boundary.
+The strict audit also rejects embedded absolute CI staging paths; this is why
+the dependency producer separates logical `/usr` installation from physical
+`DESTDIR` storage instead of adding an audit waiver.

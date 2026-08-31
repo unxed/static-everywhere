@@ -68,6 +68,8 @@ for required in \
     '-Dsearch_provider=false' \
     'gnome-terminal-server' \
     'package root (install with DESTDIR)' \
+    'static dependency logical prefix: /usr' \
+    'static dependency staging root:' \
     '--profile hybrid' \
     '--strict' \
     'libGL.so.1' \
@@ -104,6 +106,8 @@ fi
 
 for required in \
     'commit verified' \
+    'logical runtime prefix: /usr' \
+    'DESTDIR staging root:' \
     'host contract: Profile H glibc runtime ABI (including split resolver) plus X11/OpenGL/EGL GUI ABI' \
     'host library policy: pkg-config maps only X11/OpenGL -l arguments to shared objects' \
     'fontconfig install: manual copy' \
@@ -133,6 +137,8 @@ for required in \
     'Meson option contract: every recipe -D option is declared by the pinned project or Meson core' \
     'cache identity: dependency commit plus recipe, patch and toolchain fingerprint' \
     'build-time tools: ' \
+    'install contract: projects configure for /usr and install below DESTDIR' \
+    'normalize_pkgconfig()' \
     'libc-free target guard: Meson compiler wrappers disable stack protection only for explicit -nostdlib/-nodefaultlibs targets' \
     'gtk lz4 vte libhandy'; do
     if grep -Fq -- "$required" "$DEPS_PLAN"; then
@@ -142,9 +148,10 @@ for required in \
     fi
 done
 
-if grep -Fq -- 'export PATH="${PREFIX}/bin:${TOOLCHAIN}:${PATH}"' "$DEPS_SCRIPT" \
+if grep -Fq -- 'export PATH="${STAGED_USR}/bin:${TOOLCHAIN}:${PATH}"' "$DEPS_SCRIPT" \
     && grep -Fq -- 'require_prefix_program()' "$DEPS_SCRIPT" \
-    && grep -Fq -- 'require_prefix_program "${program}"' "$DEPS_SCRIPT"; then
+    && grep -Fq -- 'require_prefix_program "${program}"' "$DEPS_SCRIPT" \
+    && grep -Fq -- 'run_env DESTDIR="${PREFIX}"' "$DEPS_SCRIPT"; then
     pass 'dependency build tools are resolved from the static prefix before host PATH'
 else
     fail 'dependency build tools do not have a prefix-first resolution contract'

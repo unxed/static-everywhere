@@ -27,7 +27,7 @@ usage() {
 
 Options:
   --src DIR          GNOME Terminal source checkout
-  --deps-prefix DIR  prefix containing static archives and pkg-config files
+  --deps-prefix DIR  DESTDIR root containing the static /usr dependency tree
   --out DIR          output directory (default: ./out/gnome-terminal)
   --baseline VER     glibc baseline passed to zig (default: 2.28)
   --jobs N           parallel build jobs
@@ -71,7 +71,8 @@ NATIVE_FILE="${OUT_ABS}/meson-static.ini"
 ARTIFACT="${OUT_ABS}/gnome-terminal-server"
 GLIBC_SHIM_OBJ="${OUT_ABS}/gnome-terminal-glibc-shims.o"
 TARGET="x86_64-linux-gnu.${BASELINE}"
-PKG_CONFIG_PATH_VALUE="${DEPS_ABS}/lib/pkgconfig:${DEPS_ABS}/lib/x86_64-linux-gnu/pkgconfig:${DEPS_ABS}/share/pkgconfig:/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/share/pkgconfig"
+DEPS_RUNTIME_ROOT="${DEPS_ABS}${INSTALL_PREFIX}"
+PKG_CONFIG_PATH_VALUE="${DEPS_RUNTIME_ROOT}/lib/pkgconfig:${DEPS_RUNTIME_ROOT}/lib/x86_64-linux-gnu/pkgconfig:${DEPS_RUNTIME_ROOT}/share/pkgconfig:/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/share/pkgconfig"
 ONEBIN="${REPO_ROOT}/onebin/build/onebin"
 GNOME_TERMINAL_GLIBC_RUNTIME_CONTRACT=(
     # Profile H keeps the glibc runtime dynamic.  Keep the complete set of
@@ -150,8 +151,8 @@ strip = 'strip'
 [built-in options]
 c_args = ['-target', '${TARGET}', '-fPIE', '-ffunction-sections', '-fdata-sections', '-fstack-protector-strong', '-ffile-prefix-map=${SRC_ABS}=.']
 cpp_args = ['-target', '${TARGET}', '-fPIE', '-ffunction-sections', '-fdata-sections', '-fstack-protector-strong', '-ffile-prefix-map=${SRC_ABS}=.']
-c_link_args = ['${GLIBC_SHIM_OBJ}', '-target', '${TARGET}', '-static-libgcc', '-Wl,--gc-sections', '-Wl,-z,relro', '-Wl,-z,now', '-Wl,-z,noexecstack', '-pie', '-s', '-L${DEPS_ABS}/lib', '-L${DEPS_ABS}/lib/x86_64-linux-gnu', '-L/usr/lib/x86_64-linux-gnu', '-L/usr/lib']
-cpp_link_args = ['${GLIBC_SHIM_OBJ}', '-target', '${TARGET}', '-static-libgcc', '-static-libstdc++', '-Wl,--gc-sections', '-Wl,-z,relro', '-Wl,-z,now', '-Wl,-z,noexecstack', '-pie', '-s', '-L${DEPS_ABS}/lib', '-L${DEPS_ABS}/lib/x86_64-linux-gnu', '-L/usr/lib/x86_64-linux-gnu', '-L/usr/lib']
+c_link_args = ['${GLIBC_SHIM_OBJ}', '-target', '${TARGET}', '-static-libgcc', '-Wl,--gc-sections', '-Wl,-z,relro', '-Wl,-z,now', '-Wl,-z,noexecstack', '-pie', '-s', '-L${DEPS_RUNTIME_ROOT}/lib', '-L${DEPS_RUNTIME_ROOT}/lib/x86_64-linux-gnu', '-L/usr/lib/x86_64-linux-gnu', '-L/usr/lib']
+cpp_link_args = ['${GLIBC_SHIM_OBJ}', '-target', '${TARGET}', '-static-libgcc', '-static-libstdc++', '-Wl,--gc-sections', '-Wl,-z,relro', '-Wl,-z,now', '-Wl,-z,noexecstack', '-pie', '-s', '-L${DEPS_RUNTIME_ROOT}/lib', '-L${DEPS_RUNTIME_ROOT}/lib/x86_64-linux-gnu', '-L/usr/lib/x86_64-linux-gnu', '-L/usr/lib']
 default_library = 'static'
 b_pie = true
 EOF
@@ -160,12 +161,13 @@ EOF
 cat <<PLAN
 # GNOME Terminal static GTK build
 source: ${SRC}
-static dependency prefix: ${DEPS_PREFIX}
+static dependency staging root: ${DEPS_PREFIX}
+static dependency logical prefix: ${INSTALL_PREFIX}
 package root (install with DESTDIR): ${PACKAGE_ROOT}
 target: ${TARGET}
 jobs: ${JOBS}
 
-# The prefix must contain static GTK3, GLib, Pango, Cairo, GdkPixbuf,
+# The dependency staging root must contain a /usr tree with static GTK3, GLib, Pango, Cairo, GdkPixbuf,
 # FreeType, HarfBuzz, Fontconfig, VTE, libhandy and libuuid archives plus their
 # .pc files.
 # The dependency lock is contrib/gnome-terminal/deps.lock.
@@ -237,7 +239,7 @@ done
 }
 [ -d "$SRC_ABS" ] || { printf 'build-gnome-terminal.sh: source directory not found: %s\n' "$SRC_ABS" >&2; exit 1; }
 [ -d "$DEPS_ABS" ] || { printf 'build-gnome-terminal.sh: dependency prefix not found: %s\n' "$DEPS_ABS" >&2; exit 1; }
-if ! find "$DEPS_ABS" -type f -path '*/pkgconfig/gtk+-3.0.pc' -print -quit | grep -q .; then
+if ! find "$DEPS_RUNTIME_ROOT" -type f -path '*/pkgconfig/gtk+-3.0.pc' -print -quit | grep -q .; then
     printf 'build-gnome-terminal.sh: static GTK3 pkg-config file not found under %s\n' "$DEPS_ABS" >&2
     exit 1
 fi

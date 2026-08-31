@@ -15,6 +15,7 @@ PKG_CONFIG_ENV="bash $(printf '%q' "${PKG_CONFIG_WRAPPER}")"
 
 PREFIX="${REPO_ROOT}/out/gnome-terminal/static-prefix"
 WORK="${REPO_ROOT}/out/gnome-terminal/deps-work"
+RUNTIME_PREFIX=/usr
 BASELINE=2.28
 JOBS=${GNOME_TERMINAL_JOBS:-$(nproc 2>/dev/null || echo 4)}
 FETCH=1
@@ -24,7 +25,7 @@ usage() {
     cat <<'EOF'
 Usage: tools/build-gnome-terminal-deps.sh [OPTIONS]
 
-  --prefix DIR       static dependency prefix
+  --prefix DIR       physical DESTDIR staging root for the /usr dependency tree
   --work DIR         source and build work directory
   --baseline VER     glibc baseline passed to Zig (default: 2.28)
   --jobs N           parallel build jobs
@@ -112,6 +113,8 @@ if [ "${PRINT_PLAN}" -eq 1 ]; then
     cat <<PLAN
 # GNOME Terminal Profile H dependency producer
 prefix: ${PREFIX}
+logical runtime prefix: ${RUNTIME_PREFIX}
+DESTDIR staging root: ${PREFIX}
 work: ${WORK}
 target: ${TARGET}
 source pins: ${LOCK} (commit verified)
@@ -132,7 +135,9 @@ static loader closure: builtin loader dependencies are exported through gdkpixbu
 source_tree contract: cleanup diagnostics never contaminate the returned source path
 Meson option contract: every recipe -D option is declared by the pinned project or Meson core
 cache identity: dependency commit plus recipe, patch and toolchain fingerprint
-build-time tools: ${PREFIX}/bin precedes the host PATH; producer tools are verified before consumers
+build-time tools: ${PREFIX}${RUNTIME_PREFIX}/bin precedes the host PATH; producer tools are verified before consumers
+install contract: projects configure for /usr and install below DESTDIR; pkg-config metadata is rewritten only to the physical staging tree for the next build
+pkg-config boundary: normalize_pkgconfig() maps logical /usr metadata to the staging tree only for build-time consumers
 libc-free target guard: Meson compiler wrappers disable stack protection only for explicit -nostdlib/-nodefaultlibs targets
 PLAN
     for dependency in "${dependency_order[@]}"; do
@@ -173,7 +178,18 @@ command -v zig >/dev/null 2>&1 || {
     exit 1
 }
 
-mkdir -p "${PREFIX}" "${WORK}/sources" "${WORK}/build" "${PREFIX}/lib/pkgconfig"
+# The cache used by older recipe revisions contains a flat prefix whose files
+# were configured with the CI staging path as their runtime prefix. Remove
+# only that old, known layout before producing the DESTDIR layout below.
+if [ -d "${PREFIX}/lib" ] && [ ! -d "${PREFIX}/usr/lib" ]; then
+    for stale_dir in bin etc include lib libexec sbin share var; do
+        [ -e "${PREFIX}/${stale_dir}" ] && run rm -rf "${PREFIX}/${stale_dir}"
+    done
+fi
+
+STAGED_USR="${PREFIX}${RUNTIME_PREFIX}"
+mkdir -p "${PREFIX}" "${WORK}/sources" "${WORK}/build" \
+    "${STAGED_USR}/lib/pkgconfig" "${STAGED_USR}/lib/x86_64-linux-gnu/pkgconfig"
 
 RECIPE_FINGERPRINT=$(
     sha256sum \
@@ -271,8 +287,8 @@ strip = 'strip'
 [built-in options]
 c_args = ['-target', '${TARGET}', '-fPIE', '-ffunction-sections', '-fdata-sections', '-fstack-protector-strong', '-ffile-prefix-map=${WORK}=.', '-Wno-cast-function-type-strict', '-Wno-cast-function-type']
 cpp_args = ['-target', '${TARGET}', '-fPIE', '-ffunction-sections', '-fdata-sections', '-fstack-protector-strong', '-ffile-prefix-map=${WORK}=.', '-Wno-cast-function-type-strict', '-Wno-cast-function-type']
-c_link_args = ['${GLIBC_SHIM_OBJ}', '-target', '${TARGET}', '-static-libgcc', '-Wl,--gc-sections', '-Wl,-z,relro', '-Wl,-z,now', '-Wl,-z,noexecstack', '-Wl,-z,nodelete', '-pie', '-s', '-L${PREFIX}/lib', '-L/usr/lib/x86_64-linux-gnu', '-L/usr/lib', '-L/lib/x86_64-linux-gnu']
-cpp_link_args = ['${GLIBC_SHIM_OBJ}', '-target', '${TARGET}', '-static-libgcc', '-static-libstdc++', '-Wl,--gc-sections', '-Wl,-z,relro', '-Wl,-z,now', '-Wl,-z,noexecstack', '-Wl,-z,nodelete', '-pie', '-s', '-L${PREFIX}/lib', '-L/usr/lib/x86_64-linux-gnu', '-L/usr/lib', '-L/lib/x86_64-linux-gnu']
+c_link_args = ['${GLIBC_SHIM_OBJ}', '-target', '${TARGET}', '-static-libgcc', '-Wl,--gc-sections', '-Wl,-z,relro', '-Wl,-z,now', '-Wl,-z,noexecstack', '-Wl,-z,nodelete', '-pie', '-s', '-L${STAGED_USR}/lib', '-L/usr/lib/x86_64-linux-gnu', '-L/usr/lib', '-L/lib/x86_64-linux-gnu']
+cpp_link_args = ['${GLIBC_SHIM_OBJ}', '-target', '${TARGET}', '-static-libgcc', '-static-libstdc++', '-Wl,--gc-sections', '-Wl,-z,relro', '-Wl,-z,now', '-Wl,-z,noexecstack', '-Wl,-z,nodelete', '-pie', '-s', '-L${STAGED_USR}/lib', '-L/usr/lib/x86_64-linux-gnu', '-L/usr/lib', '-L/lib/x86_64-linux-gnu']
 default_library = 'static'
 b_pie = true
 EOF
@@ -280,18 +296,37 @@ EOF
 # Dependency build tools produced by the static prefix must win over host
 # tools. In particular, gdk-pixbuf's pinned Meson file calls
 # find_program('glib-compile-resources') after GLib has installed that tool.
-export PATH="${PREFIX}/bin:${TOOLCHAIN}:${PATH}"
+export PATH="${STAGED_USR}/bin:${TOOLCHAIN}:${PATH}"
 export PKG_CONFIG="${PKG_CONFIG_ENV}"
 export PKG_CONFIG_ALLOW_SYSTEM_LIBS=1
 export PKG_CONFIG_ALLOW_SYSTEM_CFLAGS=1
-export PKG_CONFIG_PATH="${PREFIX}/lib/pkgconfig:${PREFIX}/share/pkgconfig:/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/share/pkgconfig:${PKG_CONFIG_PATH:-}"
-export CMAKE_PREFIX_PATH="${PREFIX}"
+export PKG_CONFIG_PATH="${STAGED_USR}/lib/pkgconfig:${STAGED_USR}/lib/x86_64-linux-gnu/pkgconfig:${STAGED_USR}/share/pkgconfig:/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/share/pkgconfig:${PKG_CONFIG_PATH:-}"
+export CMAKE_PREFIX_PATH="${STAGED_USR}"
+
+normalize_pkgconfig() {
+    local pc
+    for pc in \
+        "${STAGED_USR}/lib/pkgconfig/"*.pc \
+        "${STAGED_USR}/lib/x86_64-linux-gnu/pkgconfig/"*.pc \
+        "${STAGED_USR}/share/pkgconfig/"*.pc; do
+        [ -f "${pc}" ] || continue
+        # Keep /usr as the runtime prefix in compiled code, while making the
+        # next build consume staged headers and archives. This covers every
+        # pkg-config field, including literal -I/-L values, not one package's
+        # prefix line only.
+        run sed -i \
+            -e "s#^prefix=/usr$#prefix=${STAGED_USR}#" \
+            -e "s#^\(exec_prefix\|libdir\|includedir\|datadir\|bindir\)=/usr/#\1=${STAGED_USR}/#" \
+            -e "s#\(-[IL]\)/usr/#\1${STAGED_USR}/#g" \
+            "${pc}"
+    done
+}
 
 require_prefix_program() {
     local program=$1 resolved
     resolved=$(command -v "${program}" || true)
     case "${resolved}" in
-        "${PREFIX}/bin/"*) ;;
+        "${STAGED_USR}/bin/"*) ;;
         *)
             printf 'build-gnome-terminal-deps.sh: build-time tool is not provided by the static prefix: %s (%s)\n' \
                 "${program}" "${resolved:-not found}" >&2
@@ -434,7 +469,7 @@ require_pc() {
     local pc prefix
     for pc in "$@"; do
         prefix=$("${PKG_CONFIG_COMMAND[@]}" --variable=prefix "${pc}" 2>/dev/null || true)
-        [ "${prefix}" = "${PREFIX}" ] || {
+        [ "${prefix}" = "${STAGED_USR}" ] || {
             printf 'build-gnome-terminal-deps.sh: %s resolved outside the static prefix: %s\n' \
                 "${pc}" "${prefix:-not found}" >&2
             exit 1
@@ -452,15 +487,16 @@ cmake_dep() {
         -G Ninja \
         -DCMAKE_TOOLCHAIN_FILE="${CMAKE_TOOLCHAIN}" \
         -DCMAKE_BUILD_TYPE=Release \
-        -DCMAKE_INSTALL_PREFIX="${PREFIX}" \
+        -DCMAKE_INSTALL_PREFIX="${RUNTIME_PREFIX}" \
         -DCMAKE_INSTALL_LIBDIR=lib \
         -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
         -DBUILD_SHARED_LIBS=OFF \
-        -DCMAKE_PREFIX_PATH="${PREFIX}" \
+        -DCMAKE_PREFIX_PATH="${STAGED_USR}" \
         "${CMAKE_COMMON_ARGS[@]}" \
         "$@"
     run cmake --build "${build_dir}" --parallel "${JOBS}"
-    run cmake --install "${build_dir}"
+    run_env DESTDIR="${PREFIX}" cmake --install "${build_dir}"
+    normalize_pkgconfig
     mark "${name}"
 }
 
@@ -473,7 +509,8 @@ meson_dep() {
     local -a setup_cmd=(
         meson setup --wipe "${build_dir}" "${source}"
         --native-file "${native_file}"
-        --prefix "${PREFIX}" --libdir lib --buildtype release
+        --prefix "${RUNTIME_PREFIX}" --libdir lib --buildtype release
+        -Dsysconfdir=/etc -Dlocalstatedir=/var
         --prefer-static --wrap-mode nodownload -Ddefault_library=static
     )
     setup_cmd+=("$@")
@@ -483,7 +520,8 @@ meson_dep() {
         assert_util_linux_uuid_only_graph "${build_dir}"
     fi
     run meson compile -C "${build_dir}" -j "${JOBS}"
-    run meson install -C "${build_dir}"
+    run meson install -C "${build_dir}" --destdir "${PREFIX}"
+    normalize_pkgconfig
     mark "${name}"
 }
 
@@ -526,17 +564,18 @@ autotools_dep() {
             CFLAGS="-target ${TARGET} -fPIC -ffile-prefix-map=${source}=." \
             LDFLAGS="-target ${TARGET} -static-libgcc" \
             "${source}/configure" --host=x86_64-linux-gnu \
-            --prefix="${PREFIX}" --disable-shared --enable-static "$@"
+            --prefix="${RUNTIME_PREFIX}" --disable-shared --enable-static "$@"
     )
     run make -C "${build_dir}" -j "${JOBS}"
-    run make -C "${build_dir}" install
+    run_env DESTDIR="${PREFIX}" make -C "${build_dir}" install
+    normalize_pkgconfig
     mark "${name}"
 }
 
 write_simple_pc() {
     local name=$1 version=$2 libs=$3
-    cat >"${PREFIX}/lib/pkgconfig/${name}.pc" <<EOF
-prefix=${PREFIX}
+    cat >"${STAGED_USR}/lib/pkgconfig/${name}.pc" <<EOF
+prefix=${STAGED_USR}
 exec_prefix=\${prefix}
 libdir=\${prefix}/lib
 includedir=\${prefix}/include
@@ -552,7 +591,7 @@ EOF
 zlib_src=$(source_tree zlib)
 cmake_dep zlib "${zlib_src}" zlib \
     -DZLIB_BUILD_SHARED=OFF -DZLIB_BUILD_STATIC=ON -DZLIB_BUILD_TESTING=OFF
-find "${PREFIX}/lib" -maxdepth 1 -type f -name 'libz.so*' -delete
+find "${STAGED_USR}/lib" -maxdepth 1 -type f -name 'libz.so*' -delete
 write_simple_pc zlib "$(lock_field zlib 2)" -lz
 
 util_linux_src=$(source_tree util-linux)
@@ -579,7 +618,7 @@ cmake_dep expat "${expat_src}/expat" expat \
 libpng_src=$(source_tree libpng)
 cmake_dep libpng "${libpng_src}" libpng \
     -DPNG_SHARED=OFF -DPNG_STATIC=ON -DPNG_TESTS=OFF \
-    -DSKIP_INSTALL_EXECUTABLES=ON -DZLIB_ROOT="${PREFIX}"
+    -DSKIP_INSTALL_EXECUTABLES=ON -DZLIB_ROOT="${STAGED_USR}"
 
 pixman_src=$(source_tree pixman)
 meson_dep pixman "${pixman_src}" pixman \
@@ -612,7 +651,7 @@ cmake_dep freetype "${freetype_src}" freetype \
     -DFT_DISABLE_ZLIB=OFF -DFT_REQUIRE_ZLIB=ON \
     -DFT_DISABLE_HARFBUZZ=ON -DFT_DISABLE_PNG=ON \
     -DFT_DISABLE_BROTLI=ON -DFT_DISABLE_BZIP2=ON \
-    -DZLIB_LIBRARY="${PREFIX}/lib/libz.a" -DZLIB_INCLUDE_DIR="${PREFIX}/include"
+    -DZLIB_LIBRARY="${STAGED_USR}/lib/libz.a" -DZLIB_INCLUDE_DIR="${STAGED_USR}/include"
 
 harfbuzz_src=$(source_tree harfbuzz)
 require_pc freetype2
@@ -629,20 +668,22 @@ if ! grep -Fxq "$(lock_field freetype 3) ${RECIPE_FINGERPRINT}" \
     # installs it below include/harfbuzz, not directly below include.
     run cmake -S "${freetype_src}" -B "${freetype_build}" \
         -G Ninja -DCMAKE_TOOLCHAIN_FILE="${CMAKE_TOOLCHAIN}" \
-        -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="${PREFIX}" \
+        -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="${RUNTIME_PREFIX}" \
         -DCMAKE_INSTALL_LIBDIR=lib -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
         -DBUILD_SHARED_LIBS=OFF -DFT_DISABLE_ZLIB=OFF \
         -DFT_REQUIRE_ZLIB=ON -DFT_DISABLE_PNG=ON \
         -DFT_DISABLE_BROTLI=ON -DFT_DISABLE_BZIP2=ON \
         -DFT_DISABLE_HARFBUZZ=OFF \
         -DFT_DYNAMIC_HARFBUZZ=OFF -DFT_REQUIRE_HARFBUZZ=ON \
+        -DCMAKE_PREFIX_PATH="${STAGED_USR}" \
         "${CMAKE_COMMON_ARGS[@]}" \
-        -DHarfBuzz_INCLUDE_DIR="${PREFIX}/include/harfbuzz" \
-        -DHarfBuzz_LIBRARY="${PREFIX}/lib/libharfbuzz.a" \
-        -DZLIB_LIBRARY="${PREFIX}/lib/libz.a" \
-        -DZLIB_INCLUDE_DIR="${PREFIX}/include"
+        -DHarfBuzz_INCLUDE_DIR="${STAGED_USR}/include/harfbuzz" \
+        -DHarfBuzz_LIBRARY="${STAGED_USR}/lib/libharfbuzz.a" \
+        -DZLIB_LIBRARY="${STAGED_USR}/lib/libz.a" \
+        -DZLIB_INCLUDE_DIR="${STAGED_USR}/include"
     run cmake --build "${freetype_build}" --parallel "${JOBS}"
-    run cmake --install "${freetype_build}"
+    run_env DESTDIR="${PREFIX}" cmake --install "${freetype_build}"
+    normalize_pkgconfig
     printf '%s %s\n' "$(lock_field freetype 3)" "${RECIPE_FINGERPRINT}" \
         >"${PREFIX}/.built-freetype-harfbuzz"
 fi
@@ -654,14 +695,14 @@ if ! built fontconfig; then
     # Fontconfig's conf.d/link_confs.py install hook ignores DESTDIR and can
     # modify the runner's real /etc/fonts. Build it, then copy only the
     # library, pkg-config file and headers needed by the static prefix.
-    run mkdir -p "${fontconfig_build}" "${PREFIX}/lib/pkgconfig" "${PREFIX}/include"
+    run mkdir -p "${fontconfig_build}" "${STAGED_USR}/lib/pkgconfig" "${STAGED_USR}/include"
     validate_meson_options "${fontconfig_src}" \
         -Ddefault_library=static -Ddoc=disabled -Dtests=disabled -Dtools=disabled \
         -Dcache-build=disabled -Diconv=disabled -Dnls=disabled -Dsysconfdir=/etc \
         -Ddatadir=/usr/share -Dcache-dir=/var/cache/fontconfig
     run meson setup --wipe "${fontconfig_build}" "${fontconfig_src}" \
         --native-file "${MESON_NATIVE}" \
-        --prefix "${PREFIX}" --libdir lib --buildtype release \
+        --prefix "${RUNTIME_PREFIX}" --libdir lib --buildtype release \
         --prefer-static --wrap-mode nodownload -Ddefault_library=static \
         -Ddoc=disabled -Dtests=disabled -Dtools=disabled -Dcache-build=disabled \
         -Diconv=disabled -Dnls=disabled -Dsysconfdir=/etc -Ddatadir=/usr/share \
@@ -674,14 +715,15 @@ if ! built fontconfig; then
         printf 'build-gnome-terminal-deps.sh: Fontconfig outputs were not found\n' >&2
         exit 1
     fi
-    run install -D "${fontconfig_lib}" "${PREFIX}/lib/libfontconfig.a"
-    run install -D "${fontconfig_pc}" "${PREFIX}/lib/pkgconfig/fontconfig.pc"
-    run mkdir -p "${PREFIX}/include/fontconfig"
+    run install -D "${fontconfig_lib}" "${STAGED_USR}/lib/libfontconfig.a"
+    run install -D "${fontconfig_pc}" "${STAGED_USR}/lib/pkgconfig/fontconfig.pc"
+    normalize_pkgconfig
+    run mkdir -p "${STAGED_USR}/include/fontconfig"
     while IFS= read -r header; do
-        run install -m 644 "${header}" "${PREFIX}/include/fontconfig/"
+        run install -m 644 "${header}" "${STAGED_USR}/include/fontconfig/"
     done < <(find "${fontconfig_src}/fontconfig" -maxdepth 1 -type f -name '*.h' -print)
     while IFS= read -r header; do
-        run install -m 644 "${header}" "${PREFIX}/include/fontconfig/"
+        run install -m 644 "${header}" "${STAGED_USR}/include/fontconfig/"
     done < <(find "${fontconfig_build}" -type f -path '*/fontconfig/*.h' -print)
     mark fontconfig
 fi
@@ -762,10 +804,10 @@ if ! built lz4; then
         CC="${CC}" AR="${AR}" RANLIB="${RANLIB}" \
         CFLAGS="-target ${TARGET} -fPIC -ffile-prefix-map=${lz4_src}=." \
         BUILD_STATIC=yes BUILD_SHARED=no
-    run install -D "${lz4_src}/lib/liblz4.a" "${PREFIX}/lib/liblz4.a"
-    run install -d "${PREFIX}/include"
+    run install -D "${lz4_src}/lib/liblz4.a" "${STAGED_USR}/lib/liblz4.a"
+    run install -d "${STAGED_USR}/include"
     run install -m 644 "${lz4_src}/lib/lz4.h" "${lz4_src}/lib/lz4hc.h" \
-        "${lz4_src}/lib/lz4frame.h" "${PREFIX}/include/"
+        "${lz4_src}/lib/lz4frame.h" "${STAGED_USR}/include/"
     write_simple_pc liblz4 "$(lock_field lz4 2)" -llz4
     mark lz4
 fi
@@ -794,8 +836,8 @@ for library in \
     libglib-2.0.a libfribidi.a libfreetype.a libharfbuzz.a libfontconfig.a \
     libcairo.a libpango-1.0.a libpangocairo-1.0.a libgdk_pixbuf-2.0.a \
     libatk-1.0.a libepoxy.a libgtk-3.a liblz4.a libvte-2.91.a libhandy-1.a; do
-    [ -f "${PREFIX}/lib/${library}" ] || {
-        printf 'build-gnome-terminal-deps.sh: expected static archive missing: %s\n' "${PREFIX}/lib/${library}" >&2
+    [ -f "${STAGED_USR}/lib/${library}" ] || {
+        printf 'build-gnome-terminal-deps.sh: expected static archive missing: %s\n' "${STAGED_USR}/lib/${library}" >&2
         exit 1
     }
 done
