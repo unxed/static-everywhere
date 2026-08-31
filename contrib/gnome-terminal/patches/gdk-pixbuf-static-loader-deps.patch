@@ -1,5 +1,5 @@
 diff --git a/gdk-pixbuf/meson.build b/gdk-pixbuf/meson.build
-index 54ff9dda3..e4de2574c 100644
+index 54ff9dd..e4de257 100644
 --- a/gdk-pixbuf/meson.build
 +++ b/gdk-pixbuf/meson.build
 @@ -164,7 +164,10 @@ foreach name, loader: loaders

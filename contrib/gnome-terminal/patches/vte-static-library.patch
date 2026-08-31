@@ -1,4 +1,5 @@
 diff --git a/src/meson.build b/src/meson.build
+index 3f89f492..0bbe2229 100644
 --- a/src/meson.build
 +++ b/src/meson.build
 @@ -303,7 +303,7 @@ if get_option('gtk3')
@@ -18,4 +19,4 @@ diff --git a/src/meson.build b/src/meson.build
 +  libvte_gtk4 = library(
      vte_gtk4_api_name,
      sources: libvte_gtk4_sources,
-     version: vte_gtk4_soversion,
+     version: libvte_gtk4_soversion,
