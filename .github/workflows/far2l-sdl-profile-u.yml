@@ -143,13 +143,16 @@ jobs:
           git -C solo-src cat-file -e "$solo_ref:lib/dlfcn.h"
           test -f solo-src/lib/dlfcn.h
           set +e
+          # Feed the container script on stdin instead of embedding it in
+          # one quoted argument.  Apostrophes in comments or diagnostics
+          # must not be able to terminate the host shell's command string.
           docker run --rm \
             --env "CC=$solo_cc" \
             --env "CXX=$solo_cxx" \
             -v "$PWD/solo-src:/src" \
             -w /src \
             alpine:3.22 \
-            sh -ec '
+            sh -e -s <<'SOLO_SCRIPT' 2>&1 | tee /tmp/solo-build.log
               # libc++ as well as clang: Alpine's clang defaults to
               # libstdc++, and the archive this container produces is
               # linked by zig, which provides libc++. Two C++ runtimes in
@@ -201,8 +204,7 @@ jobs:
               test ! -L /src/libdlfcn.a
               test -s /src/libdlfcn.a
               exit "$solo_build_status"
-            ' \
-            2>&1 | tee /tmp/solo-build.log
+          SOLO_SCRIPT
           solo_status=("${PIPESTATUS[@]}")
           set -e
           printf 'SoLo pipeline statuses: docker=%s tee=%s\n' \
