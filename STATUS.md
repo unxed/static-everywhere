@@ -7,6 +7,45 @@ Everything below this section is a reverse-chronological log (newest
 first). Read *this* section first; consult the log below only for the
 detail behind a specific claim.
 
+### The same asymmetry, seen from the other side: strict C had no `Dl_info`
+
+C++ now compiles; a C source did not:
+
+```
+solo-src/lib/dlfcn.h:58:39: error: unknown type name 'Dl_info'
+   58 |     int stub_dladdr(const void* addr, Dl_info* info);
+```
+
+Both force-includes were present — `<built-in>:2` in the diagnostic shows
+the shim arriving second, as intended. The problem is what the first one
+declared.
+
+musl declares `Dl_info` only under `_GNU_SOURCE` or `_BSD_SOURCE`. On
+Linux the compiler defines `_GNU_SOURCE` implicitly for C++ but not for
+strict C, and far2l sets it only on Cygwin and Haiku. So `shoco.c`, built
+as `-std=c11`, read musl's header, which defined `_DLFCN_H` **without**
+defining `Dl_info`; SoLo's guard is `#if !defined(_DLFCN_H)`, so it
+skipped its own definition for exactly that reason, and then declared
+`stub_dladdr` against a type neither header had provided.
+
+Measured across standards: `-std=c99` and `-std=c11` fail, `-std=gnu11`
+and the default pass — which is why this looked like a C-only oddity
+rather than the same header asymmetry the C++ side had already shown.
+`-D_GNU_SOURCE` puts the two languages on the same footing; C++ already
+had it.
+
+The test now sweeps both compilers and both strict and extended
+standards, and asserts that strict C **without** the macro still fails —
+so if a future libc stops withholding `Dl_info`, the test says the guard
+has become pointless instead of silently enforcing it. Three negative
+controls: drop the macro, drop the libc include, reverse the order.
+
+Worth naming the pattern, since this is the third failure from the same
+pair of headers: a shim that defers to the libc header inherits the libc
+header's *conditions*. Deferring is only safe where the thing deferred to
+actually exists, and feature-test macros decide that per translation
+unit, not per project.
+
 ### A file named `-` was committed to the repository root, and it was mine
 
 Spotted by eye in the file list, which is the worst way to find

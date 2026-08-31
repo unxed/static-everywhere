@@ -77,6 +77,24 @@ function(_onebin_profile_u_attach_far2l)
     # `_DLFCN_H` guard, after which SoLo's `#undef`s and `#define dlopen
     # stub_dlopen` layer cleanly on top -- which is the arrangement its
     # author documented in the header itself.
+    # _GNU_SOURCE, because the two headers must agree about Dl_info.
+    #
+    # musl declares Dl_info only under _GNU_SOURCE or _BSD_SOURCE. On
+    # Linux the compiler defines _GNU_SOURCE implicitly for C++ but not
+    # for strict C, and far2l sets it only on Cygwin and Haiku. So a C
+    # source built as -std=c11 read musl's header, took the _DLFCN_H
+    # guard, and got no Dl_info -- after which SoLo's own definition was
+    # skipped for exactly that reason and its declaration
+    #
+    #   int stub_dladdr(const void*, Dl_info*);
+    #
+    # named a type that existed in neither header. The C++ half compiled
+    # the whole time, which is what made it look like a C-only oddity
+    # rather than the same asymmetry seen from the other side.
+    #
+    # Defining it puts C and C++ on the same footing here; C++ already
+    # had it.
+
     # SHELL: on both, because CMake de-duplicates compile options.
     #
     # Written as four plain arguments, the second "-include" is dropped
@@ -91,6 +109,7 @@ function(_onebin_profile_u_attach_far2l)
     # together as one unit, which is what that prefix exists for.
     foreach(_solo_target far2l far2l_sdl)
         target_compile_options(${_solo_target} PRIVATE
+            "-D_GNU_SOURCE"
             "SHELL:-include dlfcn.h"
             "SHELL:-include ${_solo_header}")
     endforeach()

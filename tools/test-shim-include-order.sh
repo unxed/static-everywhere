@@ -55,6 +55,11 @@ if solo == -1:
 if libc > solo:
     sys.exit('the SoLo shim is force-included before the libc header;\n'
              'that is the ordering that caused the Dl_info redefinition')
+if '_GNU_SOURCE' not in block:
+    sys.exit('the force-include pair no longer defines _GNU_SOURCE;\n'
+             'musl declares Dl_info only under it, so a strict-C source\n'
+             'will read the libc header, take its include guard, and find\n'
+             'no Dl_info -- while C++ keeps compiling and hides it')
 PY
 
 # 2. Behavioural: reproduce the failure and the fix against the real
@@ -114,12 +119,41 @@ int main() {
 }
 EOF
 
-# The correct order compiles.
-"$CXX" -target x86_64-linux-musl \
+cp "$PROBE/tu.cpp" "$PROBE/tu.c"
+CC="${REPO_ROOT}/onebin/toolchain/zig-cc"
+
+# The correct order compiles -- in both languages and under a strict
+# standard as well as an extended one. The strict-C case is the one that
+# broke: without _GNU_SOURCE musl withholds Dl_info while still defining
+# _DLFCN_H, and the shim defers to a declaration that never happened.
+# C++ passed throughout, which is precisely why the sweep is over both.
+for probe in "$CXX:tu.cpp:-std=c++17" "$CXX:tu.cpp:" \
+             "$CC:tu.c:-std=c11" "$CC:tu.c:-std=gnu11" "$CC:tu.c:"; do
+    _tool=${probe%%:*}; _rest=${probe#*:}
+    _src=${_rest%%:*}; _std=${_rest#*:}
+    # shellcheck disable=SC2086
+    "$_tool" -target x86_64-linux-musl $_std -D_GNU_SOURCE \
+        -include dlfcn.h -include "$SHIM" \
+        -c "$PROBE/$_src" -o "$PROBE/tu.o" 2>"$PROBE/ok.log" \
+        || { printf 'the libc-first ordering does not compile (%s %s):\n' \
+                 "$_src" "${_std:-default}" >&2
+             sed 's/^/  /' "$PROBE/ok.log" >&2; exit 1; }
+done
+
+# And without the feature macro, strict C must fail -- otherwise this
+# test would not have caught the failure it was extended for.
+if "$CC" -target x86_64-linux-musl -std=c11 \
+        -include dlfcn.h -include "$SHIM" \
+        -c "$PROBE/tu.c" -o "$PROBE/nogun.o" 2>/dev/null; then
+    printf 'strict C compiled without _GNU_SOURCE; the Dl_info asymmetry\n' >&2
+    printf 'is gone from this libc and the guard above proves nothing\n' >&2
+    exit 1
+fi
+
+# Rebuild the object the redirection check below looks at.
+"$CXX" -target x86_64-linux-musl -D_GNU_SOURCE \
     -include dlfcn.h -include "$SHIM" \
-    -c "$PROBE/tu.cpp" -o "$PROBE/tu.o" 2>"$PROBE/ok.log" \
-    || { printf 'the libc-first ordering does not compile:\n' >&2
-         sed 's/^/  /' "$PROBE/ok.log" >&2; exit 1; }
+    -c "$PROBE/tu.cpp" -o "$PROBE/tu.o" 2>/dev/null
 
 # And the shim still wins: the call must go to the stub, not to libc.
 if command -v nm >/dev/null 2>&1; then
