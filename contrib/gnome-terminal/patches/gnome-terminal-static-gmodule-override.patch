@@ -1,20 +1,8 @@
-diff --git a/src/meson.build b/src/meson.build
-index c21abda5..ecf4cc19 100644
---- a/src/meson.build
-+++ b/src/meson.build
-@@ -276,6 +276,7 @@ server = executable(
-   install: true,
-   install_dir: gt_prefix / gt_libexecdir,
-   install_tag: 'runtime',
-+  link_args: ['-Wl,--wrap=g_module_open'],
-   sources: server_sources,
- )
- 
 diff --git a/src/server.cc b/src/server.cc
-index 2493f969..90da79f6 100644
+index 2493f969..2a282625 100644
 --- a/src/server.cc
 +++ b/src/server.cc
-@@ -48,33 +48,27 @@ static char *app_id = nullptr;
+@@ -48,8 +48,6 @@ static char *app_id = nullptr;
  #define INACTIVITY_TIMEOUT (100 /* ms */)
  
  
@@ -23,19 +11,9 @@ index 2493f969..90da79f6 100644
  // We need to block the pk-gtk module that tries to automagically
  // install fonts.
  // Since there appears to be no way to blocklist a gtk module,
- // we resort to this gross hack.
- 
- extern "C" __attribute__((__visibility__("default"))) GModule*
--g_module_open (char const* file_name,
--               GModuleFlags flags);
-+__wrap_g_module_open (char const* file_name,
-+                      GModuleFlags flags);
- 
- GModule*
--g_module_open (char const* file_name,
--               GModuleFlags flags)
-+__wrap_g_module_open (char const* file_name,
-+                      GModuleFlags flags)
+@@ -63,18 +61,14 @@ GModule*
+ g_module_open (char const* file_name,
+                GModuleFlags flags)
  {
 -  static decltype(&g_module_open) _g_module_open;
 -  if (!_g_module_open)

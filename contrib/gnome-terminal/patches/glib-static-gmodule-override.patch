@@ -1,0 +1,21 @@
+diff --git a/gmodule/gmodule.c b/gmodule/gmodule.c
+index 09797c93a..126354b2b 100644
+--- a/gmodule/gmodule.c
++++ b/gmodule/gmodule.c
+@@ -701,6 +701,16 @@ g_module_open_full (const gchar   *file_name,
+  *
+  * Returns: a #GModule on success, or %NULL on failure
+  */
++/*
++ * Static consumers may intentionally provide an application-level
++ * g_module_open() override.  Keeping this thin forwarding entry point weak
++ * lets that override win even when the archive member is extracted for
++ * g_module_open_full(), without changing the implementation used by the
++ * shared-library build on compilers without weak-symbol support.
++ */
++#if defined(__GNUC__) || defined(__clang__)
++__attribute__((weak))
++#endif
+ GModule *
+ g_module_open (const gchar  *file_name,
+                GModuleFlags  flags)

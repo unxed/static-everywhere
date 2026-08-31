@@ -7,16 +7,38 @@ Everything below this section is a reverse-chronological log (newest
 first). Read *this* section first; consult the log below only for the
 detail behind a specific claim.
 
+### Run #43: replace unsupported linker interposition with captured source fixes
+
+Run #43 reached the final `gnome-terminal-server` link but failed because the
+onebin Zig wrapper rejected the generated `-Wl,--wrap=g_module_open` argument:
+
+```
+error: unsupported linker arg: --wrap
+```
+
+The previous fix was therefore not compatible with this toolchain. The
+corrected recipe removes linker `--wrap` completely. A real checkout of the
+pinned GNOME Terminal source now keeps its application-level `g_module_open`
+override and delegates directly to `g_module_open_full`. A real checkout of
+the pinned GLib source supplies a weak attribute on GLib's thin forwarding
+`g_module_open` entry point, so the application's strong override wins when
+the archive member is extracted for `g_module_open_full`. This covers the
+static archive/application-override conflict class without adding another
+host input or changing onebin's global linker policy.
+
+Both patches are captured with `git diff` from their respective pinned source
+checkouts; the recipe only validates and applies those captured diffs.
+
 ### Run #42: static application interposition and baseline compatibility
 
 Run #42 reached the final GNOME Terminal links and exposed two independent
 classes of static-link failures. The application deliberately interposed
 `g_module_open` to block `pk-gtk-module`; with GLib linked from a static
 archive, that application definition collided with GLib's real definition.
-The captured GNOME Terminal source patch now uses the linker's
-`--wrap=g_module_open` mechanism, keeps the blocklist in the application and
-delegates through GLib's `g_module_open_full`, without allowing duplicate
-definitions to hide unrelated collisions.
+The first attempted fix used the linker's `--wrap=g_module_open` mechanism,
+kept the blocklist in the application and delegated through GLib's
+`g_module_open_full`, but Run #43 showed that onebin Zig rejects this linker
+argument. The current replacement is documented above.
 
 The same run also found `close_range` references emitted by GLib/VTE against
 the glibc 2.28 target. The final GNOME Terminal link now receives the shared

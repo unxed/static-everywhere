@@ -121,7 +121,7 @@ host library policy: pkg-config maps only X11/OpenGL -l arguments to shared obje
 fontconfig install: manual copy (no meson install; protects host /etc/fonts)
 cairo XRender function checks: HAVE_XRENDERCREATESOLIDFILL HAVE_XRENDERCREATELINEARGRADIENT HAVE_XRENDERCREATERADIALGRADIENT HAVE_XRENDERCREATECONICALGRADIENT
 cmake contract: ${CMAKE_COMMON_ARGS[*]}
-source patches: util-linux-libuuid-only.patch gdk-pixbuf-static-loader-deps.patch gtk-no-host-atk-bridge.patch vte-static-library.patch libhandy-static-library.patch
+source patches: util-linux-libuuid-only.patch gdk-pixbuf-static-loader-deps.patch gtk-no-host-atk-bridge.patch glib-static-gmodule-override.patch vte-static-library.patch libhandy-static-library.patch
 dependency patch contract: every patch is a valid Git diff captured from its pinned checkout
 VTE linker feature contract: _b_symbolic_functions=false for Zig 0.13 (unsupported -Bsymbolic-functions)
 VTE static application policy: build-app=false; GNOME consumes the VTE library, not its demo application
@@ -590,6 +590,7 @@ gvdb_src=$(source_tree gvdb)
 # GLib imports gvdb unconditionally and, when the runner has no intl.pc, its
 # nodownload build otherwise tries proxy-libintl. glibc provides the gettext
 # ABI used here, so expose it as a prefix-local dependency with no extra -l.
+apply_source_patch "${glib_src}" "${REPO_ROOT}/contrib/gnome-terminal/patches/glib-static-gmodule-override.patch"
 materialize_subproject "${gvdb_src}" "${glib_src}/subprojects/gvdb"
 write_simple_pc intl "$(lock_field glib 2)" ""
 require_pc zlib libffi libpcre2-8 intl

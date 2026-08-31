@@ -76,7 +76,8 @@ for required in \
     '-Wl,-z,relro' \
     '-Wl,-z,now' \
     '-Wl,-z,noexecstack' \
-    'gnome-terminal-static-gmodule-wrap.patch' \
+    'gnome-terminal-static-gmodule-override.patch' \
+    'glib-static-gmodule-override.patch' \
     'gnome-terminal-glibc-shims.o' \
     'meson install' \
     'verify-gnome-terminal-static.sh'; do
@@ -255,7 +256,7 @@ for required in \
     fi
 done
 
-GNOME_PATCH="${PATCH_DIR}/gnome-terminal-static-gmodule-wrap.patch"
+GNOME_PATCH="${PATCH_DIR}/gnome-terminal-static-gmodule-override.patch"
 if git apply --numstat "$GNOME_PATCH" >/dev/null 2>&1; then
     pass 'captured GNOME Terminal patch is a valid Git patch'
 else
@@ -263,15 +264,40 @@ else
 fi
 
 for required in \
-    'diff --git a/src/meson.build b/src/meson.build' \
-    '-g_module_open (char const* file_name,' \
-    '+__wrap_g_module_open (char const* file_name,' \
+    'diff --git a/src/server.cc b/src/server.cc' \
+    '-#include <dlfcn.h>' \
+    '-  static decltype(&g_module_open) _g_module_open;' \
     '+  return g_module_open_full(file_name, flags, nullptr);' \
-    "+  link_args: ['-Wl,--wrap=g_module_open'],"; do
+    '+      return g_module_open_full("/dev/null", flags, nullptr);'; do
     if grep -Fq -- "${required}" "${GNOME_PATCH}"; then
         pass "captured GNOME Terminal patch contains ${required}"
     else
         fail "captured GNOME Terminal patch is missing ${required}"
+    fi
+done
+
+if grep -Fq -- '--wrap' "${GNOME_PATCH}"; then
+    fail 'GNOME Terminal patch does not use unsupported linker interposition'
+else
+    pass 'GNOME Terminal patch avoids unsupported linker interposition flags'
+fi
+
+GLIB_PATCH="${PATCH_DIR}/glib-static-gmodule-override.patch"
+if git apply --numstat "$GLIB_PATCH" >/dev/null 2>&1; then
+    pass 'captured GLib patch is a valid Git patch'
+else
+    fail 'captured GLib patch is not a valid Git patch'
+fi
+
+for required in \
+    'diff --git a/gmodule/gmodule.c b/gmodule/gmodule.c' \
+    '+__attribute__((weak))' \
+    '+ * Static consumers may intentionally provide an application-level' \
+    '+ * g_module_open() override.'; do
+    if grep -Fq -- "${required}" "${GLIB_PATCH}"; then
+        pass "captured GLib patch contains ${required}"
+    else
+        fail "captured GLib patch is missing ${required}"
     fi
 done
 

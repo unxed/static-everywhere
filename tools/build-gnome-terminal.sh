@@ -9,7 +9,7 @@ SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 REPO_ROOT=$(CDPATH= cd -- "${SCRIPT_DIR}/.." && pwd)
 TOOLCHAIN="${REPO_ROOT}/onebin/toolchain"
 PKG_CONFIG_WRAPPER="${REPO_ROOT}/tools/pkg-config-hybrid-host.sh"
-GNOME_STATIC_PATCH="${REPO_ROOT}/contrib/gnome-terminal/patches/gnome-terminal-static-gmodule-wrap.patch"
+GNOME_STATIC_PATCH="${REPO_ROOT}/contrib/gnome-terminal/patches/gnome-terminal-static-gmodule-override.patch"
 GLIBC_SHIM_SOURCE="${REPO_ROOT}/contrib/f4-qt/compat/glibc-shims.c"
 PKG_CONFIG_COMMAND=(bash "${PKG_CONFIG_WRAPPER}")
 PKG_CONFIG_ENV="bash $(printf '%q' "${PKG_CONFIG_WRAPPER}")"
