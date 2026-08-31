@@ -34,6 +34,7 @@ export XDG_CONFIG_HOME="$OUT/config"
 export XDG_RUNTIME_DIR="$OUT/runtime"
 export SDL_VIDEODRIVER=x11
 export FAR2L_SDL_DEBUG_REDRAW=1
+export FAR2L_STD="$OUT/far2l.log"
 
 # The SDL backend opens its font picker on a first run when sdl_font is
 # absent. A headless smoke test cannot answer that interactive dialog, so
