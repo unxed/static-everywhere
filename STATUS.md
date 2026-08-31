@@ -7,6 +7,56 @@ Everything below this section is a reverse-chronological log (newest
 first). Read *this* section first; consult the log below only for the
 detail behind a specific claim.
 
+### The util-linux patch: five attempts at the arithmetic, one look at the source
+
+`util-linux-libuuid-only.patch` stopped applying, and the four commits
+before this one each adjusted its hunk headers or context. That is the
+tell: the patch was hand-written, so every fix was a guess about what the
+source contains, and each guess had to be tested by a two-hour CI run.
+
+Fetching the pinned tree settles it in seconds. `git apply -v` reports
+what it searched for, and the answer was thirteen lines while the header
+declared twelve — the body and the header disagreed, and no amount of
+recounting the visible hunk would show that, because the mismatch is
+between two representations of the same thing.
+
+**The fix is not a corrected hunk. It is not writing hunks.** Check out
+the pinned commit, make the edit, let `git diff` produce the patch. The
+result cannot have inconsistent headers, cannot cite context that is not
+there, and carries real blob indices.
+
+Doing that also produced a much smaller change. The old patch wrapped
+~2,500 lines of `meson.build` in an `if/else`, closing it with an `endif`
+inserted at line 3453 — two hunks, far apart, both fragile. Meson has
+`subdir_done()`, which stops interpreting the current file. So:
+
+```meson
+if get_option('libuuid-only')
+  subdir('libuuid')
+  subdir_done()
+endif
+```
+
+Four lines after `subdir('lib')`, and everything below is skipped: the
+other libraries, every program, all the man-page and completion install
+rules. Checked before relying on it: `pkgconfig.generate` for `uuid.pc`
+lives in `libuuid/meson.build`, not in the root after line 888, so the
+archive and its `.pc` both survive the cut.
+
+Verified rather than assumed: applies clean on a freshly fetched pin,
+`meson setup -Dlibuuid-only=true` configures, `ninja` links exactly
+`libuuid.a`, and `uuid.pc` is generated and marked for install.
+
+One correction to my own reporting. I first said "only libuuid is in the
+build graph" after running `meson setup` alone — nothing had been
+compiled. The claim was true of the target list and presented as though
+it were a build. Prompted to check whether the artefact was the host's, I
+built it: ours contains `src_clear.c.o` (meson naming), the host's
+`la-clear.o` (libtool), 130,938 bytes against 48,480. The pipeline is
+also protected independently — `require_pc uuid` compares
+`pkg-config --variable=prefix` against the static prefix and fails if it
+resolves to `/usr`.
+
 ### 2026-08-31: software-renderer image fallback is in the build recipe
 
 The fresh GitHub artifact from run #71 (`fb394aa`) was tested on the live
