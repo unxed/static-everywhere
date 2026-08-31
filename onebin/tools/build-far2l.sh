@@ -372,7 +372,14 @@ configure_build_install() {
     # module, and the hosted build proved that the toolchain-only setting can
     # still leave an absolute dependency RUNPATH in that MODULE artifact.
     plan_step "cmake -S ${SRC} -B ${OUT}/_build ${args} -DCMAKE_INSTALL_PREFIX=${OUT}/install -DCMAKE_SKIP_RPATH=ON"
-    plan_step "cmake --build ${OUT}/_build --parallel ${JOBS}"
+    if [ "${ONEBIN_VERBOSE_BUILD:-0}" = 1 ]; then
+        # U links are intentionally observable: if a shared/module target
+        # regresses, the hosted diagnostic contains the exact compiler argv
+        # after the zig wrapper's policy normalization.
+        plan_step "cmake --build ${OUT}/_build --parallel ${JOBS} --verbose"
+    else
+        plan_step "cmake --build ${OUT}/_build --parallel ${JOBS}"
+    fi
     plan_step "cmake --install ${OUT}/_build"
 }
 

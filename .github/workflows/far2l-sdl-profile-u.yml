@@ -333,7 +333,7 @@ jobs:
         run: |
           set +e
           set -o pipefail
-          onebin/tools/build-far2l.sh \
+          ONEBIN_VERBOSE_BUILD=1 onebin/tools/build-far2l.sh \
             --config sdl --profile universal \
             --src "$PWD/far2l-src" \
             --tag "$(sed -n 's/^# far2l-sdl-ref: //p' contrib/far2l/deps.lock)" \
