@@ -11,7 +11,7 @@ cmake_minimum_required(VERSION 3.16)
 set(ONEBIN_EXPORT_DYNAMIC ON CACHE BOOL
     "Profile U exports the carried loader ABI to its modules" FORCE)
 set(ONEBIN_SOLO_ROOT "" CACHE PATH
-    "SoLo checkout containing the published dlfcn archive and lib/dlfcn.h")
+    "SoLo handoff root containing libdlfcn.a and lib/dlfcn.h")
 
 include("${CMAKE_CURRENT_LIST_DIR}/onebin-linux-static.cmake")
 
@@ -31,9 +31,9 @@ list(APPEND CMAKE_LIBRARY_PATH
 # keep them on the executable only: far2l's SDL module resolves the bridge
 # from the exported main executable.
 if(ONEBIN_SOLO_ROOT)
-    if(NOT EXISTS "${ONEBIN_SOLO_ROOT}/dlfcn")
+    if(NOT EXISTS "${ONEBIN_SOLO_ROOT}/libdlfcn.a")
         message(FATAL_ERROR
-            "onebin Profile U: missing published ${ONEBIN_SOLO_ROOT}/dlfcn archive")
+            "onebin Profile U: missing materialized ${ONEBIN_SOLO_ROOT}/libdlfcn.a archive")
     endif()
     if(NOT EXISTS "${ONEBIN_SOLO_ROOT}/lib/dlfcn.h")
         message(FATAL_ERROR
@@ -49,7 +49,7 @@ if(ONEBIN_SOLO_ROOT)
     endif()
     if(NOT CMAKE_EXE_LINKER_FLAGS_INIT MATCHES "dlfcn")
         string(APPEND CMAKE_EXE_LINKER_FLAGS_INIT
-               " -Wl,--whole-archive ${ONEBIN_SOLO_ROOT}/dlfcn"
+               " -Wl,--whole-archive ${ONEBIN_SOLO_ROOT}/libdlfcn.a"
                " -Wl,--no-whole-archive")
     endif()
 endif()

@@ -170,7 +170,25 @@ jobs:
               command -v "$CXX"
               "$CC" --version
               "$CXX" --version
+              set +e
               ./build
+              solo_build_status=$?
+              set -e
+              # SoLo restores the published target through an absolute CAS
+              # symlink rooted at /src.  That link is valid in this mount
+              # namespace but cannot be consumed by the host after Docker
+              # exits.  Materialize the published target while the namespace
+              # is still alive; downstream steps consume this regular handoff
+              # file, not a container-local symlink.
+              test -L dlfcn
+              test -s dlfcn
+              test ! -e /src/libdlfcn.a
+              test ! -L /src/libdlfcn.a
+              cp -L dlfcn /src/libdlfcn.a
+              test -f /src/libdlfcn.a
+              test ! -L /src/libdlfcn.a
+              test -s /src/libdlfcn.a
+              exit "$solo_build_status"
             ' \
             2>&1 | tee /tmp/solo-build.log
           solo_status=("${PIPESTATUS[@]}")
@@ -198,19 +216,19 @@ jobs:
             find solo-src -maxdepth 2 -name 'dlfcn*' -print >&2
             exit 1
           fi
-          if ! solo_archive=$(readlink -f solo-src/dlfcn); then
-            echo 'SoLo dlfcn archive link is not resolvable' >&2
+          # The published link is intentionally container-local; the Docker
+          # step above must have materialized its target for the host.
+          solo_archive="$PWD/solo-src/libdlfcn.a"
+          test -f "$solo_archive" || {
+            echo 'SoLo container did not materialize libdlfcn.a' >&2
             exit 1
-          fi
-          case "$solo_archive" in
-            "$PWD/solo-src/"*) ;;
-            *)
-              echo "SoLo dlfcn archive escapes the pinned checkout: $solo_archive" >&2
-              exit 1
-              ;;
-          esac
+          }
+          test ! -L "$solo_archive" || {
+            echo 'SoLo handoff archive must be a regular file, not a symlink' >&2
+            exit 1
+          }
           test -s "$solo_archive" || {
-            echo "SoLo published an empty dlfcn archive: $solo_archive" >&2
+            echo "SoLo materialized an empty dlfcn archive: $solo_archive" >&2
             exit 1
           }
           archive_members=$(ar t "$solo_archive")

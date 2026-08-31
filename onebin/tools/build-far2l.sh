@@ -32,8 +32,9 @@ Usage: tools/build-far2l.sh --config tiny|tty|sdl|wx [OPTIONS]
                             currently supported for the SDL configuration
   --deps-prefix DIR         where already-built static third-party libs
                             live, per contrib/far2l/deps.lock
-  --solo-root DIR           SoLo checkout containing the published dlfcn
-                            lib/dlfcn.h (required for --profile universal)
+  --solo-root DIR           SoLo handoff root containing materialized
+                            libdlfcn.a and lib/dlfcn.h (required for
+                            --profile universal)
   --fetch                   allowed to clone far2l over the network
   --no-fetch                refuse to touch the network (default)
   --print-plan              print every command this invocation would run,
@@ -111,8 +112,8 @@ if [ "${PROFILE}" = universal ]; then
         exit 2
     fi
     if [ "${PRINT_PLAN}" -eq 0 ]; then
-        [ -f "${SOLO_ROOT}/dlfcn" ] || {
-            echo "error: SoLo published dlfcn archive not found: ${SOLO_ROOT}/dlfcn" >&2
+        [ -f "${SOLO_ROOT}/libdlfcn.a" ] || {
+            echo "error: SoLo materialized dlfcn archive not found: ${SOLO_ROOT}/libdlfcn.a" >&2
             exit 1
         }
         [ -f "${SOLO_ROOT}/lib/dlfcn.h" ] || {
