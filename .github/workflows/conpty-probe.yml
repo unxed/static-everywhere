@@ -1,0 +1,25 @@
+name: ConPTY line-wrap probe
+
+on:
+  workflow_dispatch:
+
+jobs:
+  system-conpty:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Report host
+        run: |
+          cmd /c ver
+          (Get-Item C:\Windows\System32\conhost.exe).VersionInfo.FileVersion
+
+      - name: Install pywinpty
+        run: pip install pywinpty
+
+      - name: Probe
+        run: python tools/conpty_probe.py
