@@ -122,6 +122,7 @@ cmake contract: ${CMAKE_COMMON_ARGS[*]}
 source patches: util-linux-libuuid-only.patch gtk-no-host-atk-bridge.patch vte-static-library.patch libhandy-static-library.patch
 subproject policy: materialize pinned gvdb; provide libc gettext through a prefix-local synthetic intl.pc; no Meson downloads
 uuid policy: util-linux libuuid-only=true; install only the pinned static libuuid archive and uuid.pc
+uuid-only graph audit: reject util-linux libcommon and non-UUID lib/ sources before compile
 PLAN
     for dependency in "${dependency_order[@]}"; do
         printf '# pinned source: %s %s %s\n' \
@@ -305,9 +306,33 @@ meson_dep() {
     )
     setup_cmd+=("$@")
     run "${setup_cmd[@]}"
+    if [ "${name}" = "util-linux" ]; then
+        assert_util_linux_uuid_only_graph "${build_dir}"
+    fi
     run meson compile -C "${build_dir}" -j "${JOBS}"
     run meson install -C "${build_dir}"
     mark "${name}"
+}
+
+assert_util_linux_uuid_only_graph() {
+    local build_dir=$1 graph="${build_dir}/build.ninja" unexpected
+    [ -f "${graph}" ] || {
+        printf 'build-gnome-terminal-deps.sh: util-linux build graph is missing: %s\n' \
+            "${graph}" >&2
+        exit 1
+    }
+    if grep -Fq -- 'lib/libcommon.a' "${graph}"; then
+        printf 'build-gnome-terminal-deps.sh: libuuid-only graph contains libcommon\n' >&2
+        exit 1
+    fi
+    unexpected=$(grep -oE 'sources/util-linux/lib/[[:alnum:]_.-]+\.c' "${graph}" \
+        | sort -u \
+        | grep -Ev 'sources/util-linux/lib/(md5|randutils|sha1)\.c$' || true)
+    if [ -n "${unexpected}" ]; then
+        printf 'build-gnome-terminal-deps.sh: libuuid-only graph contains non-UUID util-linux/lib sources:\n%s\n' \
+            "${unexpected}" >&2
+        exit 1
+    fi
 }
 
 autotools_dep() {

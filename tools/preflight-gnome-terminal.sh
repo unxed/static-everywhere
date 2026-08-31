@@ -112,11 +112,25 @@ for required in \
     'libhandy-static-library.patch' \
     'synthetic intl.pc' \
     'libuuid-only=true' \
+    'uuid-only graph audit: reject util-linux libcommon and non-UUID lib/ sources before compile' \
     'gtk lz4 vte libhandy'; do
     if grep -Fq -- "$required" "$DEPS_PLAN"; then
         pass "dependency plan contains ${required}"
     else
         fail "dependency plan is missing ${required}"
+    fi
+done
+
+UUID_PATCH="${REPO_ROOT}/contrib/gnome-terminal/patches/util-linux-libuuid-only.patch"
+for required in \
+    'diff --git a/lib/meson.build b/lib/meson.build' \
+    "if get_option('libuuid-only')" \
+    "randutils_c = files('randutils.c')" \
+    'subdir_done()'; do
+    if grep -Fq -- "$required" "$UUID_PATCH"; then
+        pass "generated util-linux patch contains ${required}"
+    else
+        fail "generated util-linux patch is missing ${required}"
     fi
 done
 

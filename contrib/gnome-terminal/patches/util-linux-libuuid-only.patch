@@ -1,5 +1,24 @@
+diff --git a/lib/meson.build b/lib/meson.build
+index 58d5da43f..890dfafe6 100644
+--- a/lib/meson.build
++++ b/lib/meson.build
+@@ -1,3 +1,8 @@
++if get_option('libuuid-only')
++  randutils_c = files('randutils.c')
++  md5_c = files('md5.c')
++  sha1_c = files('sha1.c')
++else
+ lib_common_sources = '''
+ 	blkdev.c
+ 	buffer.c
+ 	canonicalize.c
+@@ -106,3 +111,4 @@ lib_tcolors = static_library(
+   lib_color_sources,
+   include_directories : dir_include,
+   dependencies : curses_libs)
++endif
 diff --git a/libuuid/meson.build b/libuuid/meson.build
-index a801b4e..279237b 100644
+index a801b4e65..279237ba2 100644
 --- a/libuuid/meson.build
 +++ b/libuuid/meson.build
 @@ -20,7 +20,7 @@ unparse_c = files('src/unparse.c')
@@ -20,7 +39,7 @@ index a801b4e..279237b 100644
    dependencies : [socket_libs,
                    build_libuuid ? [] : disabler()],
 diff --git a/meson.build b/meson.build
-index baca755..0292df4 100644
+index baca755d1..0292df4d8 100644
 --- a/meson.build
 +++ b/meson.build
 @@ -885,6 +885,18 @@ bashcompletionslinks = {}
@@ -43,7 +62,7 @@ index baca755..0292df4 100644
  subdir('libmount')
  subdir('libsmartcols')
 diff --git a/meson_options.txt b/meson_options.txt
-index f546c3c..3b74912 100644
+index f546c3ce9..3b7491243 100644
 --- a/meson_options.txt
 +++ b/meson_options.txt
 @@ -37,6 +37,8 @@ option('build-libblkid', type : 'feature',
