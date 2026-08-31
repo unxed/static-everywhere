@@ -14,10 +14,10 @@ bash -n "$REPO_ROOT/tools/build-konsole.sh" "$REPO_ROOT/tools/preflight-konsole.
     "$REPO_ROOT/tools/run-konsole-smoke.sh" "$REPO_ROOT/tools/verify-konsole-artifact.sh"
 pass 'Konsole shell scripts parse'
 
-for tool in msgmerge msgfmt; do
+for tool in msgmerge msgfmt flex bison; do
     command -v "$tool" >/dev/null 2>&1 || fail "Gettext tool is missing: $tool"
 done
-pass 'Gettext tools required by KF6 translation catalogs are available'
+pass 'Gettext and parser-generator tools required by KF6 are available'
 
 "$REPO_ROOT/tools/build-konsole.sh" --kde-builder "$REPO_ROOT" --print-plan >"$PLAN" || \
     fail '--print-plan failed'
@@ -44,15 +44,31 @@ for needle in \
     'conan cache clean' \
     'setproctitle' \
     'qtmultimedia=True' \
+    'qtdeclarative=True' \
     'qttools=True' \
     'qtwayland=False' \
     'with_egl=True' \
     'with_x11=True' \
-    'with_dbus=False' \
+    'with_dbus=True' \
     'BUILD_SHARED_LIBS=OFF' \
     'KCONFIG_USE_QML=OFF' \
     'BUILD_WITH_QML=OFF' \
     'KCOREADDONS_USE_QML=OFF' \
+    'KICONTHEMES_USE_QTQUICK=OFF' \
+    'KWINDOWSYSTEM_QML=OFF' \
+    'KWINDOWSYSTEM_X11=ON' \
+    'KWINDOWSYSTEM_WAYLAND=OFF' \
+    'WITH_WAYLAND=OFF' \
+    'with_dbus=True' \
+    'BUILD_DESIGNERPLUGIN=OFF' \
+    'WITH_TEXT_TO_SPEECH=OFF' \
+    'SONNET_USE_QML=OFF' \
+    'WITH_BZIP2=ON' \
+    'WITH_LIBLZMA=ON' \
+    'WITH_OPENSSL=OFF' \
+    'WITH_LIBZSTD=OFF' \
+    'UDEV_DISABLED=ON' \
+    'ATTICA_STATIC_BUILD=ON' \
     'CMAKE_PROJECT_INCLUDE' \
     'verify-konsole-artifact.sh' \
     'audit-with-hygiene-waivers.sh'; do
@@ -122,6 +138,12 @@ for needle in \
     'set -o pipefail' \
     'tee /tmp/build-output.log' \
     'xvfb' \
+    'gettext' \
+    'flex' \
+    'bison' \
+    'libmount-dev' \
+    'libcanberra-dev' \
+    'libdbus-1-dev' \
     'run-konsole-smoke.sh' \
     'Scan Konsole sources for newer glibc symbols'; do
     grep -Fq "$needle" "$workflow" || fail "workflow is missing: $needle"

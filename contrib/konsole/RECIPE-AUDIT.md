@@ -37,13 +37,42 @@ The load-bearing decisions were classified before adapting them:
 | diagnostics on `failure() || cancelled()` | carried, including CMake/autotools/Meson logs, MIME-filtered text and OOM state |
 | static Qt platform/plugin registration | carried for qxcb, qxcb-GLX and qxcb-EGL; no f4 QML scanner is copied because Konsole is Widgets-only |
 | static graph assertion | carried for Qt/KF6 targets and package directories |
-| f4 Go setup, Go tests, embedded packaging and QML-specific hooks | intentionally omitted: Konsole has no Go or QML application graph |
+| f4 Go setup, Go tests, embedded packaging and QML-specific hooks | intentionally omitted for the Konsole application; framework QML is retained only where upstream requires it |
 | f4 QWindowKit and f4 application-specific tests | intentionally omitted |
 
 The host boundary is therefore: X11/xcb and the OpenGL ABI are host-owned;
 Qt, KF6 and the application are built in the CI source graph. `qt-install-dir`
 is deliberately absent from kde-builder configuration, so kde-builder does
 not select a host or separately managed Qt tree.
+
+## Source-graph audit before the hosted build
+
+The KDE Frameworks `CMakeLists.txt` files were inspected before adding the
+corresponding recipe flags. The current upstream graph has several defaults
+that are not safe with a Widgets-only, no-QtWayland target:
+
+- KNewStuff requires `Qt6::Qml`, `Qt6::Quick` and `Qt6::QuickWidgets` and
+  unconditionally adds its `src/qtquick` directory, so `qtdeclarative=True` is
+  required even though Konsole itself has no QML runtime path.
+- KConfig, KI18n, KCoreAddons, KIconThemes, KWindowSystem and Sonnet expose
+  optional QML/Quick integrations; their project-specific switches are set to
+  `OFF` where the source provides them.
+- KGuiAddons and KWindowSystem default to Wayland on Linux; their Wayland
+  switches are set to `OFF` while QtWayland remains outside this X11 scope.
+- KArchive defaults BZip2, LZMA, OpenSSL and Zstd to required. The Conan graph
+  supplies BZip2/LZMA and the recipe disables the unused OpenSSL/Zstd paths.
+- Solid requires Flex, Bison and LibMount; its optional UDev backend is
+  disabled for this target. KNotifications' Linux build also requires the
+  QtDBus CMake package and Canberra development files even with application
+  DBus disabled, so those build inputs are installed explicitly.
+- Designer plugins and text-to-speech are optional framework features and are
+  disabled to keep the built graph aligned with Konsole's actual application
+  targets.
+
+Wayland is intentionally not part of this acceptance pass. There is no
+architectural blocker to adding it later: the recipe will need QtWayland,
+Wayland protocol development inputs, and a compositor-backed runtime smoke
+test rather than treating the current X11 result as equivalent.
 
 ## Pass 2: reverse check of the Konsole recipe
 

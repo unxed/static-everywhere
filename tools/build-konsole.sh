@@ -162,13 +162,15 @@ conan_args=(
     -s:h build_type=Release -s:h compiler.cppstd=gnu20
     -s:b build_type=Release -s:b compiler.cppstd=gnu20
     -o:h 'qt/*:shared=False' -o:h 'qt/*:opengl=desktop'
+    -o:h 'qt/*:qtdeclarative=True'
     -o:h 'qt/*:qtmultimedia=True' -o:h 'qt/*:qtshadertools=True'
     -o:h 'qt/*:qttools=True'
     -o:h 'qt/*:qtwayland=False'
-    -o:h 'qt/*:with_egl=True' -o:h 'qt/*:with_x11=True'
+    -o:h 'qt/*:with_dbus=True' -o:h 'qt/*:with_egl=True'
+    -o:h 'qt/*:with_x11=True'
     -o:h 'qt/*:with_glib=False' -o:h 'qt/*:with_openal=False'
     -o:h 'qt/*:with_gstreamer=False' -o:h 'qt/*:with_pulseaudio=False'
-    -o:h 'qt/*:with_libalsa=False' -o:h 'qt/*:with_dbus=False'
+    -o:h 'qt/*:with_libalsa=False'
     -o:h 'qt/*:openssl=False' -o:h 'xkbcommon/*:with_x11=True'
     -o:h 'xkbcommon/*:with_wayland=False'
     -c "tools.build:compiler_executables={\"c\":\"$ZIGCC\",\"cpp\":\"$ZIGCXX\"}"

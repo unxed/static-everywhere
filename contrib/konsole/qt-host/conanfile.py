@@ -7,24 +7,27 @@ class KonsoleQtHostConan(ConanFile):
     version = "0.1"
     settings = "os", "compiler", "build_type", "arch"
 
-    # This is intentionally a small Qt surface. Konsole is a Widgets
-    # application; QML, Qt Quick, Wayland, DBus and the multimedia backends
-    # are not part of the showcase. QtTools is included only for the
-    # build-time Linguist tools used by KF6 translation catalogs; it is not
-    # part of Konsole's runtime link. qtmultimedia itself is required by
-    # Konsole, and Qt's qtmultimedia package requires qtshadertools; its
-    # optional audio backends are not.
+    # This keeps the runtime surface focused on Widgets, X11 and OpenGL.
+    # QtDeclarative is nevertheless required at build time because the
+    # upstream KNewStuff framework unconditionally builds its Qt Quick
+    # library. The optional QML integrations in the other frameworks remain
+    # disabled in kde-builder; QtTools is included only for the build-time
+    # Linguist tools used by KF6 translation catalogs. qtmultimedia itself is
+    # required by Konsole, and Qt's qtmultimedia package requires
+    # qtshadertools; its optional audio backends are not. QtDBus is built
+    # because KNotifications' Linux CMakeLists.txt requires Qt6DBus even when
+    # the application-level USE_DBUS option is disabled.
     default_options = {
         "qt/*:shared": False,
         "qt/*:opengl": "desktop",
+        "qt/*:qtdeclarative": True,
         "qt/*:qtmultimedia": True,
-        "qt/*:qtdeclarative": False,
         "qt/*:qtimageformats": False,
         "qt/*:qtshadertools": True,
         "qt/*:qttools": True,
         "qt/*:qttranslations": False,
         "qt/*:qtwayland": False,
-        "qt/*:with_dbus": False,
+        "qt/*:with_dbus": True,
         "qt/*:with_egl": True,
         "qt/*:with_x11": True,
         "qt/*:with_glib": False,
