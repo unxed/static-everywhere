@@ -14,7 +14,27 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq \
-            binutils make
+            binutils cmake curl git make ninja-build pkg-config python3-venv
+
+      - name: Install pinned Meson
+        run: |
+          meson_version=$(tr -d '[:space:]' < onebin/toolchain/meson-version)
+          meson_venv="$RUNNER_TEMP/gnome-terminal-meson"
+          python3 -m venv "$meson_venv"
+          "$meson_venv/bin/python" -m pip install \
+            --disable-pip-version-check --no-input --only-binary=:all: \
+            "meson==${meson_version}"
+          echo "$meson_venv/bin" >> "$GITHUB_PATH"
+          test "$("$meson_venv/bin/meson" --version)" = "$meson_version"
+
+      - name: Install zig 0.13.0
+        run: |
+          curl --fail --location --silent --show-error \
+            -o "$RUNNER_TEMP/zig.tar.xz" \
+            https://ziglang.org/download/0.13.0/zig-linux-x86_64-0.13.0.tar.xz
+          tar xf "$RUNNER_TEMP/zig.tar.xz" -C "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/zig-linux-x86_64-0.13.0" >> "$GITHUB_PATH"
+          echo "$PWD/onebin/toolchain" >> "$GITHUB_PATH"
 
       - name: Test onebin
         run: make -sC onebin test
@@ -36,24 +56,74 @@ jobs:
         run: |
           sudo apt-get update
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-            build-essential cmake ninja-build meson pkg-config gperf gawk gettext xsltproc \
-            autoconf automake libtool libltdl-dev curl git python3 perl binutils \
-            libx11-dev libxext-dev libxi-dev libxrandr-dev libxrender-dev \
+            build-essential cmake ninja-build pkg-config gperf gawk gettext xsltproc \
+            autoconf automake libtool libltdl-dev curl git python3 python3-venv perl \
+            binutils ccache xvfb x11-utils xdotool imagemagick \
+            libx11-dev libx11-xcb-dev libxext-dev libxi-dev libxrandr-dev libxrender-dev \
             libxcursor-dev libxdamage-dev libxfixes-dev libxcomposite-dev \
-            libgl-dev libegl-dev libatspi2.0-dev libatk-bridge2.0-dev \
+            libgl-dev libegl-dev libgl1-mesa-dev libegl1-mesa-dev \
+            libatspi2.0-dev libatk-bridge2.0-dev \
             libdbus-1-dev uuid-dev gsettings-desktop-schemas
+
+      - name: Free disk space on the runner
+        run: |
+          echo '=== before ==='
+          df -h /
+          for d in /usr/share/dotnet /usr/local/lib/android /opt/ghc \
+                   /usr/local/.ghcup /usr/share/swift \
+                   /usr/local/share/powershell /usr/local/share/chromium \
+                   /usr/local/share/boost /opt/hostedtoolcache/CodeQL; do
+            if [ -e "$d" ]; then
+              printf '  %-8s %s\n' "$(du -sh "$d" 2>/dev/null | cut -f1)" "$d"
+              sudo rm -rf "$d" || true
+            fi
+          done
+          docker image prune -af >/dev/null 2>&1 || true
+          echo '=== after ==='
+          df -h /
+
+      - name: Install pinned Meson
+        run: |
+          meson_version=$(tr -d '[:space:]' < onebin/toolchain/meson-version)
+          meson_venv="$RUNNER_TEMP/gnome-terminal-meson"
+          python3 -m venv "$meson_venv"
+          "$meson_venv/bin/python" -m pip install \
+            --disable-pip-version-check --no-input --only-binary=:all: \
+            "meson==${meson_version}"
+          echo "$meson_venv/bin" >> "$GITHUB_PATH"
+          test "$("$meson_venv/bin/meson" --version)" = "$meson_version"
 
       - name: Install zig 0.13.0
         run: |
           curl --fail --location --silent --show-error \
-            -o zig.tar.xz \
+            -o "$RUNNER_TEMP/zig.tar.xz" \
             https://ziglang.org/download/0.13.0/zig-linux-x86_64-0.13.0.tar.xz
-          tar xf zig.tar.xz
-          echo "$PWD/zig-linux-x86_64-0.13.0" >> "$GITHUB_PATH"
+          tar xf "$RUNNER_TEMP/zig.tar.xz" -C "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/zig-linux-x86_64-0.13.0" >> "$GITHUB_PATH"
           echo "$PWD/onebin/toolchain" >> "$GITHUB_PATH"
 
       - name: Build onebin toolchain
         run: make -C onebin
+
+      - name: Configure ccache
+        run: |
+          ccache --set-config max_size=5G
+          ccache --set-config compression=true
+
+      - name: Restore GNOME Terminal dependency prefix and ccache
+        id: cache-restore
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            out/gnome-terminal/static-prefix
+            out/gnome-terminal/deps-work/sources
+            ~/.cache/ccache
+          key: gnome-terminal-gtk-${{ hashFiles('contrib/gnome-terminal/deps.lock', 'tools/build-gnome-terminal-deps.sh', 'tools/build-gnome-terminal.sh', 'tools/verify-gnome-terminal-static.sh', 'contrib/gnome-terminal/**', 'onebin/toolchain/**') }}
+          restore-keys: |
+            gnome-terminal-gtk-
+
+      - name: Mark the start of this build for diagnostics
+        run: touch /tmp/job-start-marker
 
       - name: Build the pinned static GTK dependency prefix
         run: |
@@ -71,6 +141,7 @@ jobs:
           ref=$(awk '$1 == "gnome-terminal" { print $3; exit }' contrib/gnome-terminal/deps.lock)
           url=$(awk '$1 == "gnome-terminal" { print $4; exit }' contrib/gnome-terminal/deps.lock)
           test "${#ref}" -eq 40
+          printf '%s\n' "$ref" | grep -Eq '^[0-9a-f]{40}$'
           git clone --filter=blob:none --no-checkout --quiet "$url" gnome-terminal-src
           git -C gnome-terminal-src fetch --quiet --depth 1 origin "$ref"
           git -C gnome-terminal-src checkout --quiet --detach "$ref"
@@ -86,6 +157,55 @@ jobs:
             --deps-prefix "$PWD/out/gnome-terminal/static-prefix" \
             --out "$PWD/out/gnome-terminal" \
             --jobs 4 2>&1 | tee "$RUNNER_TEMP/gnome-terminal-build.log"
+
+      - name: ccache statistics and disk usage
+        if: always()
+        run: |
+          ccache -s || true
+          echo '=== df -h / ==='
+          df -h /
+          echo '=== GNOME Terminal stores ==='
+          du -sh out/gnome-terminal "$HOME/.cache/ccache" 2>/dev/null || true
+
+      - name: Collect diagnostics on failure or cancellation
+        if: failure() || cancelled()
+        run: |
+          set +e
+          diag=/tmp/gnome-terminal-diagnostic-logs
+          mkdir -p "$diag"
+          cp "$RUNNER_TEMP/gnome-terminal-deps-build.log" "$diag/00-deps-build.log" 2>/dev/null || true
+          cp "$RUNNER_TEMP/gnome-terminal-build.log" "$diag/01-gnome-terminal-build.log" 2>/dev/null || true
+          find out/gnome-terminal -type f -newer /tmp/job-start-marker \
+            ! -name '*.a' ! -name '*.o' ! -name '*.so' ! -name '*.so.*' \
+            -size -2M -print | sort > "$diag/02-output-listing.txt"
+          while IFS= read -r file; do
+            rel=${file#out/gnome-terminal/}
+            target="$diag/03-text/$rel"
+            mkdir -p "$(dirname "$target")"
+            cp "$file" "$target" 2>/dev/null || true
+          done < "$diag/02-output-listing.txt"
+          tail -n 3000 "$RUNNER_TEMP/gnome-terminal-build.log" \
+            > "$diag/04-build-output-tail.txt" 2>/dev/null || true
+          tail -n 3000 "$RUNNER_TEMP/gnome-terminal-deps-build.log" \
+            > "$diag/05-deps-output-tail.txt" 2>/dev/null || true
+          {
+            echo '=== df -h ==='; df -h
+            echo '=== free -h ==='; free -h
+            echo '=== dmesg OOM traces ==='
+            sudo dmesg 2>/dev/null | grep -iE 'killed process|out of memory|oom' || true
+          } > "$diag/06-system-state.txt"
+          du -sh "$diag" > "$diag/07-collection-size.txt" 2>&1 || true
+
+      - name: Save GNOME Terminal dependency prefix and ccache
+        if: always()
+        timeout-minutes: 20
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            out/gnome-terminal/static-prefix
+            out/gnome-terminal/deps-work/sources
+            ~/.cache/ccache
+          key: ${{ steps.cache-restore.outputs.cache-primary-key }}
 
       - name: Upload GNOME Terminal artifact
         if: always()
@@ -103,9 +223,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: gnome-terminal-hybrid-static-gtk-diagnostics
-          path: |
-            ${{ runner.temp }}/gnome-terminal-deps-build.log
-            ${{ runner.temp }}/gnome-terminal-build.log
-            out/gnome-terminal/build/meson-logs/meson-log.txt
+          path: /tmp/gnome-terminal-diagnostic-logs
           if-no-files-found: warn
           retention-days: 14
