@@ -173,21 +173,41 @@ jobs:
             2>&1 | tee /tmp/solo-build.log
           solo_status=("${PIPESTATUS[@]}")
           set -e
-          test "${solo_status[1]}" -eq 0
+          printf 'SoLo pipeline statuses: docker=%s tee=%s\n' \
+            "${solo_status[0]}" "${solo_status[1]}"
+          if [ "${solo_status[1]}" -ne 0 ]; then
+            echo 'SoLo log tee failed' >&2
+            exit "${solo_status[1]}"
+          fi
           if [ "${solo_status[0]}" -ne 0 ]; then
             # The pinned runner can finish the requested graph and produce a
             # complete archive while returning its strict-hygiene status as
             # non-zero.  Accept that class only after proving that the fresh
             # checkout contains the complete dlfcn payload and no diagnostic
             # error; never turn an incomplete or failed compile green.
-            ! grep -Eiq '(^|[^[:alpha:]])(fatal )?error:' /tmp/solo-build.log
-            test -s solo-src/libdlfcn.a
-            test -f solo-src/lib/dlfcn.h
+            if grep -Eiq '(^|[^[:alpha:]])(fatal )?error:' /tmp/solo-build.log; then
+              echo 'SoLo log contains a compiler error:' >&2
+              grep -Ein '(^|[^[:alpha:]])(fatal )?error:' /tmp/solo-build.log >&2
+              exit 1
+            fi
+            test -s solo-src/libdlfcn.a || {
+              echo 'SoLo produced no non-empty libdlfcn.a' >&2
+              exit 1
+            }
+            test -f solo-src/lib/dlfcn.h || {
+              echo 'SoLo produced no public lib/dlfcn.h' >&2
+              exit 1
+            }
+            archive_members=$(ar t solo-src/libdlfcn.a)
+            printf 'SoLo archive members:\n%s\n' "$archive_members"
             for member in dlfcn.cpp.o elf_loader.cpp.o glibc_shim.cpp.o \
                           musl_provider.cpp.o musl_tls.c.o; do
-              ar t solo-src/libdlfcn.a \
+              if ! printf '%s\n' "$archive_members" \
                 | sed 's#^.*/##' \
-                | grep -Fx "$member"
+                | grep -Fx "$member"; then
+                echo "SoLo archive is missing required member: $member" >&2
+                exit 1
+              fi
             done
             echo 'SoLo completed the pinned graph; its strict-hygiene status was non-zero'
           fi
