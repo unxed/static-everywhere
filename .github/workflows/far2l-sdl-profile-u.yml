@@ -174,6 +174,19 @@ jobs:
               # one static link fail at the very end with dozens of
               # undefined std:: symbols.
               apk add --no-cache build-base clang python3 libc++-dev libc++-static
+              # SoLo's generic dlfcn target emits its musl include roots as
+              # -I flags before the compiler driver's libc++ roots.  That
+              # makes musl's math.h/wchar.h/... shadow libc++'s C wrapper
+              # headers.  Put libc++ first once, in the C++ compiler wrapper;
+              # each wrapper then uses #include_next to reach musl.  This
+              # covers the whole family of C/C++ wrapper collisions without
+              # special-casing whichever header fails first.
+              solo_cxx_real=$(command -v "$CXX")
+              printf '%s\n' '#!/bin/sh' \
+                "exec \"$solo_cxx_real\" -I/usr/include/c++/v1 \"\$@\"" \
+                >/tmp/solo-cxx-wrapper
+              chmod 755 /tmp/solo-cxx-wrapper
+              export CXX=/tmp/solo-cxx-wrapper
               machine=$(uname -m)
               fallback=/tmp/solo-generated
               mkdir -p "$fallback/bits" "$fallback/internal"
