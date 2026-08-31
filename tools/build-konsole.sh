@@ -66,6 +66,12 @@ CONAN_TOOLCHAIN="$QT_OUT/conan_toolchain.cmake"
 CMAKE_PREFIX_PATH="$QT_OUT;$KDE_INSTALL_DIR"
 TARGET_TRIPLE="x86_64-linux-gnu.${GLIBC_BASELINE}"
 GIT_CONFIG_GLOBAL="$OUT_ABS/gitconfig"
+QT_PACKAGE_ROOT=
+
+# Keep the Conan metadata lookup in one tested helper; package and host
+# architecture names are not stable parts of CMakeDeps filenames.
+# shellcheck disable=SC1091
+source "$REPO_ROOT/contrib/konsole/qt-package-root.sh"
 
 quote_cmd() {
     printf '+ '
@@ -214,24 +220,13 @@ fi
 # file as qt_PACKAGE_FOLDER_RELEASE, which is the same variable
 # contrib/f4-qt/import-qt-static-plugins.cmake already relies on. Do not
 # reconstruct it from a cache layout that is not ours to predict.
-qt_package_root() {
-    local data_file root
-    data_file=$(find "$QT_OUT" -maxdepth 1 -name 'qt-release-*-data.cmake' \
-                    -print -quit 2>/dev/null || true)
-    if [[ -z $data_file ]]; then
-        printf 'build-konsole.sh: no qt-release-*-data.cmake in %s;\n' "$QT_OUT" >&2
-        printf '  cannot locate the Qt package root\n' >&2
-        return 1
-    fi
-    root=$(sed -n 's|^[[:space:]]*set(qt_PACKAGE_FOLDER_RELEASE "\(.*\)")[[:space:]]*$|\1|p' \
-               "$data_file" | head -n 1)
-    if [[ -z $root ]]; then
-        printf 'build-konsole.sh: qt_PACKAGE_FOLDER_RELEASE not set in %s\n' \
-            "$data_file" >&2
-        return 1
-    fi
-    printf '%s' "$root"
-}
+# CMakeDeps writes the Qt package root into the generated data file. Add
+# that root to CMAKE_PREFIX_PATH as well as the generator directory: the
+# Qt Conan package owns Qt6Core/Qt6Gui/... configs outside $QT_OUT.
+if [[ $PRINT_PLAN -eq 0 ]]; then
+    QT_PACKAGE_ROOT=$(konsole_qt_package_root "$QT_OUT")
+    CMAKE_PREFIX_PATH="$QT_OUT;$QT_PACKAGE_ROOT;$KDE_INSTALL_DIR"
+fi
 
 render_config() {
     sed -e "s|@KDE_SOURCE_DIR@|$KDE_SOURCE_DIR|g" \
@@ -246,7 +241,7 @@ render_config() {
         -e "s|@CMAKE_PREFIX_PATH@|$CMAKE_PREFIX_PATH|g" \
         -e "s|@PROJECT_INCLUDE@|$REPO_ROOT/contrib/konsole/project-include.cmake|g" \
         -e "s|@KONSOLE_REF@|$KONSOLE_REF|g" \
-        -e "s|@QT_PACKAGE_ROOT@|$(qt_package_root)|g" \
+        -e "s|@QT_PACKAGE_ROOT@|$QT_PACKAGE_ROOT|g" \
         "$REPO_ROOT/contrib/konsole/kde-builder.yaml.in"
 }
 if [[ $PRINT_PLAN -eq 1 ]]; then
