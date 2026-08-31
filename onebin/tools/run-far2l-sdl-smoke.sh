@@ -107,8 +107,12 @@ app_pid=$!
 window_id=
 attempts=0
 while [ "${attempts}" -lt 90 ]; do
+    # xvfb-run gives this probe a fresh X server with no unrelated clients.
+    # Match the visible top-level window rather than its title: far2l changes
+    # the SDL bootstrap title asynchronously, and the title property exposed
+    # by xdotool is not stable across the initial and final titles.
     window_id=$(timeout --foreground --kill-after=1s 2s \
-        xdotool search --onlyvisible --name '[Ff][Aa][Rr]2[Ll]' 2>/dev/null \
+        xdotool search --onlyvisible --name '.*' 2>/dev/null \
         | head -n 1 || true)
     if [ -n "$window_id" ]; then
         break
