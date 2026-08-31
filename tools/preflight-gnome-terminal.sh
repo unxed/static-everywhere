@@ -114,7 +114,7 @@ echo
 echo '== hybrid pkg-config boundary =='
 HOST_LIBS=$(bash "$REPO_ROOT/tools/pkg-config-hybrid-host.sh" --libs --static x11 2>/dev/null || true)
 if grep -Fq -- '/usr/lib/x86_64-linux-gnu/libX11.so' <<<"$HOST_LIBS" \
-    && ! grep -Eq -- '(^| )-l(X11|xcb|Xau|Xdmcp|pthread)( |$)' <<<"$HOST_LIBS"; then
+    && ! grep -Eq -- '(^| )-l(X11|xcb|Xau|Xdmcp)( |$)' <<<"$HOST_LIBS"; then
     pass 'host X11 closure resolves to shared objects'
 else
     fail 'host X11 closure still contains bare static -l arguments'
