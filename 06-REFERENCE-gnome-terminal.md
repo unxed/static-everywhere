@@ -46,7 +46,9 @@ SONAME if one slips through.
 
 The display server, GPU driver, fonts, schemas and session services are runtime
 inputs by design. They are data, protocols or services, not a reason to make
-the GTK code dynamic.
+the GTK code dynamic. Profile H's glibc runtime ABI is a separate, explicit
+runtime boundary: a dependency graph may produce split glibc entries such as
+`libresolv.so.2`, and those standard runtime SONAMEs are allowlisted by name.
 
 The pinned source also has a small, separate build-time host contract. Its
 `meson.build` needs the `gsettings-desktop-schemas` pkg-config metadata, and
@@ -67,7 +69,9 @@ First produce the prefix from the commit pins:
 
 The producer verifies every source checkout against `contrib/gnome-terminal/deps.lock`
 and builds the Layer-1 archives in dependency order. The hybrid boundary is
-limited to X11 client libraries and the Profile H OpenGL/EGL runtime ABI.
+the Profile H glibc runtime ABI plus X11 client libraries and the Profile H
+OpenGL/EGL runtime ABI. The GUI portion remains limited to X11/OpenGL/EGL;
+the glibc entries are runtime ABI, not additional desktop libraries.
 GTK's accessibility bridge is disabled for this PoC; D-Bus remains a protocol
 used through static GLib rather than a host library dependency.
 

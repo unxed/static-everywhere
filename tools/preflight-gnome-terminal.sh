@@ -104,7 +104,7 @@ fi
 
 for required in \
     'commit verified' \
-    'host contract: X11 client libraries plus the Profile H OpenGL/EGL runtime ABI' \
+    'host contract: Profile H glibc runtime ABI (including split resolver) plus X11/OpenGL/EGL GUI ABI' \
     'host library policy: pkg-config maps only X11/OpenGL -l arguments to shared objects' \
     'fontconfig install: manual copy' \
     'HAVE_XRENDERCREATESOLIDFILL' \

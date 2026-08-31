@@ -1,8 +1,8 @@
 # contrib/gnome-terminal/deps.lock — commit-pinned sources for the hybrid
 # GNOME Terminal reference build. Every toolkit/UI code dependency is built
 # into one prefix with static archives and matching pkg-config metadata before
-# GNOME Terminal is configured. X11 client libraries and the Profile H
-# OpenGL/EGL runtime ABI are the only GUI host-library boundary; UUID is built
+# GNOME Terminal is configured. Profile H's glibc runtime ABI and the explicit
+# X11/OpenGL/EGL GUI ABI are the only host-library boundaries; UUID is built
 # from its pinned util-linux source. D-Bus remains a protocol used through
 # static GLib, and GTK's accessibility bridge is disabled for this PoC.
 #

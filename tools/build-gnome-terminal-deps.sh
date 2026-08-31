@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Build the pinned Layer-1 dependency prefix consumed by
-# build-gnome-terminal.sh. X11 client libraries and the GPU ABI are the only
-# non-C-runtime host inputs; the GTK/UI code and D-Bus protocol implementation
-# do not come from the host.
+# build-gnome-terminal.sh. Profile H's glibc runtime ABI plus X11 and the GPU
+# ABI are the only host inputs; the GTK/UI code and D-Bus protocol
+# implementation do not come from the host.
 set -euo pipefail
 
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
@@ -116,7 +116,7 @@ work: ${WORK}
 target: ${TARGET}
 source pins: ${LOCK} (commit verified)
 order: ${dependency_order[*]}
-host contract: X11 client libraries plus the Profile H OpenGL/EGL runtime ABI
+host contract: Profile H glibc runtime ABI (including split resolver) plus X11/OpenGL/EGL GUI ABI
 host library policy: pkg-config maps only X11/OpenGL -l arguments to shared objects
 fontconfig install: manual copy (no meson install; protects host /etc/fonts)
 cairo XRender function checks: HAVE_XRENDERCREATESOLIDFILL HAVE_XRENDERCREATELINEARGRADIENT HAVE_XRENDERCREATERADIALGRADIENT HAVE_XRENDERCREATECONICALGRADIENT

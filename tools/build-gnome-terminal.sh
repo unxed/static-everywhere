@@ -73,9 +73,17 @@ GLIBC_SHIM_OBJ="${OUT_ABS}/gnome-terminal-glibc-shims.o"
 TARGET="x86_64-linux-gnu.${BASELINE}"
 PKG_CONFIG_PATH_VALUE="${DEPS_ABS}/lib/pkgconfig:${DEPS_ABS}/lib/x86_64-linux-gnu/pkgconfig:${DEPS_ABS}/share/pkgconfig:/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/share/pkgconfig"
 ONEBIN="${REPO_ROOT}/onebin/build/onebin"
-GNOME_TERMINAL_HOST_CONTRACT=(
+GNOME_TERMINAL_GLIBC_RUNTIME_CONTRACT=(
+    # Profile H keeps the glibc runtime dynamic.  Keep the complete set of
+    # runtime SONAMEs explicit: glibc splits resolver and other components
+    # into separate DT_NEEDED entries on some dependency graphs.
     --allow libc.so.6 --allow libm.so.6 --allow libdl.so.2
-    --allow libpthread.so.0 --allow librt.so.1
+    --allow libpthread.so.0 --allow librt.so.1 --allow libresolv.so.2
+)
+GNOME_TERMINAL_GUI_HOST_CONTRACT=(
+    # The only non-C-runtime GUI boundary is the explicitly permitted X11 and
+    # OpenGL/EGL host ABI.  Toolkit/UI and desktop protocol implementations
+    # remain in the static prefix.
     --allow libX11.so.6 --allow libX11-xcb.so.1 --allow libXext.so.6
     --allow libXi.so.6 --allow libXrandr.so.2 --allow libXrender.so.1
     --allow libXcursor.so.1 --allow libXdamage.so.1 --allow libXfixes.so.3
@@ -87,6 +95,10 @@ GNOME_TERMINAL_HOST_CONTRACT=(
     --allow libxcb-keysyms.so.1 --allow libxcb-util.so.1
     --allow libxcb-xinerama.so.0 --allow libxcb-cursor.so.0
     --allow libXtst.so.6 --allow libGL.so.1 --allow libEGL.so.1
+)
+GNOME_TERMINAL_HOST_CONTRACT=(
+    "${GNOME_TERMINAL_GLIBC_RUNTIME_CONTRACT[@]}"
+    "${GNOME_TERMINAL_GUI_HOST_CONTRACT[@]}"
 )
 
 quote_cmd() {
@@ -157,9 +169,10 @@ jobs: ${JOBS}
 # FreeType, HarfBuzz, Fontconfig, VTE, libhandy and libuuid archives plus their
 # .pc files.
 # The dependency lock is contrib/gnome-terminal/deps.lock.
-# Only host X11/OpenGL/EGL libraries remain dynamic through the hybrid
-# pkg-config wrapper; GTK, GLib, D-Bus and the rest of the UI stack stay in the
-# prefix's private static dependency closure.
+# Profile H keeps the explicit glibc runtime ABI dynamic, including split
+# resolver entries such as libresolv.so.2.  The only non-C-runtime GUI host
+# boundary is X11/OpenGL/EGL; GTK, GLib, D-Bus and the rest of the UI stack
+# stay in the prefix's private static dependency closure.
 # The install prefix is /usr and DESTDIR creates a directly installable tree;
 # no runtime path or environment-variable relocation is required.
 # linker hardening: -Wl,-z,relro -Wl,-z,now -Wl,-z,noexecstack
