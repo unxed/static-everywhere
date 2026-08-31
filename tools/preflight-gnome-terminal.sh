@@ -236,14 +236,22 @@ VTE_PATCH="${PATCH_DIR}/vte-static-library.patch"
 for required in \
     'diff --git a/meson_options.txt b/meson_options.txt' \
     "'build-app'" \
-    'if get_option('\''build-app'\'')' \
-    '-  subdir('\''app'\'')'; do
+    'if get_option('\''build-app'\'')'; do
     if grep -Fq -- "${required}" "${VTE_PATCH}"; then
         pass "captured VTE patch contains ${required}"
     else
         fail "captured VTE patch is missing ${required}"
     fi
 done
+
+# Unified diffs put their own marker immediately before the original line.
+# Do not encode the source indentation in the assertion: pinned projects may
+# format the same unconditional subdir() with or without leading whitespace.
+if grep -Eq -- "^-([[:space:]]*)subdir\\('app'\\)[[:space:]]*$" "${VTE_PATCH}"; then
+    pass "captured VTE patch removes unconditional subdir('app')"
+else
+    fail "captured VTE patch does not remove unconditional subdir('app')"
+fi
 
 for required in 'reset --quiet --hard' 'clean -fdx'; do
     if grep -Fq -- "$required" "$DEPS_SCRIPT"; then
