@@ -1,4 +1,35 @@
 # static-everywhere: the one CMAKE_PROJECT_INCLUDE hook for Konsole.
+#
+# Conan's CMakeToolchain publishes dependency `builddirs` in
+# CMAKE_MODULE_PATH. Those entries are package-specific directories such as
+# `<prefix>/lib/cmake/Qt6Core`; CMake's CONFIG-mode find_package does not use
+# CMAKE_MODULE_PATH to locate a package config file. Promote the owning
+# prefixes before any framework's CMakeLists.txt calls find_package(), so
+# standalone package names work for the whole KDE dependency graph rather than
+# requiring a new per-package *_DIR workaround after every CI failure.
+function(_se_promote_conan_package_prefixes)
+    set(_prefixes)
+    foreach(_module_path IN LISTS CMAKE_MODULE_PATH)
+        if(IS_ABSOLUTE "${_module_path}" AND
+           "${_module_path}" MATCHES "^(.+)/lib(64)?/cmake/[^/]+/?$")
+            set(_prefix "${CMAKE_MATCH_1}")
+            if(NOT _prefix MATCHES "^/(usr|lib)(/|$)")
+                list(APPEND _prefixes "${_prefix}")
+            endif()
+        endif()
+    endforeach()
+    list(REMOVE_DUPLICATES _prefixes)
+    if(_prefixes)
+        list(PREPEND CMAKE_PREFIX_PATH ${_prefixes})
+        set(CMAKE_PREFIX_PATH "${CMAKE_PREFIX_PATH}" PARENT_SCOPE)
+        message(STATUS
+                "static-everywhere: promoted Conan package prefixes for CONFIG lookup: "
+                "${_prefixes}")
+    endif()
+endfunction()
+
+_se_promote_conan_package_prefixes()
+
 if(NOT PROJECT_IS_TOP_LEVEL)
     return()
 endif()
