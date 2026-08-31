@@ -79,6 +79,30 @@ else
     fail "no https rewrite for the SSH submodule URL"
 fi
 
+# Cost: another full build with a perfectly healthy UI and invisible
+# thumbnails when the caller selects Qt Quick's raster renderer. The
+# ZoinGallery shader remains the hardware path; this overlay supplies the
+# built-in Image path that software rendering can paint.
+if grep -q 'zoin-gallery-software-images.patch' "$PLAN" && \
+   grep -q 'GraphicsInfo.Software' \
+      "${REPO_ROOT}/contrib/f4-qt/patches/zoin-gallery-software-images.patch"; then
+    pass "ZoinGallery has a guarded software Image fallback"
+else
+    fail "the software-renderer image fallback is missing from the build plan"
+fi
+
+if [ -f "${PWD}/f4-src/third_party/ZoinGallery/CMakeLists.txt" ]; then
+    if git -C "${PWD}/f4-src" apply --check \
+         "${REPO_ROOT}/contrib/f4-qt/patches/zoin-gallery-software-images.patch"; then
+        pass "the ZoinGallery software-image patch applies to the fetched f4 source"
+    elif git -C "${PWD}/f4-src" apply --reverse --check \
+           "${REPO_ROOT}/contrib/f4-qt/patches/zoin-gallery-software-images.patch"; then
+        pass "the ZoinGallery software-image patch is already applied to the fetched f4 source"
+    else
+        fail "the ZoinGallery software-image patch does not apply to the fetched f4 source"
+    fi
+fi
+
 if grep -qE -- '-c [^ ]*compat/glibc-shims[.]c -o [^ ]*compat-glibc-shims[.]o' "$PLAN"; then
     pass "glibc compat shim object is built"
 else

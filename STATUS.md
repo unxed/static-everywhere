@@ -7,6 +7,27 @@ Everything below this section is a reverse-chronological log (newest
 first). Read *this* section first; consult the log below only for the
 detail behind a specific claim.
 
+### 2026-08-31: software-renderer image fallback is in the build recipe
+
+The fresh GitHub artifact from run #71 (`fb394aa`) was tested on the live
+X11 desktop with its own embedded host and a temporary host cache. With the
+normal environment, `2.jpg` rendered in both panels. With
+`QT_QUICK_BACKEND=software QT_XCB_GL_INTEGRATION=none`, the UI and ordinary
+file icons rendered but the JPEG areas were empty. This isolates the image
+regression to ZoinGallery's custom `ShaderEffect` path: the decoder and the
+rest of the Qt Quick scene still work.
+
+The build recipe now applies
+`contrib/f4-qt/patches/zoin-gallery-software-images.patch` to the pinned
+ZoinGallery checkout. It adds ordinary `Image` overlays for thumbnails,
+viewer images, navigation neighbors and the filmstrip, guarded by
+`GraphicsInfo.Software`; the existing shader path is unchanged for hardware
+renderers. The overlay is checked before the expensive dependency build and
+removed after each build path (with an exit cleanup fallback), so it cannot
+silently drift or leave the source checkout dirty. `tools/preflight-f4-qt.sh`
+checks both the plan and patch applicability. A new full CI build and fresh
+artifact test are still required before calling this fixed.
+
 ### 2026-08-29: fresh host dies with SIGILL before the ExtUI handshake
 
 The newest cached host

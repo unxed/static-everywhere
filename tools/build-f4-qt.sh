@@ -240,6 +240,25 @@ if [ "${PRINT_PLAN}" -eq 0 ] && [ ! -f "${SRC}/third_party/ZoinGallery/CMakeList
     exit 1
 fi
 
+# ZoinGallery's image widgets use a custom ShaderEffect to crop and draw
+# provider-backed images. Qt Quick's raster renderer does not paint that
+# custom shader, so a software launch otherwise shows the correct layout
+# with black/empty image rectangles. Keep the hardware shader path intact
+# and apply a small source patch that adds ordinary Image fallbacks guarded
+# by GraphicsInfo.Software. Apply it after the submodule checkout, to the
+# exact pinned source, and remove only the overlay made by this invocation.
+# If the pinned QML changes, fail before spending time on Conan/Qt rather
+# than silently shipping another build with missing images.
+GALLERY_PATCH="${REPO_ROOT}/contrib/f4-qt/patches/zoin-gallery-software-images.patch"
+_F4_GALLERY_PATCH_APPLIED=0
+f4_gallery_patch_cleanup() {
+    if [ "${_F4_GALLERY_PATCH_APPLIED}" -eq 1 ]; then
+        git -C "${SRC}" apply --reverse --quiet "${GALLERY_PATCH}"
+    fi
+}
+trap f4_gallery_patch_cleanup EXIT
+plan_step "cd ${SRC} && if git apply --check \"${GALLERY_PATCH}\"; then git apply --quiet \"${GALLERY_PATCH}\"; _F4_GALLERY_PATCH_APPLIED=1; elif git apply --reverse --check \"${GALLERY_PATCH}\"; then :; else echo 'error: ZoinGallery does not match the software-image overlay' >&2; exit 1; fi"
+
 # 2. Build setup
 export F4_PORTABLE_STATIC=ON
 
@@ -285,6 +304,7 @@ if [ "${CONFIG}" = "linux" ] && [ "${TOOLCHAIN}" = "host" ]; then
     plan_step "! grep -q 'Failed to initialize graphics backend' ${OUT}/smoke.log"
     plan_step "! grep -q 'neither GLX nor EGL are enabled' ${OUT}/smoke.log"
     plan_step "${REPO_ROOT}/tools/check-gl-integrations.sh ${SRC}/build-qt/f4-qt-host"
+    plan_step "if [ \"\${_F4_GALLERY_PATCH_APPLIED}\" -eq 1 ]; then git -C \"${SRC}\" apply --reverse --quiet \"${GALLERY_PATCH}\"; _F4_GALLERY_PATCH_APPLIED=0; fi"
 
 elif [ "${CONFIG}" = "linux" ] && [ "${TOOLCHAIN}" = "zig" ]; then
     # Diagnostics audit (prompted directly by losing a real CI cycle to
@@ -820,6 +840,7 @@ HOOKEOF"
     # positive check the smoke run cannot make: with software forced, the
     # host starts fine whether or not it could ever use a GPU.
     plan_step "${REPO_ROOT}/tools/check-gl-integrations.sh ${SRC}/qt/host/build-portable-linux/bin/Release/f4-qt-host"
+    plan_step "if [ \"\${_F4_GALLERY_PATCH_APPLIED}\" -eq 1 ]; then git -C \"${SRC}\" apply --reverse --quiet \"${GALLERY_PATCH}\"; _F4_GALLERY_PATCH_APPLIED=0; fi"
 
     plan_step "cd ${SRC} && python ci/package-embedded-qt-host.py qt/host/build-portable-linux/bin/Release/f4-qt-host"
     plan_step "cd ${SRC} && go test -tags f4_embedded_qt_host -run 'TestMaterializeEmbeddedQtHost|TestGeneratedEmbeddedQtHostPayload' ."
@@ -857,4 +878,5 @@ HOOKEOF"
 elif [ "${CONFIG}" = "windows" ]; then
     plan_step "cd ${SRC} && pwsh ci/build-portable-qt-windows.ps1"
     plan_step "cd ${SRC} && pwsh ci/audit-portable-qt-windows.ps1"
+    plan_step "if [ \"\${_F4_GALLERY_PATCH_APPLIED}\" -eq 1 ]; then git -C \"${SRC}\" apply --reverse --quiet \"${GALLERY_PATCH}\"; _F4_GALLERY_PATCH_APPLIED=0; fi"
 fi
