@@ -203,10 +203,12 @@ cmake_config_args() {
 # comma-separated sonames, or empty. strict is the literal word "strict"
 # or empty.
 #
-# Paths are flat (e.g. "far2l", not "bin/far2l") — confirmed against a
-# real build, not the "<prefix>/bin/..." layout 04-REFERENCE-far2l.md
-# §3.4 originally documented (a real correction, made after actually
-# running `cmake --install`; that section now notes the discrepancy).
+# The install layout depends on the far2l tree: older/custom-prefix builds
+# can be flat, while the pinned SDL preview uses the standard
+# "<prefix>/bin" plus "<prefix>/lib/far2l" layout. Keep the historical
+# flat paths in the offline plan, but detect the split layout after a real
+# install so --audit-only and the build path both follow the artifacts that
+# exist.
 # far2l_sdl.so is audited as --profile module, not hybrid: it is a
 # dlopen'd shared object, never has PT_INTERP by design, and --profile
 # hybrid's OB0036 ("no PT_INTERP") is the wrong check for it — confirmed
@@ -323,6 +325,14 @@ configure_build_install() {
 run_audits() {
     status=0
     plan=$(audit_plan_for_config "${CONFIG}")
+    split_install=0
+    if [ "${PRINT_PLAN}" -eq 0 ] && {
+        [ -f "${OUT}/install/bin/far2l" ] ||
+        [ -f "${OUT}/install/lib/far2l/far2l_sdl.so" ] ||
+        [ -f "${OUT}/install/lib/far2l/far2l_gui.so" ];
+    }; then
+        split_install=1
+    fi
     save_ifs=${IFS}
     IFS='
 '
@@ -343,7 +353,15 @@ run_audits() {
             done
             IFS=${save_ifs2}
         fi
-        cmd="${cmd} ${OUT}/install/${relpath}"
+        artifact="${OUT}/install/${relpath}"
+        if [ "${split_install}" -eq 1 ]; then
+            if [ "${relpath}" = "far2l" ]; then
+                artifact="${OUT}/install/bin/far2l"
+            else
+                artifact="${OUT}/install/lib/far2l/${relpath}"
+            fi
+        fi
+        cmd="${cmd} ${artifact}"
 
         if ! plan_step "${cmd}"; then
             status=1

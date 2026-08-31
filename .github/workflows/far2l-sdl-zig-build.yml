@@ -208,25 +208,26 @@ jobs:
             # to a non-zero result. Do not hide a compile failure: only allow
             # the strict audit's warning-only exit once all three artifacts
             # exist; the explicit non-strict audits below still fail on errors.
-            test -x out/far2l/build/install/far2l
-            test -f out/far2l/build/install/far2l_sdl.so
-            test -x out/far2l/build/install/far2l_ttyx.broker
+            test -x out/far2l/build/install/bin/far2l
+            test -f out/far2l/build/install/lib/far2l/far2l_sdl.so
+            test -x out/far2l/build/install/lib/far2l/far2l_ttyx.broker
             echo 'far2l builder returned the documented strict-hygiene status; re-auditing artifacts without promoting warnings'
           fi
 
       - name: Audit the three far2l SDL artifacts
         run: |
           set -o pipefail
+          install=out/far2l/build/install
           onebin/build/onebin audit --profile hybrid --level 1 \
-            out/far2l/build/install/far2l \
+            "$install/bin/far2l" \
             | tee out/far2l/far2l.audit.txt
           onebin/build/onebin audit --profile module --level 1 \
-            out/far2l/build/install/far2l_sdl.so \
+            "$install/lib/far2l/far2l_sdl.so" \
             | tee out/far2l/far2l_sdl.audit.txt
           onebin/build/onebin audit --profile hybrid --level 1 \
             --allow libX11.so.6 --allow libXi.so.6 --allow libICE.so.6 \
             --allow libSM.so.6 --allow libXext.so.6 \
-            out/far2l/build/install/far2l_ttyx.broker \
+            "$install/lib/far2l/far2l_ttyx.broker" \
             | tee out/far2l/far2l_ttyx.audit.txt
 
       - name: Run the graphical SDL smoke test
@@ -234,7 +235,7 @@ jobs:
           mkdir -p out/far2l/xvfb
           xvfb-run -a -s '-screen 0 1280x900x24 +extension GLX +render -noreset' \
             onebin/tools/run-far2l-sdl-smoke.sh \
-            "$PWD/out/far2l/build/install/far2l" \
+            "$PWD/out/far2l/build/install/bin/far2l" \
             "$PWD/out/far2l/smoke"
 
       - name: Collect diagnostics on failure or cancellation
@@ -273,9 +274,9 @@ jobs:
         with:
           name: far2l-sdl-zig-build
           path: |
-            out/far2l/build/install/far2l
-            out/far2l/build/install/far2l_sdl.so
-            out/far2l/build/install/far2l_ttyx.broker
+            out/far2l/build/install/bin/far2l
+            out/far2l/build/install/lib/far2l/far2l_sdl.so
+            out/far2l/build/install/lib/far2l/far2l_ttyx.broker
             out/far2l/*.audit.txt
             out/far2l/smoke
           if-no-files-found: warn
