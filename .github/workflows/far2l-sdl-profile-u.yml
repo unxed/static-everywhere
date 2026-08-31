@@ -189,12 +189,10 @@ jobs:
               ./build
               solo_build_status=$?
               set -e
-              # SoLo restores the published target through an absolute CAS
-              # symlink rooted at /src.  That link is valid in this mount
-              # namespace but cannot be consumed by the host after Docker
-              # exits.  Materialize the published target while the namespace
-              # is still alive; downstream steps consume this regular handoff
-              # file, not a container-local symlink.
+              # SoLo publishes its target through a CAS symlink.  Resolve and
+              # materialize that target while the container namespace is
+              # still alive; downstream steps consume this explicit regular
+              # handoff file, never a container-local publisher link.
               test -L dlfcn
               test -s dlfcn
               test ! -e /src/libdlfcn.a
@@ -225,16 +223,14 @@ jobs:
               exit 1
             fi
           fi
-          if [ ! -L solo-src/dlfcn ]; then
-            echo 'SoLo did not publish the expected dlfcn archive link' >&2
-            find solo-src -maxdepth 2 -name 'dlfcn*' -print >&2
-            exit 1
-          fi
-          # The published link is intentionally container-local; the Docker
-          # step above must have materialized its target for the host.
+          # The publisher's dlfcn link is an implementation detail of the
+          # container's CAS namespace.  Docker is allowed to discard that
+          # link when the container exits, so the cross-namespace contract is
+          # the explicit archive copied to the bind mount above.
           solo_archive="$PWD/solo-src/libdlfcn.a"
           test -f "$solo_archive" || {
             echo 'SoLo container did not materialize libdlfcn.a' >&2
+            find solo-src -maxdepth 2 -name '*dlfcn*' -print >&2
             exit 1
           }
           test ! -L "$solo_archive" || {
