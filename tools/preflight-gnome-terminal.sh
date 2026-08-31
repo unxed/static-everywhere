@@ -76,6 +76,8 @@ for required in \
     '-Wl,-z,relro' \
     '-Wl,-z,now' \
     '-Wl,-z,noexecstack' \
+    'gnome-terminal-static-gmodule-wrap.patch' \
+    'gnome-terminal-glibc-shims.o' \
     'meson install' \
     'verify-gnome-terminal-static.sh'; do
     if grep -Fq -- "$required" "$PLAN"; then
@@ -250,6 +252,26 @@ for required in \
         pass "captured VTE patch contains ${required}"
     else
         fail "captured VTE patch is missing ${required}"
+    fi
+done
+
+GNOME_PATCH="${PATCH_DIR}/gnome-terminal-static-gmodule-wrap.patch"
+if git apply --numstat "$GNOME_PATCH" >/dev/null 2>&1; then
+    pass 'captured GNOME Terminal patch is a valid Git patch'
+else
+    fail 'captured GNOME Terminal patch is not a valid Git patch'
+fi
+
+for required in \
+    'diff --git a/src/meson.build b/src/meson.build' \
+    '-g_module_open (char const* file_name,' \
+    '+__wrap_g_module_open (char const* file_name,' \
+    '+  return g_module_open_full(file_name, flags, nullptr);' \
+    "+  link_args: ['-Wl,--wrap=g_module_open'],"; do
+    if grep -Fq -- "${required}" "${GNOME_PATCH}"; then
+        pass "captured GNOME Terminal patch contains ${required}"
+    else
+        fail "captured GNOME Terminal patch is missing ${required}"
     fi
 done
 

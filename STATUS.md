@@ -7,6 +7,25 @@ Everything below this section is a reverse-chronological log (newest
 first). Read *this* section first; consult the log below only for the
 detail behind a specific claim.
 
+### Run #42: static application interposition and baseline compatibility
+
+Run #42 reached the final GNOME Terminal links and exposed two independent
+classes of static-link failures. The application deliberately interposed
+`g_module_open` to block `pk-gtk-module`; with GLib linked from a static
+archive, that application definition collided with GLib's real definition.
+The captured GNOME Terminal source patch now uses the linker's
+`--wrap=g_module_open` mechanism, keeps the blocklist in the application and
+delegates through GLib's `g_module_open_full`, without allowing duplicate
+definitions to hide unrelated collisions.
+
+The same run also found `close_range` references emitted by GLib/VTE against
+the glibc 2.28 target. The final GNOME Terminal link now receives the shared
+glibc-baseline shim object, so the recipe covers this class of header-versus-
+target symbol gaps (including future thin syscall wrappers already present in
+that compatibility layer), not just the reported symbol. Both changes are
+applied from captured Git diffs or an existing compatibility source; no patch
+text is hand-generated.
+
 ### Run #41: pinned-source audit found two host build inputs
 
 Run #41 reached the GNOME Terminal configure step and failed before any

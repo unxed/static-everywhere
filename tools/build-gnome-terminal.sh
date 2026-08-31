@@ -9,6 +9,8 @@ SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 REPO_ROOT=$(CDPATH= cd -- "${SCRIPT_DIR}/.." && pwd)
 TOOLCHAIN="${REPO_ROOT}/onebin/toolchain"
 PKG_CONFIG_WRAPPER="${REPO_ROOT}/tools/pkg-config-hybrid-host.sh"
+GNOME_STATIC_PATCH="${REPO_ROOT}/contrib/gnome-terminal/patches/gnome-terminal-static-gmodule-wrap.patch"
+GLIBC_SHIM_SOURCE="${REPO_ROOT}/contrib/f4-qt/compat/glibc-shims.c"
 PKG_CONFIG_COMMAND=(bash "${PKG_CONFIG_WRAPPER}")
 PKG_CONFIG_ENV="bash $(printf '%q' "${PKG_CONFIG_WRAPPER}")"
 
@@ -67,6 +69,7 @@ INSTALL_PREFIX=/usr
 PACKAGE_ROOT="${OUT_ABS}/package"
 NATIVE_FILE="${OUT_ABS}/meson-static.ini"
 ARTIFACT="${OUT_ABS}/gnome-terminal-server"
+GLIBC_SHIM_OBJ="${OUT_ABS}/gnome-terminal-glibc-shims.o"
 TARGET="x86_64-linux-gnu.${BASELINE}"
 PKG_CONFIG_PATH_VALUE="${DEPS_ABS}/lib/pkgconfig:${DEPS_ABS}/lib/x86_64-linux-gnu/pkgconfig:${DEPS_ABS}/share/pkgconfig:/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/share/pkgconfig"
 ONEBIN="${REPO_ROOT}/onebin/build/onebin"
@@ -110,6 +113,19 @@ run_env() {
     fi
 }
 
+apply_source_patch() {
+    local source=$1 patch=$2
+    if ! git -C "${source}" apply --numstat "${patch}" >/dev/null 2>&1; then
+        printf 'build-gnome-terminal.sh: malformed captured GNOME Terminal patch: %s\n' \
+            "${patch}" >&2
+        return 1
+    fi
+    if git -C "${source}" apply --reverse --check "${patch}" >/dev/null 2>&1; then
+        return 0
+    fi
+    run git -C "${source}" apply --whitespace=nowarn "${patch}"
+}
+
 render_native_file() {
     cat >"$NATIVE_FILE" <<EOF
 [binaries]
@@ -122,8 +138,8 @@ strip = 'strip'
 [built-in options]
 c_args = ['-target', '${TARGET}', '-fPIE', '-ffunction-sections', '-fdata-sections', '-fstack-protector-strong', '-ffile-prefix-map=${SRC_ABS}=.']
 cpp_args = ['-target', '${TARGET}', '-fPIE', '-ffunction-sections', '-fdata-sections', '-fstack-protector-strong', '-ffile-prefix-map=${SRC_ABS}=.']
-c_link_args = ['-target', '${TARGET}', '-static-libgcc', '-Wl,--gc-sections', '-Wl,-z,relro', '-Wl,-z,now', '-Wl,-z,noexecstack', '-pie', '-s', '-L${DEPS_ABS}/lib', '-L${DEPS_ABS}/lib/x86_64-linux-gnu', '-L/usr/lib/x86_64-linux-gnu', '-L/usr/lib']
-cpp_link_args = ['-target', '${TARGET}', '-static-libgcc', '-static-libstdc++', '-Wl,--gc-sections', '-Wl,-z,relro', '-Wl,-z,now', '-Wl,-z,noexecstack', '-pie', '-s', '-L${DEPS_ABS}/lib', '-L${DEPS_ABS}/lib/x86_64-linux-gnu', '-L/usr/lib/x86_64-linux-gnu', '-L/usr/lib']
+c_link_args = ['${GLIBC_SHIM_OBJ}', '-target', '${TARGET}', '-static-libgcc', '-Wl,--gc-sections', '-Wl,-z,relro', '-Wl,-z,now', '-Wl,-z,noexecstack', '-pie', '-s', '-L${DEPS_ABS}/lib', '-L${DEPS_ABS}/lib/x86_64-linux-gnu', '-L/usr/lib/x86_64-linux-gnu', '-L/usr/lib']
+cpp_link_args = ['${GLIBC_SHIM_OBJ}', '-target', '${TARGET}', '-static-libgcc', '-static-libstdc++', '-Wl,--gc-sections', '-Wl,-z,relro', '-Wl,-z,now', '-Wl,-z,noexecstack', '-pie', '-s', '-L${DEPS_ABS}/lib', '-L${DEPS_ABS}/lib/x86_64-linux-gnu', '-L/usr/lib/x86_64-linux-gnu', '-L/usr/lib']
 default_library = 'static'
 b_pie = true
 EOF
@@ -147,12 +163,18 @@ jobs: ${JOBS}
 # The install prefix is /usr and DESTDIR creates a directly installable tree;
 # no runtime path or environment-variable relocation is required.
 # linker hardening: -Wl,-z,relro -Wl,-z,now -Wl,-z,noexecstack
+# captured GNOME source patch: ${GNOME_STATIC_PATCH}
+# glibc baseline compatibility source: ${GLIBC_SHIM_SOURCE}
+# glibc baseline compatibility object: ${GLIBC_SHIM_OBJ}
 PLAN
 
 if [ "$PRINT_PLAN" -eq 1 ]; then
     echo "# Meson native file: ${NATIVE_FILE}"
     echo "# default_library = static"
     echo "# c/c++ target = ${TARGET}"
+    quote_cmd git -C "$SRC_ABS" apply --whitespace=nowarn "$GNOME_STATIC_PATCH"
+    quote_cmd "${TOOLCHAIN}/zig-cc" -target "$TARGET" -O2 -fPIC \
+        -c "$GLIBC_SHIM_SOURCE" -o "$GLIBC_SHIM_OBJ"
     quote_cmd env "PKG_CONFIG_PATH=${PKG_CONFIG_PATH_VALUE}" \
         meson setup --wipe "$BUILD_DIR" "$SRC_ABS" \
         --native-file "$NATIVE_FILE" \
@@ -170,7 +192,7 @@ if [ "$PRINT_PLAN" -eq 1 ]; then
     exit 0
 fi
 
-for tool in meson pkg-config readelf; do
+for tool in git meson pkg-config readelf; do
     command -v "$tool" >/dev/null 2>&1 || {
         printf 'build-gnome-terminal.sh: required tool not found: %s\n' "$tool" >&2
         exit 1
@@ -190,6 +212,16 @@ done
     printf 'build-gnome-terminal.sh: host pkg-config wrapper is missing: %s\n' "$PKG_CONFIG_WRAPPER" >&2
     exit 1
 }
+[ -f "$GNOME_STATIC_PATCH" ] || {
+    printf 'build-gnome-terminal.sh: captured GNOME Terminal patch is missing: %s\n' \
+        "$GNOME_STATIC_PATCH" >&2
+    exit 1
+}
+[ -f "$GLIBC_SHIM_SOURCE" ] || {
+    printf 'build-gnome-terminal.sh: glibc baseline shim source is missing: %s\n' \
+        "$GLIBC_SHIM_SOURCE" >&2
+    exit 1
+}
 [ -d "$SRC_ABS" ] || { printf 'build-gnome-terminal.sh: source directory not found: %s\n' "$SRC_ABS" >&2; exit 1; }
 [ -d "$DEPS_ABS" ] || { printf 'build-gnome-terminal.sh: dependency prefix not found: %s\n' "$DEPS_ABS" >&2; exit 1; }
 if ! find "$DEPS_ABS" -type f -path '*/pkgconfig/gtk+-3.0.pc' -print -quit | grep -q .; then
@@ -198,6 +230,9 @@ if ! find "$DEPS_ABS" -type f -path '*/pkgconfig/gtk+-3.0.pc' -print -quit | gre
 fi
 
 mkdir -p "$OUT_ABS"
+apply_source_patch "$SRC_ABS" "$GNOME_STATIC_PATCH"
+run "${TOOLCHAIN}/zig-cc" -target "$TARGET" -O2 -fPIC \
+    -c "$GLIBC_SHIM_SOURCE" -o "$GLIBC_SHIM_OBJ"
 render_native_file
 export PKG_CONFIG_PATH="$PKG_CONFIG_PATH_VALUE"
 export PKG_CONFIG="$PKG_CONFIG_ENV"

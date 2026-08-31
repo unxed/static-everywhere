@@ -88,7 +88,11 @@ requiring a source checkout, compiler or dependency prefix.
 The generated Meson native file pins the glibc target, enables PIE, full RELRO,
 BIND_NOW, a non-executable stack and static C/C++ runtimes. It also applies
 source-prefix remapping and keeps the dependency prefix ahead of system
-library directories.
+library directories. The consumer applies the captured pinned-source
+interposition patch before configuration and links the shared glibc-baseline
+compatibility object into the final targets. This preserves GNOME Terminal's
+`pk-gtk-module` block when GLib is an archive and covers the known class of
+newer-glibc syscall references exposed by the target headers.
 
 ## 5. Verification
 
