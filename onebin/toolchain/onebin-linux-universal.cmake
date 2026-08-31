@@ -26,10 +26,10 @@ list(APPEND CMAKE_LIBRARY_PATH
      "/usr/lib/${CMAKE_HOST_SYSTEM_PROCESSOR}-linux-gnu"
      "/usr/lib" "/lib/${CMAKE_HOST_SYSTEM_PROCESSOR}-linux-gnu")
 
-# The included Profile S file computes the static link flags before forcing
-# the U export policy above. Add the two U-specific pieces explicitly and
-# keep them on the executable only: far2l's SDL module resolves the bridge
-# from the exported main executable.
+# The included Profile U dependency toolchain computes the static executable
+# boundary and shared/module-safe flags.  The carried loader is attached by a
+# deferred target hook below, after far2l's subdirectories have declared the
+# executable and SDL module; it must not be a global CMake linker flag.
 if(ONEBIN_SOLO_ROOT)
     if(NOT EXISTS "${ONEBIN_SOLO_ROOT}/libdlfcn.a")
         message(FATAL_ERROR
@@ -39,19 +39,8 @@ if(ONEBIN_SOLO_ROOT)
         message(FATAL_ERROR
             "onebin Profile U: missing ${ONEBIN_SOLO_ROOT}/lib/dlfcn.h")
     endif()
-    if(NOT CMAKE_C_FLAGS_INIT MATCHES "lib/dlfcn\\.h")
-        string(APPEND CMAKE_C_FLAGS_INIT
-               " -include ${ONEBIN_SOLO_ROOT}/lib/dlfcn.h")
-    endif()
-    if(NOT CMAKE_CXX_FLAGS_INIT MATCHES "lib/dlfcn\\.h")
-        string(APPEND CMAKE_CXX_FLAGS_INIT
-               " -include ${ONEBIN_SOLO_ROOT}/lib/dlfcn.h")
-    endif()
-    if(NOT CMAKE_EXE_LINKER_FLAGS_INIT MATCHES "dlfcn")
-        string(APPEND CMAKE_EXE_LINKER_FLAGS_INIT
-               " -Wl,--whole-archive ${ONEBIN_SOLO_ROOT}/libdlfcn.a"
-               " -Wl,--no-whole-archive")
-    endif()
+    set(CMAKE_PROJECT_INCLUDE
+        "${CMAKE_CURRENT_LIST_DIR}/onebin-profile-u-far2l.cmake")
 endif()
 
 # onebin-linux-universal-deps.cmake keeps -static/-pie on EXE targets but
