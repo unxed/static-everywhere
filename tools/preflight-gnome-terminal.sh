@@ -114,6 +114,7 @@ for required in \
     'synthetic intl.pc' \
     'libuuid-only=true' \
     'uuid-only graph audit: reject util-linux libcommon and non-UUID lib/ sources before compile' \
+    'source_tree contract: cleanup diagnostics never contaminate the returned source path' \
     'build-time tools: ' \
     'gtk lz4 vte libhandy'; do
     if grep -Fq -- "$required" "$DEPS_PLAN"; then
@@ -129,6 +130,13 @@ if grep -Fq -- 'export PATH="${PREFIX}/bin:${TOOLCHAIN}:${PATH}"' "$DEPS_SCRIPT"
     pass 'dependency build tools are resolved from the static prefix before host PATH'
 else
     fail 'dependency build tools do not have a prefix-first resolution contract'
+fi
+
+if grep -Fq -- 'run git -C "${dir}" reset --quiet --hard "${commit}" >&2' "$DEPS_SCRIPT" \
+    && grep -Fq -- 'run git -C "${dir}" clean -fdx >&2' "$DEPS_SCRIPT"; then
+    pass 'source-tree cleanup output cannot corrupt command-substitution paths'
+else
+    fail 'source-tree cleanup output can corrupt command-substitution paths'
 fi
 
 UUID_PATCH="${REPO_ROOT}/contrib/gnome-terminal/patches/util-linux-libuuid-only.patch"

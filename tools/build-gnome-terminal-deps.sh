@@ -124,6 +124,7 @@ subproject policy: materialize pinned gvdb; provide libc gettext through a prefi
 uuid policy: util-linux libuuid-only=true; install only the pinned static libuuid archive and uuid.pc
 uuid-only graph audit: reject util-linux libcommon and non-UUID lib/ sources before compile
 static loader closure: builtin loader dependencies are exported through gdkpixbuf_dep
+source_tree contract: cleanup diagnostics never contaminate the returned source path
 build-time tools: ${PREFIX}/bin precedes the host PATH; producer tools are verified before consumers
 PLAN
     for dependency in "${dependency_order[@]}"; do
@@ -244,8 +245,8 @@ source_tree() {
     # The workflow caches source trees between runs. A failed patch can leave
     # one of those trees partially modified, so restore the pinned checkout
     # before any dependency-specific patch is applied.
-    run git -C "${dir}" reset --quiet --hard "${commit}"
-    run git -C "${dir}" clean -fdx
+    run git -C "${dir}" reset --quiet --hard "${commit}" >&2
+    run git -C "${dir}" clean -fdx >&2
     printf '%s\n' "${dir}"
 }
 
