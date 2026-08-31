@@ -14,7 +14,8 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq \
-            binutils cmake curl git make ninja-build pkg-config python3-venv
+            binutils cmake curl git make ninja-build pkg-config python3-venv \
+            libx11-dev libxcb1-dev libxau-dev libxdmcp-dev
 
       - name: Install pinned Meson
         run: |
