@@ -115,6 +115,8 @@ for required in \
     'libuuid-only=true' \
     'uuid-only graph audit: reject util-linux libcommon and non-UUID lib/ sources before compile' \
     'source_tree contract: cleanup diagnostics never contaminate the returned source path' \
+    'Meson option contract: every recipe -D option is declared by the pinned project or Meson core' \
+    'cache identity: dependency commit plus recipe, patch and toolchain fingerprint' \
     'build-time tools: ' \
     'gtk lz4 vte libhandy'; do
     if grep -Fq -- "$required" "$DEPS_PLAN"; then
@@ -137,6 +139,16 @@ if grep -Fq -- 'run git -C "${dir}" reset --quiet --hard "${commit}" >&2' "$DEPS
     pass 'source-tree cleanup output cannot corrupt command-substitution paths'
 else
     fail 'source-tree cleanup output can corrupt command-substitution paths'
+fi
+
+if grep -Fq -- 'meson_core_option()' "$DEPS_SCRIPT" \
+    && grep -Fq -- 'meson_source_option()' "$DEPS_SCRIPT" \
+    && grep -Fq -- 'validate_meson_options "${source}"' "$DEPS_SCRIPT" \
+    && grep -Fq -- 'RECIPE_FINGERPRINT=' "$DEPS_SCRIPT" \
+    && grep -Fq -- 'RECIPE_FINGERPRINT}' "$DEPS_SCRIPT"; then
+    pass 'Meson options and dependency cache markers are tied to pinned recipe inputs'
+else
+    fail 'Meson options or dependency cache markers are not tied to pinned recipe inputs'
 fi
 
 UUID_PATCH="${REPO_ROOT}/contrib/gnome-terminal/patches/util-linux-libuuid-only.patch"

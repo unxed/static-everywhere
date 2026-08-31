@@ -125,6 +125,8 @@ uuid policy: util-linux libuuid-only=true; install only the pinned static libuui
 uuid-only graph audit: reject util-linux libcommon and non-UUID lib/ sources before compile
 static loader closure: builtin loader dependencies are exported through gdkpixbuf_dep
 source_tree contract: cleanup diagnostics never contaminate the returned source path
+Meson option contract: every recipe -D option is declared by the pinned project or Meson core
+cache identity: dependency commit plus recipe, patch and toolchain fingerprint
 build-time tools: ${PREFIX}/bin precedes the host PATH; producer tools are verified before consumers
 PLAN
     for dependency in "${dependency_order[@]}"; do
@@ -151,6 +153,10 @@ for tool in "${CC}" "${CXX}" "${AR}" "${RANLIB}"; do
         exit 1
     }
 done
+command -v sha256sum >/dev/null 2>&1 || {
+    printf 'build-gnome-terminal-deps.sh: required tool not found: sha256sum\n' >&2
+    exit 1
+}
 [ -f "${PKG_CONFIG_WRAPPER}" ] || {
     printf 'build-gnome-terminal-deps.sh: host pkg-config wrapper is missing: %s\n' \
         "${PKG_CONFIG_WRAPPER}" >&2
@@ -162,6 +168,16 @@ command -v zig >/dev/null 2>&1 || {
 }
 
 mkdir -p "${PREFIX}" "${WORK}/sources" "${WORK}/build" "${PREFIX}/lib/pkgconfig"
+
+RECIPE_FINGERPRINT=$(
+    sha256sum \
+        "${REPO_ROOT}/tools/build-gnome-terminal-deps.sh" \
+        "${REPO_ROOT}/contrib/gnome-terminal/deps.lock" \
+        "${REPO_ROOT}/contrib/gnome-terminal/patches/"*.patch \
+        "${REPO_ROOT}/onebin/toolchain/onebin-linux-hybrid.cmake" \
+        "${REPO_ROOT}/onebin/toolchain/onebin-linux-static.cmake" \
+        | sha256sum | awk '{print $1}'
+)
 
 cat >"${MESON_NATIVE}" <<EOF
 [binaries]
@@ -201,6 +217,56 @@ require_prefix_program() {
             exit 1
             ;;
     esac
+}
+
+# Meson accepts project options from meson_options.txt and a separate set of
+# core options. Passing an option borrowed from another project is an easy
+# way to stop the dependency graph before compilation (for example, ATK has
+# no tests option). Validate the complete recipe at the pinned source tree
+# so this class of mistake is reported with the owning project and option.
+meson_core_option() {
+    case "$1" in
+        auto_features|backend|bindir|buildtype|cmake_prefix_path|c_args|cpp_args|c_link_args|cpp_link_args|\
+        c_std|datadir|debug|default_library|errorlogs|force_fallback_for|includedir|infodir|install_umask|\
+        layout|libdir|libexecdir|localedir|localstatedir|mandir|objc_args|objc_link_args|objcpp_args|\
+        objcpp_link_args|objc_std|objcpp_std|optimization|pkg_config_path|prefix|python.bytecompile|\
+        python.platlibdir|python.purelibdir|sbindir|sharedstatedir|strip|sysconfdir|unity|unity_size|\
+        warning_level|werror|wrap_mode|b_asneeded|b_bitcode|b_b_lto|b_colorout|b_coverage|b_lto|\
+        b_lto_mode|b_ndebug|b_pch|b_pie|b_sanitize|b_staticpic|b_vscrt)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+meson_source_option() {
+    local source=$1 option=$2 options_file="${source}/meson_options.txt"
+    [ -f "${options_file}" ] || return 1
+    sed -nE \
+        -e "s/^[[:space:]]*option[[:space:]]*\\([[:space:]]*['\"]?([[:alnum:]_.-]+).*/\\1/p" \
+        -e "s/^[[:space:]]*['\"]([[:alnum:]_.-]+)['\"].*/\\1/p" \
+        "${options_file}" | grep -Fxq -- "${option}"
+}
+
+validate_meson_options() {
+    local source=$1 arg option
+    shift
+    for arg in "$@"; do
+        case "${arg}" in
+            -D?*=*)
+                option=${arg#-D}
+                option=${option%%=*}
+                if meson_core_option "${option}" || meson_source_option "${source}" "${option}"; then
+                    continue
+                fi
+                printf 'build-gnome-terminal-deps.sh: Meson option is not declared by %s or Meson core: -D%s\n' \
+                    "${source}" "${option}" >&2
+                exit 1
+                ;;
+        esac
+    done
 }
 
 source_tree() {
@@ -268,13 +334,14 @@ materialize_subproject() {
 mark() {
     local name=$1 commit
     commit=$(lock_field "${name}" 3)
-    printf '%s\n' "${commit}" >"${PREFIX}/.built-${name}"
+    printf '%s %s\n' "${commit}" "${RECIPE_FINGERPRINT}" >"${PREFIX}/.built-${name}"
 }
 
 built() {
     local name=$1 commit
     commit=$(lock_field "${name}" 3)
-    [ -f "${PREFIX}/.built-${name}" ] && grep -Fxq "${commit}" "${PREFIX}/.built-${name}"
+    [ -f "${PREFIX}/.built-${name}" ] \
+        && grep -Fxq "${commit} ${RECIPE_FINGERPRINT}" "${PREFIX}/.built-${name}"
 }
 
 require_pc() {
@@ -324,6 +391,7 @@ meson_dep() {
         --prefer-static --wrap-mode nodownload -Ddefault_library=static
     )
     setup_cmd+=("$@")
+    validate_meson_options "${source}" "${setup_cmd[@]}"
     run "${setup_cmd[@]}"
     if [ "${name}" = "util-linux" ]; then
         assert_util_linux_uuid_only_graph "${build_dir}"
@@ -467,7 +535,8 @@ meson_dep harfbuzz "${harfbuzz_src}" harfbuzz \
     -Dtests=disabled -Dutilities=disabled -Dbenchmark=disabled \
     -Dfreetype=enabled
 
-if [ ! -f "${PREFIX}/.built-freetype-harfbuzz" ]; then
+if ! grep -Fxq "$(lock_field freetype 3) ${RECIPE_FINGERPRINT}" \
+    "${PREFIX}/.built-freetype-harfbuzz" 2>/dev/null; then
     freetype_build="${WORK}/build/freetype-harfbuzz"
     # FindHarfBuzz.cmake expects the directory containing hb.h; HarfBuzz
     # installs it below include/harfbuzz, not directly below include.
@@ -487,7 +556,8 @@ if [ ! -f "${PREFIX}/.built-freetype-harfbuzz" ]; then
         -DZLIB_INCLUDE_DIR="${PREFIX}/include"
     run cmake --build "${freetype_build}" --parallel "${JOBS}"
     run cmake --install "${freetype_build}"
-    printf '%s\n' "$(lock_field freetype 3)" >"${PREFIX}/.built-freetype-harfbuzz"
+    printf '%s %s\n' "$(lock_field freetype 3)" "${RECIPE_FINGERPRINT}" \
+        >"${PREFIX}/.built-freetype-harfbuzz"
 fi
 
 fontconfig_src=$(source_tree fontconfig)
@@ -498,6 +568,10 @@ if ! built fontconfig; then
     # modify the runner's real /etc/fonts. Build it, then copy only the
     # library, pkg-config file and headers needed by the static prefix.
     run mkdir -p "${fontconfig_build}" "${PREFIX}/lib/pkgconfig" "${PREFIX}/include"
+    validate_meson_options "${fontconfig_src}" \
+        -Ddefault_library=static -Ddoc=disabled -Dtests=disabled -Dtools=disabled \
+        -Dcache-build=disabled -Diconv=disabled -Dnls=disabled -Dsysconfdir=/etc \
+        -Ddatadir=/usr/share -Dcache-dir=/var/cache/fontconfig
     run meson setup --wipe "${fontconfig_build}" "${fontconfig_src}" \
         --native-file "${MESON_NATIVE}" \
         --prefix "${PREFIX}" --libdir lib --buildtype release \
@@ -577,7 +651,7 @@ meson_dep gdk-pixbuf "${gdk_pixbuf_src}" gdk-pixbuf \
 atk_src=$(source_tree atk)
 require_pc glib-2.0 gobject-2.0
 meson_dep atk "${atk_src}" atk \
-    -Dintrospection=false -Ddocs=false -Dtests=false
+    -Dintrospection=false -Ddocs=false
 
 epoxy_src=$(source_tree epoxy)
 meson_dep epoxy "${epoxy_src}" epoxy \
