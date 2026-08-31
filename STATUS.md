@@ -7,6 +7,41 @@ Everything below this section is a reverse-chronological log (newest
 first). Read *this* section first; consult the log below only for the
 detail behind a specific claim.
 
+### A file named `-` was committed to the repository root, and it was mine
+
+Spotted by eye in the file list, which is the worst way to find
+something. It held preprocessor output referencing `/home/claude/zig013`,
+so it came from this sandbox and rode in on one of my commits.
+
+The cause is in the toolchain wrappers, and it is a class. zig 0.13
+produces output atomically: it writes a temporary file and renames it
+onto the `-o` path. Given `-o -` it therefore creates a literal file
+named `-` in the current directory. Given `-o /dev/stdout` it renames
+over the device and the caller reads **nothing** — measured, 0 bytes.
+gcc writes to standard output in both cases.
+
+This is not obscure. CMake's `CXX-DetectStdlib` step preprocesses with
+`-o -`, so every configure through these wrappers dropped a `-` wherever
+it ran, and every caller expecting a preprocessed source got an empty
+string. The quiet half of the bug is worse than the visible one: a
+detection step that silently returns nothing does not fail, it concludes.
+
+Both wrappers now intercept `-o -`, give zig a real temporary file and
+copy that to stdout. Dropping the flag instead would only be equivalent
+for `-E`; with `-S` or `-c`, zig would write `foo.s` or `foo.o` to disk,
+so the interception covers every mode. Verified for `-E` and `-S` on both
+wrappers: output arrives on stdout, byte counts match, no file appears,
+and ordinary compilation is unaffected.
+
+`tools/test-compiler-stdout-output.sh` checks both halves — the output
+reaches stdout **and** the directory stays clean — because either alone
+would have missed this, and it also asserts the repository root has no
+`-`, since that is how this one was eventually noticed. Wired into the
+preflight.
+
+Filed upstream-shaped in the wrapper comments rather than as a zig bug
+report; worth reporting if it survives a zig upgrade.
+
 ### One fix, three builds, and a regression of my own
 
 **far2l: my previous fix broke it in a new way.** The ordering change was

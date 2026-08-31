@@ -431,6 +431,17 @@ else
     printf '%s\n' "$PAIRING" | sed 's/^/       /'
 fi
 
+# zig 0.13 answers `-o -` by creating a file called "-" in the current
+# directory instead of writing to stdout. CMake preprocesses with that
+# flag, so every configure left one behind; one reached this repository
+# and was committed.
+if STDOUTOUT=$("${REPO_ROOT}/tools/test-compiler-stdout-output.sh" 2>&1); then
+    pass "the compiler wrappers write -o - to stdout and leave no litter"
+else
+    fail "compiler stdout-output regression"
+    printf '%s\n' "$STDOUTOUT" | sed 's/^/       /'
+fi
+
 # Cost: would have been a silently unreproducible artifact rather than a
 # failed build -- f4's own script clones qwindowkit from an unpinned
 # branch, so upstream could change what we ship without anything failing.

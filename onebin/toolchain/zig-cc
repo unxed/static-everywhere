@@ -287,4 +287,53 @@ if [ "$_onebin_host_fallbacks" = 1 ]; then
     done
 fi
 
+
+# `-o -` means stdout, and zig 0.13 writes a file called "-" instead.
+#
+# zig produces output atomically: it writes a temporary file and renames
+# it onto the -o path. Given "-" it therefore creates a literal file of
+# that name in the current directory, and given /dev/stdout it renames
+# over the device and the caller reads nothing. gcc and clang both write
+# to standard output here.
+#
+# It is not a curiosity: CMake's CXX-DetectStdlib step preprocesses with
+# `-o -`, so every configure through this wrapper dropped a file named
+# "-" wherever it happened to run -- including, once, into this
+# repository, where it was committed. Callers also silently got empty
+# output where they expected a preprocessed source.
+#
+# So intercept it: give zig a real temporary file, then copy that to
+# standard output ourselves. This works for every mode, unlike simply
+# dropping the flag, which is only equivalent for -E (with -S or -c, zig
+# would write foo.s or foo.o to disk instead).
+_onebin_stdout_out=0
+_onebin_prev=""
+for _onebin_arg in "$@"; do
+    if [ "$_onebin_prev" = "-o" ] && [ "$_onebin_arg" = "-" ]; then
+        _onebin_stdout_out=1
+        break
+    fi
+    _onebin_prev="$_onebin_arg"
+done
+
+if [ "$_onebin_stdout_out" = 1 ]; then
+    _onebin_tmp=$(mktemp) || exit 1
+    _onebin_rebuilt=""
+    _onebin_prev=""
+    for _onebin_arg in "$@"; do
+        if [ "$_onebin_prev" = "-o" ] && [ "$_onebin_arg" = "-" ]; then
+            _onebin_rebuilt="${_onebin_rebuilt} $(_onebin_shell_quote "$_onebin_tmp")"
+        else
+            _onebin_rebuilt="${_onebin_rebuilt} $(_onebin_shell_quote "$_onebin_arg")"
+        fi
+        _onebin_prev="$_onebin_arg"
+    done
+    eval "set --${_onebin_rebuilt}"
+    zig cc "$@"
+    _onebin_status=$?
+    cat "$_onebin_tmp"
+    rm -f "$_onebin_tmp"
+    exit "$_onebin_status"
+fi
+
 exec zig cc "$@"
