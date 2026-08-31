@@ -183,11 +183,12 @@ jobs:
             ! grep -Eiq '(^|[^[:alpha:]])(fatal )?error:' /tmp/solo-build.log
             test -s solo-src/libdlfcn.a
             test -f solo-src/lib/dlfcn.h
-            ar t solo-src/libdlfcn.a | grep -Fx 'dlfcn.cpp.o'
-            ar t solo-src/libdlfcn.a | grep -Fx 'elf_loader.cpp.o'
-            ar t solo-src/libdlfcn.a | grep -Fx 'glibc_shim.cpp.o'
-            ar t solo-src/libdlfcn.a | grep -Fx 'musl_provider.cpp.o'
-            ar t solo-src/libdlfcn.a | grep -Fx 'musl_tls.c.o'
+            for member in dlfcn.cpp.o elf_loader.cpp.o glibc_shim.cpp.o \
+                          musl_provider.cpp.o musl_tls.c.o; do
+              ar t solo-src/libdlfcn.a \
+                | sed 's#^.*/##' \
+                | grep -Fx "$member"
+            done
             echo 'SoLo completed the pinned graph; its strict-hygiene status was non-zero'
           fi
           test -f solo-src/libdlfcn.a
