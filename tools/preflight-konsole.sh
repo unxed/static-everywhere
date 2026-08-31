@@ -46,6 +46,7 @@ for needle in \
     'with_dbus=False' \
     'BUILD_SHARED_LIBS=OFF' \
     'KCONFIG_USE_QML=OFF' \
+    'BUILD_WITH_QML=OFF' \
     'CMAKE_PROJECT_INCLUDE' \
     'verify-konsole-artifact.sh' \
     'audit-with-hygiene-waivers.sh'; do
