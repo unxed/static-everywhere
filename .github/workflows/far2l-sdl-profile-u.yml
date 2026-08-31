@@ -18,7 +18,7 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq \
-            build-essential cmake ninja-build pkg-config gperf \
+            build-essential clang cmake ninja-build pkg-config gperf \
             curl git python3 python3-venv perl shellcheck binutils \
             libx11-dev libx11-xcb-dev libxext-dev libxi-dev \
             libxfixes-dev libxrandr-dev libxcursor-dev libxss-dev \
@@ -80,7 +80,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-            build-essential cmake ninja-build pkg-config gperf \
+            build-essential clang cmake ninja-build pkg-config gperf \
             curl git python3 python3-venv perl binutils \
             libx11-dev libx11-xcb-dev libxext-dev libxi-dev \
             libxfixes-dev libxrandr-dev libxcursor-dev libxss-dev \
@@ -124,14 +124,24 @@ jobs:
 
       - name: Fetch and build the pinned SoLo loader
         run: |
+          set -o pipefail
           solo_ref=$(awk '$1 == "ref" { print $2; exit }' contrib/far2l/solo.lock)
+          solo_cc=$(awk '$1 == "cc" { print $2; exit }' contrib/far2l/solo.lock)
+          solo_cxx=$(awk '$1 == "cxx" { print $2; exit }' contrib/far2l/solo.lock)
           test "$(printf '%s' "$solo_ref" | wc -c)" -eq 40
+          test -n "$solo_cc"
+          test -n "$solo_cxx"
+          command -v "$solo_cc"
+          command -v "$solo_cxx"
+          "$solo_cc" --version
+          "$solo_cxx" --version
           git clone --filter=blob:none --no-checkout --quiet \
             https://github.com/pg83/solo solo-src
           git -C solo-src fetch --quiet --depth 1 origin "$solo_ref"
           git -C solo-src checkout --quiet --detach "$solo_ref"
           test "$(git -C solo-src rev-parse HEAD)" = "$solo_ref"
-          (cd solo-src && ./build) 2>&1 | tee /tmp/solo-build.log
+          (cd solo-src && CC="$solo_cc" CXX="$solo_cxx" ./build) \
+            2>&1 | tee /tmp/solo-build.log
           test -f solo-src/libdlfcn.a
           test -f solo-src/lib/dlfcn.h
 
