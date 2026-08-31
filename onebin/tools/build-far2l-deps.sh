@@ -21,6 +21,7 @@ PREFIX="${REPO_ROOT}/out/far2l/deps-prefix"
 WORK="${REPO_ROOT}/out/far2l/deps-work"
 JOBS=4
 PRINT_PLAN=0
+PROFILE=hybrid
 
 usage() {
     sed -n '2,11p' "$0"
@@ -28,6 +29,7 @@ usage() {
 
 while [ "$#" -gt 0 ]; do
     case "$1" in
+        --profile) PROFILE=${2:?--profile needs hybrid or universal}; shift 2 ;;
         --prefix) PREFIX=${2:?--prefix needs a directory}; shift 2 ;;
         --work)   WORK=${2:?--work needs a directory}; shift 2 ;;
         --jobs)   JOBS=${2:?--jobs needs a number}; shift 2 ;;
@@ -37,16 +39,31 @@ while [ "$#" -gt 0 ]; do
     esac
 done
 
+case "${PROFILE}" in
+    hybrid)
+        MESON_NATIVE="${TOOLCHAIN}/onebin-linux-hybrid-meson.ini"
+        CMAKE_TOOLCHAIN="${TOOLCHAIN}/onebin-linux-hybrid.cmake"
+        TARGET="x86_64-linux-gnu.2.28"
+        ;;
+    universal)
+        MESON_NATIVE="${TOOLCHAIN}/onebin-linux-universal-meson.ini"
+        CMAKE_TOOLCHAIN="${TOOLCHAIN}/onebin-linux-universal.cmake"
+        TARGET="x86_64-linux-musl"
+        ;;
+    *)
+        echo "build-far2l-deps.sh: --profile must be hybrid or universal (got '${PROFILE}')" >&2
+        exit 2
+        ;;
+esac
+
 CC="${TOOLCHAIN}/zig-cc"
 CXX="${TOOLCHAIN}/zig-c++"
 AR="${TOOLCHAIN}/zig-ar"
 RANLIB="${TOOLCHAIN}/zig-ranlib"
-CMAKE_TOOLCHAIN="${TOOLCHAIN}/onebin-linux-hybrid.cmake"
-TARGET="x86_64-linux-gnu.2.28"
-
 if [ "${PRINT_PLAN}" -eq 1 ]; then
     cat <<PLAN
 # far2l SDL dependency prefix
+profile: ${PROFILE}
 PREFIX=${PREFIX}
 WORK=${WORK}
 source archives: contrib/far2l/deps.lock (sha256 verified)

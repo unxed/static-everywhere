@@ -1,0 +1,265 @@
+name: far2l SDL showcase (Profile U, SoLo)
+
+# This is a manual, long-running workflow. It builds the static dependency
+# prefix and the carried loader, then checks the same far2l install on Ubuntu
+# with X11/GLX and in an Alpine root.
+on:
+  workflow_dispatch:
+
+jobs:
+  preflight:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout static-everywhere
+        uses: actions/checkout@v4
+
+      - name: Install U build tools and host graphics contract
+        run: |
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq \
+            build-essential cmake ninja-build pkg-config gperf \
+            curl git python3 python3-venv perl shellcheck binutils \
+            libx11-dev libx11-xcb-dev libxext-dev libxi-dev \
+            libxfixes-dev libxrandr-dev libxcursor-dev libxss-dev \
+            libxdamage-dev libxcomposite-dev libxrender-dev \
+            libgl-dev libegl-dev libgl1-mesa-dev mesa-utils \
+            x11-utils xdotool imagemagick xvfb
+
+      - name: Install pinned Meson
+        run: |
+          meson_version=$(tr -d '[:space:]' < onebin/toolchain/meson-version)
+          meson_venv=$RUNNER_TEMP/far2l-meson
+          python3 -m venv "$meson_venv"
+          "$meson_venv/bin/python" -m pip install \
+            --disable-pip-version-check --no-input --only-binary=:all: \
+            "meson==$meson_version"
+          echo "$meson_venv/bin" >> "$GITHUB_PATH"
+          test "$("$meson_venv/bin/meson" --version)" = "$meson_version"
+
+      - name: Install zig 0.13.0
+        run: |
+          curl --fail --location --silent --show-error \
+            -o zig.tar.xz \
+            https://ziglang.org/download/0.13.0/zig-linux-x86_64-0.13.0.tar.xz
+          tar xf zig.tar.xz
+          echo "$PWD/zig-linux-x86_64-0.13.0" >> "$GITHUB_PATH"
+          echo "$PWD/onebin/toolchain" >> "$GITHUB_PATH"
+
+      - name: Build onebin and run U fast checks
+        run: |
+          make -C onebin
+          bash -n onebin/tools/build-far2l.sh \
+            onebin/tools/build-far2l-deps.sh \
+            onebin/tools/run-far2l-sdl-smoke.sh
+          shellcheck onebin/tools/build-far2l.sh \
+            onebin/tools/build-far2l-deps.sh \
+            onebin/tools/run-far2l-sdl-smoke.sh
+          onebin/build/onebin audit --help | grep -F universal
+          onebin/tools/build-far2l-deps.sh --profile universal --print-plan
+
+  build:
+    needs: preflight
+    runs-on: ubuntu-24.04
+    timeout-minutes: 300
+    steps:
+      - name: Checkout static-everywhere
+        uses: actions/checkout@v4
+
+      - name: Free disk space on the runner
+        run: |
+          df -h /
+          for d in /usr/share/dotnet /usr/local/lib/android /opt/ghc \
+                   /usr/local/.ghcup /usr/local/share/powershell \
+                   /usr/local/share/chromium /opt/hostedtoolcache/CodeQL; do
+            if [ -e "$d" ]; then sudo rm -rf "$d" || true; fi
+          done
+          docker image prune -af >/dev/null 2>&1 || true
+
+      - name: Install U build tools and host graphics contract
+        run: |
+          sudo apt-get update
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            build-essential cmake ninja-build pkg-config gperf \
+            curl git python3 python3-venv perl binutils \
+            libx11-dev libx11-xcb-dev libxext-dev libxi-dev \
+            libxfixes-dev libxrandr-dev libxcursor-dev libxss-dev \
+            libxdamage-dev libxcomposite-dev libxrender-dev \
+            libgl-dev libegl-dev libgl1-mesa-dev mesa-utils \
+            x11-utils xdotool imagemagick xvfb
+
+      - name: Install pinned Meson and Zig
+        run: |
+          meson_version=$(tr -d '[:space:]' < onebin/toolchain/meson-version)
+          meson_venv=$RUNNER_TEMP/far2l-meson
+          python3 -m venv "$meson_venv"
+          "$meson_venv/bin/python" -m pip install \
+            --disable-pip-version-check --no-input --only-binary=:all: \
+            "meson==$meson_version"
+          echo "$meson_venv/bin" >> "$GITHUB_PATH"
+          curl --fail --location --silent --show-error \
+            -o zig.tar.xz \
+            https://ziglang.org/download/0.13.0/zig-linux-x86_64-0.13.0.tar.xz
+          tar xf zig.tar.xz
+          echo "$PWD/zig-linux-x86_64-0.13.0" >> "$GITHUB_PATH"
+          echo "$PWD/onebin/toolchain" >> "$GITHUB_PATH"
+          test "$("$meson_venv/bin/meson" --version)" = "$meson_version"
+
+      - name: Build onebin
+        run: make -C onebin
+
+      - name: Restore Profile U dependency sources and prefix
+        id: cache-restore
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            out/far2l/deps-prefix
+            out/far2l/deps-work
+          key: far2l-sdl-profile-u-deps-${{ hashFiles('contrib/far2l/deps.lock', 'onebin/tools/build-far2l-deps.sh', 'onebin/toolchain/**') }}
+          restore-keys: |
+            far2l-sdl-profile-u-deps-
+
+      - name: Mark the start of this build for diagnostics
+        run: touch /tmp/job-start-marker
+
+      - name: Fetch and build the pinned SoLo loader
+        run: |
+          solo_ref=$(awk '$1 == "ref" { print $2; exit }' contrib/far2l/solo.lock)
+          test "$(printf '%s' "$solo_ref" | wc -c)" -eq 40
+          git clone --filter=blob:none --no-checkout --quiet \
+            https://github.com/pg83/solo solo-src
+          git -C solo-src fetch --quiet --depth 1 origin "$solo_ref"
+          git -C solo-src checkout --quiet --detach "$solo_ref"
+          test "$(git -C solo-src rev-parse HEAD)" = "$solo_ref"
+          (cd solo-src && ./build) 2>&1 | tee /tmp/solo-build.log
+          test -f solo-src/libdlfcn.a
+          test -f solo-src/lib/dlfcn.h
+
+      - name: Fetch the pinned far2l SDL preview
+        run: |
+          ref=$(sed -n 's/^# far2l-sdl-ref: //p' contrib/far2l/deps.lock)
+          test "$(printf '%s' "$ref" | wc -c)" -eq 40
+          git clone --filter=blob:none --no-checkout --quiet \
+            https://github.com/elfmz/far2l far2l-src
+          git -C far2l-src fetch --quiet --depth 1 origin "$ref"
+          git -C far2l-src checkout --quiet --detach "$ref"
+          test "$(git -C far2l-src rev-parse HEAD)" = "$ref"
+
+      - name: Build the Profile U static dependency prefix
+        run: |
+          set -o pipefail
+          mkdir -p out/far2l
+          onebin/tools/build-far2l-deps.sh \
+            --profile universal \
+            --prefix "$PWD/out/far2l/deps-prefix" \
+            --work "$PWD/out/far2l/deps-work" \
+            --jobs 4 2>&1 | tee /tmp/far2l-u-deps-build.log
+
+      - name: Build far2l SDL Profile U
+        run: |
+          set +e
+          set -o pipefail
+          onebin/tools/build-far2l.sh \
+            --config sdl --profile universal \
+            --src "$PWD/far2l-src" \
+            --tag "$(sed -n 's/^# far2l-sdl-ref: //p' contrib/far2l/deps.lock)" \
+            --out "$PWD/out/far2l/build" \
+            --deps-prefix "$PWD/out/far2l/deps-prefix" \
+            --solo-root "$PWD/solo-src" \
+            --jobs 4 --no-fetch 2>&1 | tee /tmp/far2l-u-build.log
+          build_status=$PIPESTATUS
+          set -e
+          if [ "$build_status" -ne 0 ]; then
+            test -x out/far2l/build/install/bin/far2l
+            test -f out/far2l/build/install/lib/far2l/far2l_sdl.so
+            echo 'far2l U builder returned only its strict-hygiene status; explicit audits follow'
+          fi
+
+      - name: Audit the Profile U ELF boundary
+        run: |
+          set -o pipefail
+          install=out/far2l/build/install
+          onebin/build/onebin audit --profile universal --level 1 \
+            "$install/bin/far2l" \
+            | tee out/far2l/far2l-profile-u.audit.txt
+          onebin/build/onebin audit --profile universal --level 1 \
+            "$install/lib/far2l/far2l_sdl.so" \
+            | tee out/far2l/far2l-sdl-profile-u.audit.txt
+          for artifact in "$install/bin/far2l" "$install/lib/far2l/far2l_sdl.so"; do
+            if readelf -lW "$artifact" | grep -q ' INTERP '; then
+              echo "Profile U artifact has PT_INTERP: $artifact" >&2
+              exit 1
+            fi
+            if readelf -dW "$artifact" | grep -q ' NEEDED '; then
+              echo "Profile U artifact has DT_NEEDED: $artifact" >&2
+              exit 1
+            fi
+          done
+
+      - name: Verify the far2l runtime data tree
+        run: |
+          install=out/far2l/build/install
+          test -d "$install/share/far2l"
+          test -s "$install/share/far2l/FarEng.lng"
+          test -s "$install/share/far2l/FarEng.hlf"
+
+      - name: Prove the same executable starts in Alpine
+        run: |
+          docker run --rm --network=none \
+            -v "$PWD/out/far2l/build/install:/app:ro" \
+            alpine:3.22 /app/bin/far2l --help
+
+      - name: Run the X11 and GLX SDL smoke test without U library variables
+        run: |
+          mkdir -p out/far2l/xvfb
+          timeout --foreground --kill-after=10s 240s \
+            xvfb-run -a -s '-screen 0 1280x900x24 +extension GLX +render -noreset' \
+            onebin/tools/run-far2l-sdl-smoke.sh \
+            "$PWD/out/far2l/build/install/bin/far2l" \
+            "$PWD/out/far2l/smoke" universal
+
+      - name: Collect Profile U diagnostics on failure or cancellation
+        if: failure() || cancelled()
+        run: |
+          set +e
+          diag=/tmp/far2l-sdl-profile-u-diagnostic-logs
+          mkdir -p "$diag"
+          cp /tmp/solo-build.log "$diag/00-solo-build.log" 2>/dev/null
+          cp /tmp/far2l-u-deps-build.log "$diag/01-deps-build.log" 2>/dev/null
+          cp /tmp/far2l-u-build.log "$diag/02-far2l-build.log" 2>/dev/null
+          find out/far2l -type f -newer /tmp/job-start-marker \
+            ! -name '*.a' ! -name '*.o' ! -name '*.so' ! -name '*.so.*' \
+            -size -2M -print | sort > "$diag/03-output-listing.txt"
+          find out/far2l -maxdepth 3 -type f -print 2>/dev/null | sort \
+            > "$diag/04-all-files.txt"
+
+      - name: Upload Profile U diagnostic logs
+        if: failure() || cancelled()
+        uses: actions/upload-artifact@v4
+        with:
+          name: far2l-sdl-profile-u-diagnostic-logs
+          path: /tmp/far2l-sdl-profile-u-diagnostic-logs
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Upload far2l SDL Profile U artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: far2l-sdl-profile-u-build
+          path: |
+            out/far2l/build/install
+            out/far2l/*.audit.txt
+            out/far2l/smoke
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Save Profile U dependency sources and prefix
+        if: always()
+        timeout-minutes: 20
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            out/far2l/deps-prefix
+            out/far2l/deps-work
+          key: ${{ steps.cache-restore.outputs.cache-primary-key }}

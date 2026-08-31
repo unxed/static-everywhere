@@ -19,6 +19,7 @@ Given a path to an ELF file, decide whether it conforms to a declared Static Eve
 | **Profile S** | Fully static. No `PT_INTERP`, no `DT_NEEDED`. `PT_DYNAMIC` **may** be present (static-PIE uses it for self-relocation). |
 | **Profile H** | Hybrid. Has `PT_INTERP` and `DT_NEEDED`, all of which must be on the allowlist. |
 | **Profile M** | Module. A shared object loaded by the application itself: a plugin, a `dlopen`'d backend, an `LD_PRELOAD` shim. `ET_DYN`, no `PT_INTERP`. Same soname, glibc, rpath, hygiene and hardening rules as Profile H; none of the executable-only checks. |
+| **Profile U** | Universal static-PIE. `ET_DYN`, no `PT_INTERP`, no `DT_NEEDED`; host libraries may be reached only through an explicitly carried loader/ABI bridge. |
 | **Baseline** | The maximum glibc version the binary is permitted to require, e.g. `2.28`. |
 | **Level** | Conformance level 0–3 from the manifesto. v0.1 implements levels 0 and 1 fully, and the one file-existence check that level 3 needs. |
 | **Finding** | One reported observation: id, severity, check name, subject, message, fingerprint. |
@@ -116,7 +117,7 @@ onebin audit --help
 
 | Option | Argument | Default | Meaning |
 |---|---|---|---|
-| `--profile` | `auto\|static\|hybrid\|module` | `auto` | Which profile to check against. `auto` detects per §7.3. |
+| `--profile` | `auto\|static\|hybrid\|module\|universal` | `auto` | Which profile to check against. `auto` detects per §7.3; `universal` is explicit because it cannot be inferred from ELF alone. |
 | `--glibc-max` | version | `2.28` | Highest permitted `GLIBC_x.y` requirement. Ignored in Profile S. |
 | `--level` | `0\|1\|2\|3` | `1` | Conformance level. Higher levels enable more checks. |
 | `--allow` | soname | — | Add one soname to the `DT_NEEDED` allowlist. Repeatable. |

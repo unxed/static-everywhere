@@ -28,8 +28,12 @@ Usage: tools/build-far2l.sh --config tiny|tty|sdl|wx [OPTIONS]
   --out DIR                 build/install output directory
                             (default: ./out/far2l-<config>)
   --jobs N                  parallel build jobs (default: 4)
+  --profile hybrid|universal build profile (default: hybrid); universal is
+                            currently supported for the SDL configuration
   --deps-prefix DIR         where already-built static third-party libs
                             live, per contrib/far2l/deps.lock
+  --solo-root DIR           SoLo checkout containing libdlfcn.a and
+                            lib/dlfcn.h (required for --profile universal)
   --fetch                   allowed to clone far2l over the network
   --no-fetch                refuse to touch the network (default)
   --print-plan              print every command this invocation would run,
@@ -47,7 +51,9 @@ SRC="./far2l-src"
 TAG="${FAR2L_TAG_DEFAULT}"
 OUT=""
 JOBS=4
+PROFILE=hybrid
 DEPS_PREFIX=""
+SOLO_ROOT=""
 FETCH=0
 PRINT_PLAN=0
 AUDIT_ONLY=0
@@ -59,7 +65,9 @@ while [ $# -gt 0 ]; do
         --tag)         TAG=${2:-}; shift 2 ;;
         --out)         OUT=${2:-}; shift 2 ;;
         --jobs)        JOBS=${2:-}; shift 2 ;;
+        --profile)     PROFILE=${2:-}; shift 2 ;;
         --deps-prefix) DEPS_PREFIX=${2:-}; shift 2 ;;
+        --solo-root)   SOLO_ROOT=${2:-}; shift 2 ;;
         --fetch)       FETCH=1; shift ;;
         --no-fetch)    FETCH=0; shift ;;
         --print-plan)  PRINT_PLAN=1; shift ;;
@@ -73,6 +81,14 @@ while [ $# -gt 0 ]; do
     esac
 done
 
+case "${PROFILE}" in
+    hybrid|universal) ;;
+    *)
+        echo "error: --profile must be hybrid or universal (got '${PROFILE}')" >&2
+        exit 2
+        ;;
+esac
+
 case "${CONFIG}" in
     tiny|tty|sdl|wx) ;;
     "")
@@ -84,6 +100,27 @@ case "${CONFIG}" in
         exit 2
         ;;
 esac
+
+if [ "${PROFILE}" = universal ]; then
+    if [ "${CONFIG}" != sdl ]; then
+        echo "error: --profile universal currently supports only --config sdl" >&2
+        exit 2
+    fi
+    if [ -z "${SOLO_ROOT}" ]; then
+        echo "error: --solo-root is required for --profile universal" >&2
+        exit 2
+    fi
+    if [ "${PRINT_PLAN}" -eq 0 ]; then
+        [ -f "${SOLO_ROOT}/libdlfcn.a" ] || {
+            echo "error: SoLo archive not found: ${SOLO_ROOT}/libdlfcn.a" >&2
+            exit 1
+        }
+        [ -f "${SOLO_ROOT}/lib/dlfcn.h" ] || {
+            echo "error: SoLo header not found: ${SOLO_ROOT}/lib/dlfcn.h" >&2
+            exit 1
+        }
+    fi
+fi
 
 [ -n "${OUT}" ] || OUT="./out/far2l-${CONFIG}"
 
@@ -174,12 +211,20 @@ cmake_config_args() {
             # has working network transfer regardless.
             ;;
         sdl)
+            sdl_toolchain="${TOOLCHAIN_DIR}/onebin-linux-hybrid.cmake"
+            if [ "${PROFILE}" = universal ]; then
+                sdl_toolchain="${TOOLCHAIN_DIR}/onebin-linux-universal.cmake"
+            fi
             printf '%s\n' \
-                "-DCMAKE_TOOLCHAIN_FILE=${TOOLCHAIN_DIR}/onebin-linux-hybrid.cmake" \
+                "-DCMAKE_TOOLCHAIN_FILE=${sdl_toolchain}" \
                 "-DCMAKE_BUILD_TYPE=Release" \
                 "-DUSEWX=no" "-DUSESDL=YES" "-DPYTHON=no" "-DUNRAR=no" "-DICU_MODE=prebuilt" \
                 "-DNR_AWS=no" \
                 "-DCOLORER=no" "-DMULTIARC=no" "-DUSEUCD=no"
+            if [ "${PROFILE}" = universal ]; then
+                printf '%s\n' "-DONEBIN_SOLO_ROOT=${SOLO_ROOT}" \
+                    "-DTTYX=no" "-DTTYXI=no"
+            fi
             netrocks_crypto_args
             # Same reasoning as tty above, plus: USESDL=YES only exists on
             # far2l's unstable master (04-REFERENCE-far2l.md SS6.3) -- pass
@@ -214,6 +259,12 @@ cmake_config_args() {
 # hybrid's OB0036 ("no PT_INTERP") is the wrong check for it — confirmed
 # by building this exact artifact and re-auditing both ways.
 audit_plan_for_config() {
+    if [ "${PROFILE}" = universal ]; then
+        printf '%s\n' \
+            "universal:1:strict::far2l" \
+            "universal:1:strict::far2l_sdl.so"
+        return 0
+    fi
     case "$1" in
         tiny)
             printf '%s\n' \

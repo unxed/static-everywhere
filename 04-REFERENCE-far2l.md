@@ -603,7 +603,32 @@ cmake -DCMAKE_TOOLCHAIN_FILE=<repo>/onebin/toolchain/onebin-linux-hybrid.cmake \
       -DNR_OPENSSL=no -DNR_AWS=no -DCMAKE_DISABLE_FIND_PACKAGE_OpenSSL=TRUE ..
 ```
 
-### 6.4 `far2l-wx` — Profile H, Level 0 only, **expected to fail Level 1**
+### 6.4 `far2l-sdl` — Profile U, X11/GLX proof
+
+Profile U keeps the same SDL dependency set but replaces the glibc launch
+boundary with the carried SoLo loader. The build-time arguments are explicit;
+the installed executable must not need `LD_LIBRARY_PATH`, `SDL_VIDEODRIVER`,
+or another library-selection variable to start. The workflow runs the same
+install directly in Alpine and under Xvfb with GLX enabled, and audits both
+the main executable and `far2l_sdl.so` for no `PT_INTERP` and no `DT_NEEDED`.
+
+```sh
+onebin/tools/build-far2l-deps.sh --profile universal \
+    --prefix <repo>/out/far2l/deps-prefix \
+    --work <repo>/out/far2l/deps-work
+onebin/tools/build-far2l.sh --config sdl --profile universal \
+    --src <repo>/far2l-src --tag <far2l-sdl-commit> \
+    --out <repo>/out/far2l/build \
+    --deps-prefix <repo>/out/far2l/deps-prefix \
+    --solo-root <repo>/solo-src
+```
+
+The reproducible hosted recipe is `.github/workflows/far2l-sdl-profile-u.yml`;
+it fetches the SoLo commit recorded in `contrib/far2l/solo.lock`. This is the
+first U implementation, so a green workflow is required before treating this
+recipe as a shipped runtime contract.
+
+### 6.5 `far2l-wx` — Profile H, Level 0 only, **expected to fail Level 1**
 
 Built solely so the failure is measured rather than asserted. Record its actual
 `DT_NEEDED` list in the CI artifact; that list documents the wxWidgets

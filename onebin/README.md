@@ -109,7 +109,7 @@ Seven check families, matching
 |---|---|
 | `needed` | `DT_NEEDED` against the host-contract allowlist |
 | `glibc` | highest required `GLIBC_x.y` against `--glibc-max` |
-| `profile` | Static / Hybrid / Module classification and profile-specific checks |
+| `profile` | Static / Hybrid / Module / Universal classification and profile-specific checks |
 | `rpath` | `DT_RPATH`/`DT_RUNPATH`, `$ORIGIN`-relativity |
 | `harden` | RELRO, `BIND_NOW`, exec-stack, `TEXTREL`, PIE |
 | `hygiene` | embedded build paths, host-toolchain paths, leftover debug info |

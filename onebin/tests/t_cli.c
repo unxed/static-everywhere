@@ -153,6 +153,17 @@ TEST(cli_profile_forced) {
     eg_free(o); unlink(path);
 }
 
+TEST(cli_universal_profile_forced) {
+    eg *o = eg_preset_static_ok();
+    char *path = tmp_elf("universal", o);
+    char args[256];
+    snprintf(args, sizeof(args), "audit --profile universal %s", path);
+    run_result r = run(args);
+    ASSERT_EQ_INT(r.exit_code, 0);
+    ASSERT_TRUE(strstr(r.out, "profile: universal") != NULL);
+    eg_free(o); unlink(path);
+}
+
 TEST(cli_profile_bad_value_is_usage_error) {
     run_result r = run("audit --profile bogus /nonexistent");
     ASSERT_EQ_INT(r.exit_code, 2);

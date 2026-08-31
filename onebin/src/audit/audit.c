@@ -57,6 +57,7 @@ static const char *profile_name(ob_profile p) {
     case OB_PROFILE_S: return "static";
     case OB_PROFILE_H: return "hybrid";
     case OB_PROFILE_M: return "module";
+    case OB_PROFILE_U: return "universal";
     }
     return "?";
 }

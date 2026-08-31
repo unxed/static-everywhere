@@ -185,6 +185,38 @@ static void check_profile_h(const ob_check_ctx *ctx, ob_report *r) {
     }
 }
 
+/* Profile U is the static-PIE universal-host contract. It deliberately does
+ * not reuse Profile S's dlopen finding: U binaries carry an explicit loader
+ * and ABI bridge (SoLo in the first implementation), so loading a host
+ * graphics closure is the feature being verified rather than a violation.
+ * The audit can prove the ELF boundary here; the workflow's runtime smoke
+ * test proves the carried loader reaches the host X11 stack. */
+static void check_profile_u(const ob_check_ctx *ctx, ob_report *r) {
+    const ob_image *img = ctx->img;
+    int interp_count = 0;
+    if (first_interp(img, &interp_count)) {
+        ob_report_add_finding(r, "OB0030", "profile.interp", OB_SEV_ERROR, "",
+                               "PT_INTERP present in a file audited as Profile U");
+    }
+    if (ctx->dyn && ctx->dyn->nneeded > 0) {
+        ob_report_add_finding(r, "OB0031", "profile.needed", OB_SEV_ERROR, "",
+                               "DT_NEEDED present in a file audited as Profile U");
+    }
+    if (img->e_type != ET_DYN) {
+        ob_report_add_finding(r, "OB0032", "profile.nopie", OB_SEV_ERROR, "",
+                               "Profile U requires an ET_DYN static-PIE image");
+    }
+
+    string_evidence ev;
+    memset(&ev, 0, sizeof(ev));
+    ob_strings_scan(&img->buf, evidence_cb, &ev);
+    if (!(ctx->dyn && ctx->dyn->nneeded > 0) &&
+        (ev.has_nsswitch_string || ev.has_libnss_string || ev.has_nss_module_string)) {
+        ob_report_add_finding(r, "OB0034", "profile.staticglibc", OB_SEV_ERROR, "",
+                               "evidence of statically linked glibc NSS in a Profile U image");
+    }
+}
+
 static void check_profile_m(const ob_check_ctx *ctx, ob_report *r) {
     const ob_image *img = ctx->img;
     int interp_count = 0;
@@ -215,5 +247,6 @@ void ob_check_profile(const ob_check_ctx *ctx, ob_report *r) {
     case OB_PROFILE_S: check_profile_s(ctx, r); break;
     case OB_PROFILE_H: check_profile_h(ctx, r); break;
     case OB_PROFILE_M: check_profile_m(ctx, r); break;
+    case OB_PROFILE_U: check_profile_u(ctx, r); break;
     }
 }

@@ -65,6 +65,31 @@ TEST(profile_static_ok_no_findings_at_all) {
     ob_report_free(&r); unload(&l); eg_free(o);
 }
 
+TEST(profile_universal_static_pie_allows_carried_loader_contract) {
+    eg *o = eg_preset_static_ok();
+    loaded l; load(o, &l);
+    ob_report r;
+    run(&l, 1, OB_PROFILE_U, &r);
+
+    ASSERT_EQ_INT(ob_finding_list_count(&r.findings), 0);
+
+    ob_report_free(&r); unload(&l); eg_free(o);
+}
+
+TEST(profile_universal_rejects_interpreter_and_needed) {
+    eg *o = eg_preset_static_ok();
+    eg_set_interp(o, "/lib64/ld-linux-x86-64.so.2");
+    eg_add_needed(o, "libc.so.6");
+    loaded l; load(o, &l);
+    ob_report r;
+    run(&l, 1, OB_PROFILE_U, &r);
+
+    ASSERT_TRUE(has_id(&r, "OB0030"));
+    ASSERT_TRUE(has_id(&r, "OB0031"));
+
+    ob_report_free(&r); unload(&l); eg_free(o);
+}
+
 /* --------------------------------------------------------------------- #2 */
 
 TEST(profile_static_nopie_warns_no_pie) {

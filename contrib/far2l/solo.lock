@@ -1,0 +1,5 @@
+# SoLo carried loader used by the Profile U far2l SDL recipe.
+# Keep this as a full immutable commit: the workflow fetches exactly this
+# object and never follows the repository's moving default branch.
+repo https://github.com/pg83/solo
+ref 79451211e2b7833f423b07bdb8a6c5584abf5822

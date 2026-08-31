@@ -112,7 +112,7 @@ uint64_t ob_image_vaddr_to_offset(const ob_image *img, uint64_t vaddr);
  * Takes primitive facts rather than ob_image/ob_dynamic directly: this
  * module must not depend on elf/dynamic.h, which already depends on this
  * one. The caller (audit/checks/c_profile.c) gathers the facts from both. */
-typedef enum { OB_PROFILE_S = 0, OB_PROFILE_H, OB_PROFILE_M } ob_profile;
+typedef enum { OB_PROFILE_S = 0, OB_PROFILE_H, OB_PROFILE_M, OB_PROFILE_U } ob_profile;
 
 /* *ambiguous is set to 1 exactly for the OB0039 case (e_type == ET_DYN, no
  * PT_INTERP, no DT_NEEDED, no DT_SONAME, no DF_1_PIE — indistinguishable

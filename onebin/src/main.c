@@ -35,7 +35,7 @@ static void print_audit_usage(FILE *out) {
         "Audit ELF binaries against the Static Everywhere manifesto.\n"
         "\n"
         "Options:\n"
-        "  --profile <auto|static|hybrid>  Target profile (default: auto)\n"
+        "  --profile <auto|static|hybrid|module|universal>  Target profile (default: auto)\n"
         "  --glibc-max <version>           Maximum allowed GLIBC requirement (default: 2.28)\n"
         "  --level <0|1|2|3>               Conformance level (default: 1)\n"
         "  --allow <soname>                Add soname to DT_NEEDED allowlist (repeatable)\n"
@@ -139,7 +139,8 @@ int main(int argc, char **argv) {
                     if (strcmp(argv[i], "static") == 0) profile = OB_PROFILE_S;
                     else if (strcmp(argv[i], "hybrid") == 0) profile = OB_PROFILE_H;
                     else if (strcmp(argv[i], "module") == 0) profile = OB_PROFILE_M;
-                    else { fprintf(stderr, "error: --profile must be auto, static, hybrid, or module\n"); free(files); free(allow); return 2; }
+                    else if (strcmp(argv[i], "universal") == 0) profile = OB_PROFILE_U;
+                    else { fprintf(stderr, "error: --profile must be auto, static, hybrid, module, or universal\n"); free(files); free(allow); return 2; }
                 }
             } else if (strcmp(argv[i], "--allow") == 0) {
                 if (i + 1 >= argc) { fprintf(stderr, "error: --allow requires an argument\n"); free(files); free(allow); return 2; }
