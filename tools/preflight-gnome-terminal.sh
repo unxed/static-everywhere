@@ -303,6 +303,33 @@ else
     printf '%s\n' "$HOSTISO" | sed 's/^/       /'
 fi
 
+# vte compiles one target with -nostdlib, a link option that zig also
+# reads as "no C++ include path", so <cstdio> went missing. The wrappers
+# drop it when only compiling and keep it when linking.
+if LINKONLY=$("${REPO_ROOT}/tools/test-link-only-flags.sh" 2>&1); then
+    pass "link-only flags do not strip include paths from compiles"
+else
+    fail "link-only flag handling regression"
+    printf '%s\n' "$LINKONLY" | sed 's/^/       /'
+fi
+
+# Both spellings of the GLib cast warning must be suppressed: silencing
+# only -Wcast-function-type-strict still left a 180 MB artifact, because
+# vte lists plain -Wcast-function-type too and clang fires on the same
+# macro.
+check_suppressed() {  # $1 = needle in the script, $2 = human name
+    if grep -Fq -- "$1" "${REPO_ROOT}/tools/build-gnome-terminal-deps.sh"; then
+        pass "the deps build suppresses $2"
+    else
+        fail "the deps build no longer suppresses $2"
+    fi
+}
+check_suppressed "-Wno-cast-function-type-strict" "cast-function-type-strict"
+# The trailing quote pins the plain spelling: without it the needle also
+# matches the -strict one, and the check would pass with only half the
+# fix in place -- which is exactly the state that still produced 180 MB.
+check_suppressed "'-Wno-cast-function-type'" "cast-function-type"
+
 echo
 if [ "$FAILED" -eq 0 ]; then
     echo 'preflight: all checks passed'

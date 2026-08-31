@@ -306,6 +306,45 @@ fi
 # standard output ourselves. This works for every mode, unlike simply
 # dropping the flag, which is only equivalent for -E (with -S or -c, zig
 # would write foo.s or foo.o to disk instead).
+# `-nostdlib` and `-nodefaultlibs` are link options; drop them when only
+# compiling.
+#
+# gcc and clang document both as affecting what is linked, and ignore
+# them when the driver is not linking. zig 0.13 also removes the C++
+# standard library's include path, so a translation unit compiled with
+# -nostdlib cannot find <cstdio>:
+#
+#   vte/src/urlencode.cc:22:10: fatal error: 'cstdio' file not found
+#
+# vte passes -nostdlib on the vte-urlencode-cwd target, which does
+# include <cstdio>, and which links fine on every other toolchain. The
+# request is about the link, so it is honoured at link time and dropped
+# from compile-only invocations -- detected the same way the driver
+# detects it, by the presence of -c, -S or -E.
+_onebin_compile_only=0
+for _onebin_arg in "$@"; do
+    case "$_onebin_arg" in
+        -c|-S|-E) _onebin_compile_only=1 ;;
+    esac
+done
+
+if [ "$_onebin_compile_only" = 1 ]; then
+    _onebin_rebuilt=""
+    _onebin_dropped=0
+    for _onebin_arg in "$@"; do
+        case "$_onebin_arg" in
+            -nostdlib|-nodefaultlibs)
+                _onebin_dropped=1
+                continue
+                ;;
+        esac
+        _onebin_rebuilt="${_onebin_rebuilt} $(_onebin_shell_quote "$_onebin_arg")"
+    done
+    if [ "$_onebin_dropped" = 1 ]; then
+        eval "set --${_onebin_rebuilt}"
+    fi
+fi
+
 # `-Xlinker ARG` must become `-Wl,ARG`.
 #
 # zig 0.13 accepts `-Wl,--whole-archive` and rejects the identical

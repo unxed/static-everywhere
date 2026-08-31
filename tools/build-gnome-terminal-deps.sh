@@ -229,6 +229,11 @@ write_libc_free_compiler_wrapper "${MESON_CXX}" "${CXX}"
 # in gtk-autocleanups.h warns -- around 2800 per translation unit, from
 # third-party headers, about code we do not own and cannot change.
 #
+# Both spellings are needed. Silencing only the -strict one left the
+# artifact at 180 MB, because clang's plain -Wcast-function-type -- which
+# vte lists explicitly -- fires on the same GLib macro. Measured on the
+# same expansion: two warnings from each flag independently.
+#
 # The cost is not cosmetic. One run produced a 180 MB diagnostics
 # artifact too large to download, in which the actual build error was
 # buried under millions of identical warning lines. A diagnostic channel
@@ -246,8 +251,8 @@ ranlib = '${RANLIB}'
 strip = 'strip'
 
 [built-in options]
-c_args = ['-target', '${TARGET}', '-fPIE', '-ffunction-sections', '-fdata-sections', '-fstack-protector-strong', '-ffile-prefix-map=${WORK}=.', '-Wno-cast-function-type-strict']
-cpp_args = ['-target', '${TARGET}', '-fPIE', '-ffunction-sections', '-fdata-sections', '-fstack-protector-strong', '-ffile-prefix-map=${WORK}=.', '-Wno-cast-function-type-strict']
+c_args = ['-target', '${TARGET}', '-fPIE', '-ffunction-sections', '-fdata-sections', '-fstack-protector-strong', '-ffile-prefix-map=${WORK}=.', '-Wno-cast-function-type-strict', '-Wno-cast-function-type']
+cpp_args = ['-target', '${TARGET}', '-fPIE', '-ffunction-sections', '-fdata-sections', '-fstack-protector-strong', '-ffile-prefix-map=${WORK}=.', '-Wno-cast-function-type-strict', '-Wno-cast-function-type']
 c_link_args = ['-target', '${TARGET}', '-static-libgcc', '-Wl,--gc-sections', '-Wl,-z,relro', '-Wl,-z,now', '-Wl,-z,noexecstack', '-Wl,-z,nodelete', '-pie', '-s', '-L${PREFIX}/lib', '-L/usr/lib/x86_64-linux-gnu', '-L/usr/lib', '-L/lib/x86_64-linux-gnu']
 cpp_link_args = ['-target', '${TARGET}', '-static-libgcc', '-static-libstdc++', '-Wl,--gc-sections', '-Wl,-z,relro', '-Wl,-z,now', '-Wl,-z,noexecstack', '-Wl,-z,nodelete', '-pie', '-s', '-L${PREFIX}/lib', '-L/usr/lib/x86_64-linux-gnu', '-L/usr/lib', '-L/lib/x86_64-linux-gnu']
 default_library = 'static'

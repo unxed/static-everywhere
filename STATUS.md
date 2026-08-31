@@ -7,6 +7,46 @@ Everything below this section is a reverse-chronological log (newest
 first). Read *this* section first; consult the log below only for the
 detail behind a specific claim.
 
+### vte's error, at last: a link flag that deleted the include path
+
+```
+vte/src/urlencode.cc:22:10: fatal error: 'cstdio' file not found
+```
+
+The compile line carries `-nostdlib`, which vte sets on its
+`vte-urlencode-cwd` target. That flag is a statement about the **link**:
+gcc and clang both document it that way and ignore it when the driver is
+only compiling — verified, gcc compiles the same file with it silently.
+zig 0.13 additionally drops the C++ standard library include path, so a
+translation unit that includes `<cstdio>` cannot find it.
+
+Both wrappers now drop `-nostdlib` and `-nodefaultlibs` from compile-only
+invocations, detected the way the driver detects them (`-c`, `-S`, `-E`),
+and keep them for links. `tools/test-link-only-flags.sh` checks both
+halves, because dropping the flag everywhere would be as wrong as keeping
+it: the compile must find its headers, and a freestanding link must still
+produce a binary with no shared library dependencies.
+
+That also explains commit `06dc737`'s guard from the other side. It
+existed because zig rejects `-fstack-protector-strong` alongside
+`-nostdlib`; with the flag no longer reaching compiles, that conflict
+cannot arise either. The guard is left in place — it is a different
+mechanism, and removing it on inference rather than evidence is how
+things break.
+
+### The 180 MB came back because I fixed half the flag
+
+`-Wno-cast-function-type-strict` silenced the strict spelling. vte also
+lists plain `-Wcast-function-type`, and clang fires that on the very same
+GLib macro — measured, two warnings from each flag independently on the
+same expansion. So the artifact stayed at 180 MB and I had reported the
+noise as handled.
+
+Both spellings are suppressed now, and the preflight asserts both by
+name. The second assertion pins the plain one with a trailing quote,
+since the bare needle also matches `-strict` — the check would otherwise
+pass in exactly the half-fixed state that produced this run.
+
 ### far2l compiled entirely, then failed to link on two linker-argument defects
 
 ```
