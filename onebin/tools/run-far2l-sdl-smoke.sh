@@ -98,6 +98,25 @@ collect_failure_diagnostics() {
         >"$OUT/process-tree-on-failure.txt" 2>&1 || true
 }
 
+find_visible_child_window() {
+    local candidate
+    candidate=$(timeout --foreground --kill-after=1s 2s \
+        xwininfo -root -tree 2>/dev/null \
+        | awk '$1 ~ /^0x[0-9A-Fa-f]+$/ { print $1; exit }' || true)
+    if [ -z "$candidate" ]; then
+        return 0
+    fi
+
+    local info
+    info=$(timeout --foreground --kill-after=1s 2s \
+        xwininfo -id "$candidate" 2>/dev/null || true)
+    case "$info" in
+        *'Map State: IsViewable'*)
+            printf '%s\n' "$candidate"
+            ;;
+    esac
+}
+
 # Run the wrapper in its own process group so cleanup can never leave a child
 # attached to xvfb-run after the smoke test has reported an error.
 setsid timeout --foreground --kill-after=5s 45s "$FAR2L" --SDL --notty --mortal --size=100x30 \
@@ -108,12 +127,9 @@ window_id=
 attempts=0
 while [ "${attempts}" -lt 90 ]; do
     # xvfb-run gives this probe a fresh X server with no unrelated clients.
-    # Match the visible top-level window rather than its title: far2l changes
-    # the SDL bootstrap title asynchronously, and the title property exposed
-    # by xdotool is not stable across the initial and final titles.
-    window_id=$(timeout --foreground --kill-after=1s 2s \
-        xdotool search --onlyvisible --name '.*' 2>/dev/null \
-        | head -n 1 || true)
+    # Select an actual visible child from the X11 tree: searching for .* with
+    # xdotool also matches the root window, whose empty title is a false hit.
+    window_id=$(find_visible_child_window)
     if [ -n "$window_id" ]; then
         break
     fi
