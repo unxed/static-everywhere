@@ -3,3 +3,19 @@
 # object and never follows the repository's moving default branch.
 repo https://github.com/pg83/solo
 ref 79451211e2b7833f423b07bdb8a6c5584abf5822
+
+# The toolchain SoLo is built with, pinned for the same reason the commit is.
+#
+# SoLo's own CI builds every target with clang (.github/workflows/ci.yml sets
+# CC: clang / CXX: clang++ on each build step), and its build.py falls back to
+# plain cc/c++ when those are unset. Building it with the runner's default
+# g++ mixes musl's public headers, which build.py puts ahead of the system
+# paths for the dlfcn library, with the host libstdc++: <string_view> pulls in
+# bits/os_defines.h, which needs __GLIBC_PREREQ from glibc's features.h, and
+# musl's features.h shadows it. The result is four "missing binary operator
+# before token" errors and a failed build that looks like a SoLo bug.
+#
+# Pinning the source without pinning what compiles it leaves half the build
+# unspecified. These two lines are that other half.
+cc clang
+cxx clang++
