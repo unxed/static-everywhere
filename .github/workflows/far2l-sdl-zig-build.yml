@@ -233,7 +233,11 @@ jobs:
       - name: Run the graphical SDL smoke test
         run: |
           mkdir -p out/far2l/xvfb
-          xvfb-run -a -s '-screen 0 1280x900x24 +extension GLX +render -noreset' \
+          # Keep a broken X11 client/server from holding the runner until the
+          # five-hour job timeout. The smoke script has shorter command-level
+          # limits and this is the final step-level safety bound.
+          timeout --foreground --kill-after=10s 240s \
+            xvfb-run -a -s '-screen 0 1280x900x24 +extension GLX +render -noreset' \
             onebin/tools/run-far2l-sdl-smoke.sh \
             "$PWD/out/far2l/build/install/bin/far2l" \
             "$PWD/out/far2l/smoke"
