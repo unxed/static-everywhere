@@ -1,0 +1,37 @@
+diff --git a/gdk-pixbuf/meson.build b/gdk-pixbuf/meson.build
+index 54ff9dda3..e4de2574c 100644
+--- a/gdk-pixbuf/meson.build
++++ b/gdk-pixbuf/meson.build
+@@ -164,7 +164,10 @@ foreach name, loader: loaders
+                          include_directories: [ root_inc, gdk_pixbuf_inc ],
+                          c_args: common_cflags + gdk_pixbuf_cflags + cflags + cflag_for_included_loader)
+ 
+-    included_loaders_deps += declare_dependency(link_with: mod)
++    included_loaders_deps += declare_dependency(
++      link_with: mod,
++      dependencies: loaders_deps,
++    )
+   endif
+ endforeach
+ 
+@@ -189,7 +192,10 @@ if native_windows_loaders
+                          include_directories: [ root_inc, gdk_pixbuf_inc ],
+                          c_args: common_cflags + gdk_pixbuf_cflags + cflag_for_included_loader)
+ 
+-    included_loaders_deps += declare_dependency(link_with: mod)
++    included_loaders_deps += declare_dependency(
++      link_with: mod,
++      dependencies: loaders_deps,
++    )
+   endif
+ endif
+ 
+@@ -269,7 +275,7 @@ endif
+ gdkpixbuf_dep = declare_dependency(
+   link_with: gdkpixbuf,
+   include_directories: root_inc,
+-  dependencies: gdk_pixbuf_deps,
++  dependencies: [ gdk_pixbuf_deps, loaders_deps ],
+   sources: [ gdkpixbuf_enum_h, built_girs ],
+ )
+ 

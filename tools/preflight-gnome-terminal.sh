@@ -107,6 +107,7 @@ for required in \
     'CMAKE_SKIP_RPATH=ON' \
     'zlib libffi pcre2 expat libpng pixman' \
     'util-linux-libuuid-only.patch' \
+    'gdk-pixbuf-static-loader-deps.patch' \
     'gtk-no-host-atk-bridge.patch' \
     'vte-static-library.patch' \
     'libhandy-static-library.patch' \
@@ -146,6 +147,24 @@ for required in \
         pass "captured util-linux patch contains ${required}"
     else
         fail "captured util-linux patch is missing ${required}"
+    fi
+done
+
+GDK_PIXBUF_PATCH="${REPO_ROOT}/contrib/gnome-terminal/patches/gdk-pixbuf-static-loader-deps.patch"
+if git apply --numstat "$GDK_PIXBUF_PATCH" >/dev/null 2>&1; then
+    pass 'captured gdk-pixbuf patch is a valid Git patch'
+else
+    fail 'captured gdk-pixbuf patch is not a valid Git patch'
+fi
+
+for required in \
+    'diff --git a/gdk-pixbuf/meson.build b/gdk-pixbuf/meson.build' \
+    'dependencies: loaders_deps' \
+    'dependencies: [ gdk_pixbuf_deps, loaders_deps ]'; do
+    if grep -Fq -- "$required" "$GDK_PIXBUF_PATCH"; then
+        pass "captured gdk-pixbuf patch contains ${required}"
+    else
+        fail "captured gdk-pixbuf patch is missing ${required}"
     fi
 done
 

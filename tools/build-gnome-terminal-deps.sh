@@ -119,10 +119,11 @@ host library policy: pkg-config maps only X11/OpenGL -l arguments to shared obje
 fontconfig install: manual copy (no meson install; protects host /etc/fonts)
 cairo XRender function checks: HAVE_XRENDERCREATESOLIDFILL HAVE_XRENDERCREATELINEARGRADIENT HAVE_XRENDERCREATERADIALGRADIENT HAVE_XRENDERCREATECONICALGRADIENT
 cmake contract: ${CMAKE_COMMON_ARGS[*]}
-source patches: util-linux-libuuid-only.patch gtk-no-host-atk-bridge.patch vte-static-library.patch libhandy-static-library.patch
+source patches: util-linux-libuuid-only.patch gdk-pixbuf-static-loader-deps.patch gtk-no-host-atk-bridge.patch vte-static-library.patch libhandy-static-library.patch
 subproject policy: materialize pinned gvdb; provide libc gettext through a prefix-local synthetic intl.pc; no Meson downloads
 uuid policy: util-linux libuuid-only=true; install only the pinned static libuuid archive and uuid.pc
 uuid-only graph audit: reject util-linux libcommon and non-UUID lib/ sources before compile
+static loader closure: builtin loader dependencies are exported through gdkpixbuf_dep
 build-time tools: ${PREFIX}/bin precedes the host PATH; producer tools are verified before consumers
 PLAN
     for dependency in "${dependency_order[@]}"; do
@@ -564,6 +565,7 @@ meson_dep pango "${pango_src}" pango \
     -Dgtk_doc=false -Dsysprof=disabled -Dinstall-tests=false
 
 gdk_pixbuf_src=$(source_tree gdk-pixbuf)
+apply_source_patch "${gdk_pixbuf_src}" "${REPO_ROOT}/contrib/gnome-terminal/patches/gdk-pixbuf-static-loader-deps.patch"
 require_pc glib-2.0 gobject-2.0 gio-2.0 libpng
 meson_dep gdk-pixbuf "${gdk_pixbuf_src}" gdk-pixbuf \
     -Dpng=enabled -Djpeg=disabled -Dtiff=disabled \
