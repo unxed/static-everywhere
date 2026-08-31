@@ -96,6 +96,7 @@ source pins: ${LOCK} (commit verified)
 order: ${dependency_order[*]}
 host contract: X11, OpenGL/EGL, accessibility IPC, schemas, fonts and session services
 fontconfig install: manual copy (no meson install; protects host /etc/fonts)
+cairo XRender function checks: HAVE_XRENDERCREATESOLIDFILL HAVE_XRENDERCREATELINEARGRADIENT HAVE_XRENDERCREATERADIALGRADIENT HAVE_XRENDERCREATECONICALGRADIENT
 PLAN
     for dependency in "${dependency_order[@]}"; do
         printf '# pinned source: %s %s %s\n' \
@@ -401,11 +402,18 @@ fi
 
 cairo_src=$(source_tree cairo)
 require_pc glib-2.0 fontconfig freetype2 libpng pixman-1 zlib
+# Cairo 1.18.0's Meson port calls cc.has_function() for these XRender
+# entrypoints without a Xrender.h prefix.  The recipe deliberately treats the
+# runner's XRender headers/library as the host X11 boundary, so the checks
+# fail under -Werror-implicit-function-declaration even though all four
+# symbols and their types are present.  Keep the real XRender backend and
+# prevent Cairo from declaring fallback types that collide with Xrender.h.
 meson_dep cairo "${cairo_src}" cairo \
     -Dfontconfig=enabled -Dfreetype=enabled -Dpng=enabled -Dzlib=enabled \
     -Dxlib=enabled -Dxcb=disabled -Dxlib-xcb=disabled -Dglib=enabled \
     -Dtee=disabled -Dspectre=disabled -Dsymbol-lookup=disabled \
-    -Dtests=disabled -Dgtk2-utils=disabled
+    -Dtests=disabled -Dgtk2-utils=disabled \
+    -Dc_args=-DHAVE_XRENDERCREATESOLIDFILL,-DHAVE_XRENDERCREATELINEARGRADIENT,-DHAVE_XRENDERCREATERADIALGRADIENT,-DHAVE_XRENDERCREATECONICALGRADIENT
 
 pango_src=$(source_tree pango)
 require_pc glib-2.0 fribidi harfbuzz cairo fontconfig freetype2
