@@ -248,14 +248,47 @@ jobs:
                 >> "$diag/06-errors-${log_name}.txt"
             fi
           done
+          # Collect the files that diagnose a build, not every file that
+          # is not a binary.
+          #
+          # The previous filter was "newer than the job start, not .a/.o/
+          # .so, under 2 MB" -- and everything under out/gnome-terminal is
+          # newer than the job start, because the job creates it. That
+          # included the full source checkouts of glib, gtk, cairo, pango,
+          # harfbuzz, freetype, fontconfig, vte and gnome-terminal: every
+          # .c, .h, .ui, .po and test fixture. 178 MB of artifact in which
+          # the logs were a rounding error, too large to download at all.
+          #
+          # An allowlist instead. Each entry answers a question someone
+          # actually asks when a build fails: what did configure decide
+          # (meson-log, config.log, CMakeCache), what did it decide it
+          # with (config.h), and what did the build itself say (*.log).
           find out/gnome-terminal -type f -newer /tmp/job-start-marker \
-            ! -name '*.a' ! -name '*.o' ! -name '*.so' ! -name '*.so.*' \
+            \( -name 'meson-log.txt' -o -name 'config.log' \
+               -o -name 'config.h' -o -name 'CMakeCache.txt' \
+               -o -name 'CMakeConfigureLog.yaml' -o -name '*.log' \
+               -o -name 'meson-info.json' \) \
             -size -2M -print | sort > "$diag/02-output-listing.txt"
+          # A hard ceiling on the collection, independent of the
+          # allowlist above. The allowlist is a judgement about which
+          # files matter and could be wrong again; this is arithmetic and
+          # cannot be. Stop at 32 MB and say so in the artifact.
+          copied_kb=0
           while IFS= read -r file; do
+            file_kb=$(du -k "$file" 2>/dev/null | cut -f1)
+            file_kb=${file_kb:-0}
+            if [ "$((copied_kb + file_kb))" -gt 32768 ]; then
+              printf 'Collection stopped at 32 MB. Remaining files listed\n' \
+                >"$diag/03-text/TRUNCATED.txt"
+              printf 'in 02-output-listing.txt were not copied.\n' \
+                >>"$diag/03-text/TRUNCATED.txt"
+              break
+            fi
             rel=${file#out/gnome-terminal/}
             target="$diag/03-text/$rel"
             mkdir -p "$(dirname "$target")"
             cp "$file" "$target" 2>/dev/null || true
+            copied_kb=$((copied_kb + file_kb))
           done < "$diag/02-output-listing.txt"
           # No tails here: 00-deps-build.log and 01-gnome-terminal-build.log
           # above are the same two logs, whole. A merge left both forms in

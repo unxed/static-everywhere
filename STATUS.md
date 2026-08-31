@@ -7,6 +7,50 @@ Everything below this section is a reverse-chronological log (newest
 first). Read *this* section first; consult the log below only for the
 detail behind a specific claim.
 
+### The 178 MB artifact was full of dependency source code
+
+The question was the right one to ask, and the answer is embarrassing.
+The collector copied every file under `out/gnome-terminal` that was newer
+than the job-start marker, was not `.a`/`.o`/`.so`, and was under 2 MB.
+Everything there is newer than the marker, because the job creates it —
+so that filter meant **the complete source checkouts** of glib, gtk,
+cairo, pango, harfbuzz, freetype, fontconfig, vte and gnome-terminal:
+every `.c`, `.h`, `.ui`, `.po` and test fixture. The logs were a rounding
+error inside it.
+
+Replaced with an allowlist. Each entry answers a question someone
+actually asks when a build fails: what configure decided
+(`meson-log.txt`, `config.log`, `CMakeCache.txt`), what it decided with
+(`config.h`), and what the build said (`*.log`).
+
+And a ceiling that does not depend on my judgement being right: the copy
+stops at 32 MB and writes `TRUNCATED.txt` saying so. The allowlist is an
+opinion about which files matter and could be wrong again; 32 MB is
+arithmetic and cannot be.
+
+### close_range, for the third time
+
+```
+ld.lld: error: undefined symbol: close_range
+>>> referenced by spawn.cc:75, in archive src/libvte-2.91.a
+```
+
+`contrib/f4-qt/compat/glibc-shims.c` was written for exactly this and
+quotes the identical error message in its own comments. `close_range`
+entered glibc in 2.34; at a 2.28 baseline zig declares it and its stub
+does not define it. konsole already links that shim too, so this is the
+third recipe needing it and the second time the path's `f4-qt/` prefix
+made a shared compatibility layer look like one project's private
+workaround.
+
+Verified rather than assumed: compiled at the 2.28 baseline the shim
+defines `close_range` as a weak symbol, and a program calling it fails to
+link without the object and links with it.
+
+The path stays for now — moving it touches three recipes and is churn
+better done deliberately than in a hurry — but it is noted here and in
+the new comment as a baseline layer belonging to no single recipe.
+
 ### vte's error, at last: a link flag that deleted the include path
 
 ```

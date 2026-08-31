@@ -217,6 +217,23 @@ EOF
     chmod +x "${wrapper}"
 }
 
+# The glibc baseline shim, shared with the f4-qt and konsole recipes.
+#
+# vte calls close_range(), which entered glibc in 2.34. Building against
+# a 2.28 baseline, zig's headers declare it and its stub does not define
+# it, so the link fails with
+#
+#   ld.lld: error: undefined symbol: close_range
+#
+# which is the exact error contrib/f4-qt/compat/glibc-shims.c was written
+# for, quoted in its own comments. Same defect, third project. The path
+# still says f4-qt for historical reasons; the file is a glibc-baseline
+# compatibility layer and belongs to no single recipe.
+GLIBC_SHIM_OBJ="${WORK}/compat-glibc-shims.o"
+run "${CC}" -target "${TARGET}" -O2 -fPIC \
+    -c "${REPO_ROOT}/contrib/f4-qt/compat/glibc-shims.c" \
+    -o "${GLIBC_SHIM_OBJ}"
+
 write_libc_free_compiler_wrapper "${MESON_CC}" "${CC}"
 write_libc_free_compiler_wrapper "${MESON_CXX}" "${CXX}"
 
@@ -253,8 +270,8 @@ strip = 'strip'
 [built-in options]
 c_args = ['-target', '${TARGET}', '-fPIE', '-ffunction-sections', '-fdata-sections', '-fstack-protector-strong', '-ffile-prefix-map=${WORK}=.', '-Wno-cast-function-type-strict', '-Wno-cast-function-type']
 cpp_args = ['-target', '${TARGET}', '-fPIE', '-ffunction-sections', '-fdata-sections', '-fstack-protector-strong', '-ffile-prefix-map=${WORK}=.', '-Wno-cast-function-type-strict', '-Wno-cast-function-type']
-c_link_args = ['-target', '${TARGET}', '-static-libgcc', '-Wl,--gc-sections', '-Wl,-z,relro', '-Wl,-z,now', '-Wl,-z,noexecstack', '-Wl,-z,nodelete', '-pie', '-s', '-L${PREFIX}/lib', '-L/usr/lib/x86_64-linux-gnu', '-L/usr/lib', '-L/lib/x86_64-linux-gnu']
-cpp_link_args = ['-target', '${TARGET}', '-static-libgcc', '-static-libstdc++', '-Wl,--gc-sections', '-Wl,-z,relro', '-Wl,-z,now', '-Wl,-z,noexecstack', '-Wl,-z,nodelete', '-pie', '-s', '-L${PREFIX}/lib', '-L/usr/lib/x86_64-linux-gnu', '-L/usr/lib', '-L/lib/x86_64-linux-gnu']
+c_link_args = ['${GLIBC_SHIM_OBJ}', '-target', '${TARGET}', '-static-libgcc', '-Wl,--gc-sections', '-Wl,-z,relro', '-Wl,-z,now', '-Wl,-z,noexecstack', '-Wl,-z,nodelete', '-pie', '-s', '-L${PREFIX}/lib', '-L/usr/lib/x86_64-linux-gnu', '-L/usr/lib', '-L/lib/x86_64-linux-gnu']
+cpp_link_args = ['${GLIBC_SHIM_OBJ}', '-target', '${TARGET}', '-static-libgcc', '-static-libstdc++', '-Wl,--gc-sections', '-Wl,-z,relro', '-Wl,-z,now', '-Wl,-z,noexecstack', '-Wl,-z,nodelete', '-pie', '-s', '-L${PREFIX}/lib', '-L/usr/lib/x86_64-linux-gnu', '-L/usr/lib', '-L/lib/x86_64-linux-gnu']
 default_library = 'static'
 b_pie = true
 EOF
