@@ -190,28 +190,43 @@ jobs:
           set +e
           diag=/tmp/gnome-terminal-diagnostic-logs
           mkdir -p "$diag"
-          cp "$RUNNER_TEMP/gnome-terminal-deps-build.log" "$diag/00-deps-build.log" 2>/dev/null || true
-          cp "$RUNNER_TEMP/gnome-terminal-build.log" "$diag/01-gnome-terminal-build.log" 2>/dev/null || true
+          # Keep only bounded tails of the two CI logs. The complete logs are
+          # already visible in Actions, while retaining them here makes a
+          # failure artifact unnecessarily large for mobile downloads.
+          tail -n 2500 "$RUNNER_TEMP/gnome-terminal-deps-build.log" \
+            > "$diag/00-deps-build-tail.log" 2>/dev/null || true
+          tail -n 2500 "$RUNNER_TEMP/gnome-terminal-build.log" \
+            > "$diag/01-gnome-terminal-build-tail.log" 2>/dev/null || true
+          # Do not copy an entire cached source/build tree. Record its size
+          # inventory, then whitelist only small files that explain configure
+          # failures without carrying source code or compiled output.
           find out/gnome-terminal -type f -newer /tmp/job-start-marker \
-            ! -name '*.a' ! -name '*.o' ! -name '*.so' ! -name '*.so.*' \
-            -size -2M -print | sort > "$diag/02-output-listing.txt"
+            -printf '%s\t%p\n' | sort -nr | head -n 500 \
+            > "$diag/02-output-size-inventory.txt"
+          find out/gnome-terminal -type f -newer /tmp/job-start-marker \
+            \( -path '*/meson-logs/meson-log.txt' \
+               -o -name '*.audit.txt' \
+               -o -name 'config.h' \) \
+            -size -2M -print | sort > "$diag/03-selected-files.txt"
           while IFS= read -r file; do
             rel=${file#out/gnome-terminal/}
-            target="$diag/03-text/$rel"
+            target="$diag/04-selected/$rel"
             mkdir -p "$(dirname "$target")"
             cp "$file" "$target" 2>/dev/null || true
-          done < "$diag/02-output-listing.txt"
-          tail -n 3000 "$RUNNER_TEMP/gnome-terminal-build.log" \
-            > "$diag/04-build-output-tail.txt" 2>/dev/null || true
-          tail -n 3000 "$RUNNER_TEMP/gnome-terminal-deps-build.log" \
-            > "$diag/05-deps-output-tail.txt" 2>/dev/null || true
+          done < "$diag/03-selected-files.txt"
           {
             echo '=== df -h ==='; df -h
             echo '=== free -h ==='; free -h
             echo '=== dmesg OOM traces ==='
             sudo dmesg 2>/dev/null | grep -iE 'killed process|out of memory|oom' || true
-          } > "$diag/06-system-state.txt"
-          du -sh "$diag" > "$diag/07-collection-size.txt" 2>&1 || true
+          } > "$diag/05-system-state.txt"
+          du -sh "$diag" > "$diag/06-collection-size.txt" 2>&1 || true
+          diag_bytes=$(du -sb "$diag" 2>/dev/null | awk '{print $1}')
+          max_diag_bytes=$((32 * 1024 * 1024))
+          if [ "${diag_bytes:-0}" -gt "$max_diag_bytes" ]; then
+            echo "diagnostics exceed ${max_diag_bytes} bytes: ${diag_bytes}" >&2
+            exit 1
+          fi
 
       - name: Save GNOME Terminal dependency prefix and ccache
         if: always()
