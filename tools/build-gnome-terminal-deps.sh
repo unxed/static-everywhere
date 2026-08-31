@@ -8,6 +8,9 @@ SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 REPO_ROOT=$(CDPATH= cd -- "${SCRIPT_DIR}/.." && pwd)
 LOCK="${REPO_ROOT}/contrib/gnome-terminal/deps.lock"
 TOOLCHAIN="${REPO_ROOT}/onebin/toolchain"
+PKG_CONFIG_WRAPPER="${REPO_ROOT}/tools/pkg-config-hybrid-host.sh"
+PKG_CONFIG_COMMAND=(bash "${PKG_CONFIG_WRAPPER}")
+PKG_CONFIG_ENV="bash $(printf '%q' "${PKG_CONFIG_WRAPPER}")"
 
 PREFIX="${REPO_ROOT}/out/gnome-terminal/static-prefix"
 WORK="${REPO_ROOT}/out/gnome-terminal/deps-work"
@@ -109,6 +112,7 @@ target: ${TARGET}
 source pins: ${LOCK} (commit verified)
 order: ${dependency_order[*]}
 host contract: X11, OpenGL/EGL, accessibility IPC, schemas, fonts and session services
+host library policy: pkg-config maps host GUI/desktop -l arguments to shared objects
 fontconfig install: manual copy (no meson install; protects host /etc/fonts)
 cairo XRender function checks: HAVE_XRENDERCREATESOLIDFILL HAVE_XRENDERCREATELINEARGRADIENT HAVE_XRENDERCREATERADIALGRADIENT HAVE_XRENDERCREATECONICALGRADIENT
 cmake contract: ${CMAKE_COMMON_ARGS[*]}
@@ -133,6 +137,11 @@ for tool in "${CC}" "${CXX}" "${AR}" "${RANLIB}"; do
         exit 1
     }
 done
+[ -f "${PKG_CONFIG_WRAPPER}" ] || {
+    printf 'build-gnome-terminal-deps.sh: host pkg-config wrapper is missing: %s\n' \
+        "${PKG_CONFIG_WRAPPER}" >&2
+    exit 1
+}
 command -v zig >/dev/null 2>&1 || {
     printf 'build-gnome-terminal-deps.sh: zig is not on PATH\n' >&2
     exit 1
@@ -158,6 +167,7 @@ b_pie = true
 EOF
 
 export PATH="${TOOLCHAIN}:${PATH}"
+export PKG_CONFIG="${PKG_CONFIG_ENV}"
 export PKG_CONFIG_ALLOW_SYSTEM_LIBS=1
 export PKG_CONFIG_ALLOW_SYSTEM_CFLAGS=1
 export PKG_CONFIG_PATH="${PREFIX}/lib/pkgconfig:${PREFIX}/share/pkgconfig:/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/share/pkgconfig:${PKG_CONFIG_PATH:-}"
@@ -220,7 +230,7 @@ built() {
 require_pc() {
     local pc prefix
     for pc in "$@"; do
-        prefix=$(pkg-config --variable=prefix "${pc}" 2>/dev/null || true)
+        prefix=$("${PKG_CONFIG_COMMAND[@]}" --variable=prefix "${pc}" 2>/dev/null || true)
         [ "${prefix}" = "${PREFIX}" ] || {
             printf 'build-gnome-terminal-deps.sh: %s resolved outside the static prefix: %s\n' \
                 "${pc}" "${prefix:-not found}" >&2
