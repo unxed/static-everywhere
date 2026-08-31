@@ -13,7 +13,7 @@ diff --git a/meson_options.txt b/meson_options.txt
 diff --git a/meson.build b/meson.build
 --- a/meson.build
 +++ b/meson.build
-@@ -888,14 +888,16 @@ subdir('include')
+@@ -886,13 +886,15 @@
  subdir('include')
  subdir('lib')
 -subdir('libblkid')
