@@ -123,6 +123,7 @@ source patches: util-linux-libuuid-only.patch gtk-no-host-atk-bridge.patch vte-s
 subproject policy: materialize pinned gvdb; provide libc gettext through a prefix-local synthetic intl.pc; no Meson downloads
 uuid policy: util-linux libuuid-only=true; install only the pinned static libuuid archive and uuid.pc
 uuid-only graph audit: reject util-linux libcommon and non-UUID lib/ sources before compile
+build-time tools: ${PREFIX}/bin precedes the host PATH; GLib tools are reused by gdk-pixbuf
 PLAN
     for dependency in "${dependency_order[@]}"; do
         printf '# pinned source: %s %s %s\n' \
@@ -177,7 +178,10 @@ default_library = 'static'
 b_pie = true
 EOF
 
-export PATH="${TOOLCHAIN}:${PATH}"
+# Dependency build tools produced by the static prefix must win over host
+# tools. In particular, gdk-pixbuf's pinned Meson file calls
+# find_program('glib-compile-resources') after GLib has installed that tool.
+export PATH="${PREFIX}/bin:${TOOLCHAIN}:${PATH}"
 export PKG_CONFIG="${PKG_CONFIG_ENV}"
 export PKG_CONFIG_ALLOW_SYSTEM_LIBS=1
 export PKG_CONFIG_ALLOW_SYSTEM_CFLAGS=1

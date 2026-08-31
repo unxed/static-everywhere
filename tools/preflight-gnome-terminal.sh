@@ -113,6 +113,7 @@ for required in \
     'synthetic intl.pc' \
     'libuuid-only=true' \
     'uuid-only graph audit: reject util-linux libcommon and non-UUID lib/ sources before compile' \
+    'build-time tools: ' \
     'gtk lz4 vte libhandy'; do
     if grep -Fq -- "$required" "$DEPS_PLAN"; then
         pass "dependency plan contains ${required}"
@@ -120,6 +121,12 @@ for required in \
         fail "dependency plan is missing ${required}"
     fi
 done
+
+if grep -Fq -- 'export PATH="${PREFIX}/bin:${TOOLCHAIN}:${PATH}"' "$DEPS_SCRIPT"; then
+    pass 'dependency build tools take precedence over host PATH'
+else
+    fail 'dependency build tools are not placed before host PATH'
+fi
 
 UUID_PATCH="${REPO_ROOT}/contrib/gnome-terminal/patches/util-linux-libuuid-only.patch"
 if git apply --numstat "$UUID_PATCH" >/dev/null 2>&1; then
