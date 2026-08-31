@@ -175,15 +175,23 @@ jobs:
               # undefined std:: symbols.
               apk add --no-cache build-base clang python3 libc++-dev libc++-static
               # SoLo's generic dlfcn target emits its musl include roots as
-              # -I flags before the compiler driver's libc++ roots.  That
-              # makes musl's math.h/wchar.h/... shadow libc++'s C wrapper
-              # headers.  Put libc++ first once, in the C++ compiler wrapper;
-              # each wrapper then uses #include_next to reach musl.  This
-              # covers the whole family of C/C++ wrapper collisions without
-              # special-casing whichever header fails first.
+              # -I flags before the compiler driver's libc++ roots.  A plain
+              # extra -I/usr/include/c++/v1 is not sufficient: clang
+              # canonicalizes that duplicate path, and libc++'s #include_next
+              # still reaches musl before the compiler C headers.  Use private
+              # copies so the wrapper controls the complete order once:
+              # libc++ -> clang resource headers -> SoLo/musl.  This covers
+              # the whole C/C++ wrapper family without special-casing the
+              # header that happens to fail first.
               solo_cxx_real=$(command -v "$CXX")
+              solo_resource_dir=$("$solo_cxx_real" -print-resource-dir)/include
+              test -d /usr/include/c++/v1
+              test -d "$solo_resource_dir"
+              mkdir -p /tmp/solo-libcxx /tmp/solo-clang-resource
+              cp -a /usr/include/c++/v1/. /tmp/solo-libcxx/
+              cp -a "$solo_resource_dir"/. /tmp/solo-clang-resource/
               printf '%s\n' '#!/bin/sh' \
-                "exec \"$solo_cxx_real\" -I/usr/include/c++/v1 \"\$@\"" \
+                "exec \"$solo_cxx_real\" -nostdinc++ -I/tmp/solo-libcxx -I/tmp/solo-clang-resource \"\$@\"" \
                 >/tmp/solo-cxx-wrapper
               chmod 755 /tmp/solo-cxx-wrapper
               export CXX=/tmp/solo-cxx-wrapper
