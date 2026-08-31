@@ -7,7 +7,7 @@ konsole_qt_package_root() {
     local data_file root
 
     while IFS= read -r data_file; do
-        root=$(sed -n 's|^[[:space:]]*set(qt_PACKAGE_FOLDER_RELEASE "\(.*\)") [[:space:]]*$|\1|p'                    "$data_file" | head -n 1)
+        root=$(sed -n 's|^[[:space:]]*set[[:space:]]*([[:space:]]*qt_PACKAGE_FOLDER_RELEASE[[:space:]]*"\([^"]*\)"[[:space:]]*)[[:space:]]*$|\1|p'                    "$data_file" | head -n 1)
         if [[ -n $root ]]; then
             printf '%s\n' "$root"
             return 0
