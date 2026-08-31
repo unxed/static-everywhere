@@ -7,6 +7,9 @@ set -euo pipefail
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 REPO_ROOT=$(CDPATH= cd -- "${SCRIPT_DIR}/.." && pwd)
 TOOLCHAIN="${REPO_ROOT}/onebin/toolchain"
+PKG_CONFIG_WRAPPER="${REPO_ROOT}/tools/pkg-config-hybrid-host.sh"
+PKG_CONFIG_COMMAND=(bash "${PKG_CONFIG_WRAPPER}")
+PKG_CONFIG_ENV="bash $(printf '%q' "${PKG_CONFIG_WRAPPER}")"
 
 SRC=./gnome-terminal-src
 DEPS_PREFIX=./out/gnome-terminal/static-prefix
@@ -118,6 +121,9 @@ jobs: ${JOBS}
 # The prefix must contain static GTK3, GLib, Pango, Cairo, GdkPixbuf,
 # FreeType, HarfBuzz, Fontconfig, VTE and libhandy archives plus their .pc files.
 # The dependency lock is contrib/gnome-terminal/deps.lock.
+# Host X11/OpenGL/EGL and desktop libraries remain dynamic through the
+# hybrid pkg-config wrapper; --prefer-static is retained for the prefix's
+# private static dependency closure.
 PLAN
 
 if [ "$PRINT_PLAN" -eq 1 ]; then
@@ -151,6 +157,10 @@ for tool in zig-cc zig-c++ zig-ar zig-ranlib; do
         exit 1
     }
 done
+[ -f "$PKG_CONFIG_WRAPPER" ] || {
+    printf 'build-gnome-terminal.sh: host pkg-config wrapper is missing: %s\n' "$PKG_CONFIG_WRAPPER" >&2
+    exit 1
+}
 [ -d "$SRC_ABS" ] || { printf 'build-gnome-terminal.sh: source directory not found: %s\n' "$SRC_ABS" >&2; exit 1; }
 [ -d "$DEPS_ABS" ] || { printf 'build-gnome-terminal.sh: dependency prefix not found: %s\n' "$DEPS_ABS" >&2; exit 1; }
 if ! find "$DEPS_ABS" -type f -path '*/pkgconfig/gtk+-3.0.pc' -print -quit | grep -q .; then
@@ -161,10 +171,11 @@ fi
 mkdir -p "$OUT_ABS"
 render_native_file
 export PKG_CONFIG_PATH="$PKG_CONFIG_PATH_VALUE"
+export PKG_CONFIG="$PKG_CONFIG_ENV"
 export PKG_CONFIG_ALLOW_SYSTEM_LIBS=1
 export PKG_CONFIG_ALLOW_SYSTEM_CFLAGS=1
 
-pkg-config --exists gtk+-3.0 vte-2.91 libhandy-1 || {
+"${PKG_CONFIG_COMMAND[@]}" --exists gtk+-3.0 vte-2.91 libhandy-1 || {
     printf 'build-gnome-terminal.sh: static dependency prefix is incomplete (GTK3, VTE or libhandy missing)\n' >&2
     exit 1
 }
