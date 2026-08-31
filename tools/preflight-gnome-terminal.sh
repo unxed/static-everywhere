@@ -111,6 +111,17 @@ for required in \
 done
 
 echo
+echo '== hybrid pkg-config boundary =='
+HOST_LIBS=$(bash "$REPO_ROOT/tools/pkg-config-hybrid-host.sh" --libs --static x11 2>/dev/null || true)
+if grep -Fq -- '/usr/lib/x86_64-linux-gnu/libX11.so' <<<"$HOST_LIBS" \
+    && ! grep -Eq -- '(^| )-l(X11|xcb|Xau|Xdmcp|pthread)( |$)' <<<"$HOST_LIBS"; then
+    pass 'host X11 closure resolves to shared objects'
+else
+    fail 'host X11 closure still contains bare static -l arguments'
+    printf '       %s\n' "$HOST_LIBS"
+fi
+
+echo
 echo '== locked static stack =='
 for dependency in gnome-terminal vte gtk libhandy glib pango cairo harfbuzz freetype fontconfig gdk-pixbuf pcre2 zlib libffi libpng pixman fribidi expat atk epoxy lz4; do
     if awk -v name="$dependency" '$1 == name && $3 ~ /^[0-9a-f]{40}$/ && $4 ~ /\.git$/ { found = 1 } END { exit !found }' "$LOCK"; then
