@@ -77,7 +77,6 @@ for required in \
     '-Wl,-z,now' \
     '-Wl,-z,noexecstack' \
     'gnome-terminal-static-gmodule-override.patch' \
-    'glib-static-gmodule-override.patch' \
     'gnome-terminal-glibc-shims.o' \
     'meson install' \
     'verify-gnome-terminal-static.sh'; do
@@ -121,6 +120,7 @@ for required in \
     'util-linux-libuuid-only.patch' \
     'gdk-pixbuf-static-loader-deps.patch' \
     'gtk-no-host-atk-bridge.patch' \
+    'glib-static-gmodule-override.patch' \
     'vte-static-library.patch' \
     'libhandy-static-library.patch' \
     'dependency patch contract: every patch is a valid Git diff captured from its pinned checkout' \
