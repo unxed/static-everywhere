@@ -124,6 +124,7 @@ jobs: ${JOBS}
 # Host X11/OpenGL/EGL and desktop libraries remain dynamic through the
 # hybrid pkg-config wrapper; --prefer-static is retained for the prefix's
 # private static dependency closure.
+# linker hardening: -Wl,-z,relro -Wl,-z,now -Wl,-z,noexecstack
 PLAN
 
 if [ "$PRINT_PLAN" -eq 1 ]; then
