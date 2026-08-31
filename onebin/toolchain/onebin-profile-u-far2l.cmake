@@ -77,10 +77,22 @@ function(_onebin_profile_u_attach_far2l)
     # `_DLFCN_H` guard, after which SoLo's `#undef`s and `#define dlopen
     # stub_dlopen` layer cleanly on top -- which is the arrangement its
     # author documented in the header itself.
+    # SHELL: on both, because CMake de-duplicates compile options.
+    #
+    # Written as four plain arguments, the second "-include" is dropped
+    # as a repeat and its filename is left behind as a bare argument,
+    # which the driver then treats as an input file. A .h input is a C
+    # header, so the compile dies with
+    #
+    #   error: invalid argument '-std=c++17' not allowed with 'C'
+    #
+    # -- a message that says nothing about include ordering and points at
+    # the wrong flag entirely. SHELL: keeps each option and its argument
+    # together as one unit, which is what that prefix exists for.
     foreach(_solo_target far2l far2l_sdl)
         target_compile_options(${_solo_target} PRIVATE
-            "-include" "dlfcn.h"
-            "-include" "${_solo_header}")
+            "SHELL:-include dlfcn.h"
+            "SHELL:-include ${_solo_header}")
     endforeach()
 
     # CMake emits the correct --whole-archive / --no-whole-archive pair

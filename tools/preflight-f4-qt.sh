@@ -421,6 +421,16 @@ else
     printf '%s\n' "$SHIMORD" | sed 's/^/       /'
 fi
 
+# CMake de-duplicates compile options, so a repeated "-include" loses its
+# option and leaves the filename as an input file. That broke far2l with
+# a message about -std=c++17. Swept across every cmake file here.
+if PAIRING=$("${REPO_ROOT}/tools/test-compile-option-pairing.sh" 2>&1); then
+    pass "paired compile options survive CMake de-duplication"
+else
+    fail "compile-option pairing regression"
+    printf '%s\n' "$PAIRING" | sed 's/^/       /'
+fi
+
 # Cost: would have been a silently unreproducible artifact rather than a
 # failed build -- f4's own script clones qwindowkit from an unpinned
 # branch, so upstream could change what we ship without anything failing.

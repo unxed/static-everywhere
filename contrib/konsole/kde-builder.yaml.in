@@ -33,6 +33,28 @@ global:
     -DONEBIN_GLIBC_BASELINE=2.27
     -DBUILD_TESTING=OFF
     -DKCONFIG_USE_QML=OFF
+    # ki18n's src/i18n-qml compiles against Qt6::Qml, and Qt's own
+    # klocalizedqmlcontext.h opens with #include <qqmlintegration.h>.
+    # That header is not in include/QtQml: it belongs to the separate
+    # QtQmlIntegration module. Upstream Qt propagates that include
+    # directory through the Qt6::Qml target; this Conan package does not,
+    # so the compile line lists include/QtQml, include/QtCore and friends
+    # but never include/QtQmlIntegration, and the build dies with
+    # "'qqmlintegration.h' file not found".
+    #
+    # Note what does NOT fix it: -DBUILD_WITH_QML=OFF is already set
+    # above and has no effect here, because ki18n gates the subdirectory
+    # on `if (TARGET Qt6::Qml)` rather than on that option, and Conan's
+    # Qt6 config defines every component target regardless.
+    #
+    # CMAKE_CXX_STANDARD_INCLUDE_DIRECTORIES adds the directory to every
+    # compile without touching CMAKE_CXX_FLAGS, so the toolchain file's
+    # own flags are left alone. Verified with a real cmake configure:
+    # without it the include fails, with it the build completes.
+    #
+    # The real defect is in the Qt package and is filed in
+    # contrib/konsole/UPSTREAM.md; this unblocks the build meanwhile.
+    -DCMAKE_CXX_STANDARD_INCLUDE_DIRECTORIES=@QT_PACKAGE_ROOT@/include/QtQmlIntegration
     -DBUILD_WITH_QML=OFF
     -DKCOREADDONS_USE_QML=OFF
     -DKICONTHEMES_USE_QTQUICK=OFF

@@ -201,6 +201,38 @@ else
     }
 fi
 
+# Where Conan unpacked the Qt package.
+#
+# Needed because ki18n compiles src/i18n-qml against Qt6::Qml, whose
+# headers include <qqmlintegration.h> -- and that header does not live in
+# include/QtQml. It belongs to the separate QtQmlIntegration module,
+# which upstream Qt propagates through Qt6::Qml but this Conan package
+# does not, so the compile line never receives the directory and the
+# build fails with "'qqmlintegration.h' file not found".
+#
+# Read, never derive: Conan writes the root into its own generated data
+# file as qt_PACKAGE_FOLDER_RELEASE, which is the same variable
+# contrib/f4-qt/import-qt-static-plugins.cmake already relies on. Do not
+# reconstruct it from a cache layout that is not ours to predict.
+qt_package_root() {
+    local data_file root
+    data_file=$(find "$QT_OUT" -maxdepth 1 -name 'qt-release-*-data.cmake' \
+                    -print -quit 2>/dev/null || true)
+    if [[ -z $data_file ]]; then
+        printf 'build-konsole.sh: no qt-release-*-data.cmake in %s;\n' "$QT_OUT" >&2
+        printf '  cannot locate the Qt package root\n' >&2
+        return 1
+    fi
+    root=$(sed -n 's|^[[:space:]]*set(qt_PACKAGE_FOLDER_RELEASE "\(.*\)")[[:space:]]*$|\1|p' \
+               "$data_file" | head -n 1)
+    if [[ -z $root ]]; then
+        printf 'build-konsole.sh: qt_PACKAGE_FOLDER_RELEASE not set in %s\n' \
+            "$data_file" >&2
+        return 1
+    fi
+    printf '%s' "$root"
+}
+
 render_config() {
     sed -e "s|@KDE_SOURCE_DIR@|$KDE_SOURCE_DIR|g" \
         -e "s|@KDE_BUILD_DIR@|$KDE_BUILD_DIR|g" \
@@ -214,6 +246,7 @@ render_config() {
         -e "s|@CMAKE_PREFIX_PATH@|$CMAKE_PREFIX_PATH|g" \
         -e "s|@PROJECT_INCLUDE@|$REPO_ROOT/contrib/konsole/project-include.cmake|g" \
         -e "s|@KONSOLE_REF@|$KONSOLE_REF|g" \
+        -e "s|@QT_PACKAGE_ROOT@|$(qt_package_root)|g" \
         "$REPO_ROOT/contrib/konsole/kde-builder.yaml.in"
 }
 if [[ $PRINT_PLAN -eq 1 ]]; then

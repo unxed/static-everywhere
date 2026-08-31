@@ -174,4 +174,37 @@ fi
 "$REPO_ROOT/tools/test-toolchain-host-isolation.sh" \
     || { printf 'FAIL: toolchain host isolation regression\n' >&2; exit 1; }
 
+# ki18n compiles src/i18n-qml against Qt6::Qml, whose headers include
+# <qqmlintegration.h> -- a header of the separate QtQmlIntegration
+# module. Upstream Qt propagates that include directory through
+# Qt6::Qml; this Conan package does not, so the directory has to be
+# injected. Both halves are asserted: the template must carry the
+# placeholder, and the script must know how to fill it.
+grep -q 'QtQmlIntegration' "$REPO_ROOT/contrib/konsole/kde-builder.yaml.in" \
+    || { printf 'FAIL: the QtQmlIntegration include directory is no longer injected;\n' >&2
+         printf '      ki18n will fail on "qqmlintegration.h file not found"\n' >&2
+         exit 1; }
+grep -q 'qt_package_root' "$REPO_ROOT/tools/build-konsole.sh" \
+    || { printf 'FAIL: build-konsole.sh no longer resolves the Qt package root\n' >&2
+         exit 1; }
+pass 'the QtQmlIntegration include directory is injected'
+
+# Every placeholder in the template must have a substitution, or the
+# rendered config silently keeps a literal @NAME@ and the option becomes
+# a nonsense path.
+python3 - "$REPO_ROOT" <<'PYEOF'
+import pathlib, re, sys
+root = pathlib.Path(sys.argv[1])
+tpl = (root / 'contrib/konsole/kde-builder.yaml.in').read_text()
+script = (root / 'tools/build-konsole.sh').read_text()
+missing = sorted({m for m in re.findall(r'@[A-Z_]+@', tpl)
+                  if m not in script})
+if missing:
+    print('FAIL: placeholders with no substitution in build-konsole.sh:')
+    for m in missing:
+        print('  ' + m)
+    sys.exit(1)
+PYEOF
+pass 'every template placeholder has a substitution'
+
 printf 'Konsole preflight: PASS\n'

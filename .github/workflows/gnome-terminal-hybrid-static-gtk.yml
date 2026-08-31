@@ -226,10 +226,11 @@ jobs:
             mkdir -p "$(dirname "$target")"
             cp "$file" "$target" 2>/dev/null || true
           done < "$diag/02-output-listing.txt"
-          tail -n 3000 "$RUNNER_TEMP/gnome-terminal-build.log" \
-            > "$diag/04-build-output-tail.txt" 2>/dev/null || true
-          tail -n 3000 "$RUNNER_TEMP/gnome-terminal-deps-build.log" \
-            > "$diag/05-deps-output-tail.txt" 2>/dev/null || true
+          # No tails here: 00-deps-build.log and 01-gnome-terminal-build.log
+          # above are the same two logs, whole. A merge left both forms in
+          # this step for a while, which doubled the artifact and invited
+          # a reader to open the truncated copy of a log that was already
+          # present in full.
 
           # Extract the failures, do not just tail.
           #

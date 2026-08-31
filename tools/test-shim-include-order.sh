@@ -39,7 +39,12 @@ m = re.search(r'target_compile_options\([^)]*?-include[^)]*?\)', text, re.S)
 if not m:
     sys.exit('the far2l hook no longer force-includes anything')
 block = m.group(0)
-libc = block.find('"dlfcn.h"')
+# Accept either spelling: the pairs must be SHELL: units (CMake
+# de-duplicates bare repeats), but this check is about ORDER, so it
+# locates the two -include arguments however they are written.
+libc = block.find('-include dlfcn.h')
+if libc == -1:
+    libc = block.find('"dlfcn.h"')
 solo = block.find('_solo_header')
 if libc == -1:
     sys.exit('the libc <dlfcn.h> is not force-included before the SoLo shim;\n'

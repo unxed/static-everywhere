@@ -1,0 +1,73 @@
+# 1 "/usr/local/lib/python3.12/dist-packages/cmake/data/share/cmake-3.31/Modules/CXX-DetectStdlib.h"
+# 1 "<built-in>" 1
+# 1 "<built-in>" 3
+# 504 "<built-in>" 3
+# 1 "<command line>" 1
+# 1 "<built-in>" 2
+# 1 "/usr/local/lib/python3.12/dist-packages/cmake/data/share/cmake-3.31/Modules/CXX-DetectStdlib.h" 2
+# 1 "/home/claude/zig013/lib/libcxx/include/version" 1 3
+# 247 "/home/claude/zig013/lib/libcxx/include/version" 3
+# 1 "/home/claude/zig013/lib/libcxx/include/__assert" 1 3
+# 13 "/home/claude/zig013/lib/libcxx/include/__assert" 3
+# 1 "/home/claude/zig013/lib/libcxx/include/__assertion_handler" 1 3
+# 13 "/home/claude/zig013/lib/libcxx/include/__assertion_handler" 3
+# 1 "/home/claude/zig013/lib/libcxx/include/__config" 1 3
+# 17 "/home/claude/zig013/lib/libcxx/include/__config" 3
+# 517 "/home/claude/zig013/lib/libcxx/include/__config" 3
+# 1 "/usr/include/features.h" 1 3
+# 394 "/usr/include/features.h" 3
+# 1 "/usr/include/features-time64.h" 1 3
+# 20 "/usr/include/features-time64.h" 3
+# 1 "/usr/include/x86_64-linux-gnu/bits/wordsize.h" 1 3
+# 21 "/usr/include/features-time64.h" 2 3
+# 1 "/usr/include/x86_64-linux-gnu/bits/timesize.h" 1 3
+# 19 "/usr/include/x86_64-linux-gnu/bits/timesize.h" 3
+# 1 "/usr/include/x86_64-linux-gnu/bits/wordsize.h" 1 3
+# 20 "/usr/include/x86_64-linux-gnu/bits/timesize.h" 2 3
+# 22 "/usr/include/features-time64.h" 2 3
+# 395 "/usr/include/features.h" 2 3
+# 480 "/usr/include/features.h" 3
+# 1 "/usr/include/stdc-predef.h" 1 3
+# 481 "/usr/include/features.h" 2 3
+# 502 "/usr/include/features.h" 3
+# 1 "/usr/include/x86_64-linux-gnu/sys/cdefs.h" 1 3
+# 576 "/usr/include/x86_64-linux-gnu/sys/cdefs.h" 3
+# 1 "/usr/include/x86_64-linux-gnu/bits/wordsize.h" 1 3
+# 577 "/usr/include/x86_64-linux-gnu/sys/cdefs.h" 2 3
+# 1 "/usr/include/x86_64-linux-gnu/bits/long-double.h" 1 3
+# 578 "/usr/include/x86_64-linux-gnu/sys/cdefs.h" 2 3
+# 503 "/usr/include/features.h" 2 3
+# 526 "/usr/include/features.h" 3
+# 1 "/usr/include/x86_64-linux-gnu/gnu/stubs.h" 1 3
+# 10 "/usr/include/x86_64-linux-gnu/gnu/stubs.h" 3
+# 1 "/usr/include/x86_64-linux-gnu/gnu/stubs-64.h" 1 3
+# 11 "/usr/include/x86_64-linux-gnu/gnu/stubs.h" 2 3
+# 527 "/usr/include/features.h" 2 3
+# 518 "/home/claude/zig013/lib/libcxx/include/__config" 2 3
+# 14 "/home/claude/zig013/lib/libcxx/include/__assertion_handler" 2 3
+# 1 "/home/claude/zig013/lib/libcxx/include/__verbose_abort" 1 3
+# 13 "/home/claude/zig013/lib/libcxx/include/__verbose_abort" 3
+# 1 "/home/claude/zig013/lib/libcxx/include/__availability" 1 3
+# 17 "/home/claude/zig013/lib/libcxx/include/__availability" 3
+# 14 "/home/claude/zig013/lib/libcxx/include/__verbose_abort" 2 3
+# 18 "/home/claude/zig013/lib/libcxx/include/__verbose_abort" 3
+
+
+namespace std { inline namespace __1 {
+
+
+
+[[noreturn]]
+    __attribute__((__format__(__printf__, 1, 2))) void __libcpp_verbose_abort(const char* __format, ...);
+# 51 "/home/claude/zig013/lib/libcxx/include/__verbose_abort" 3
+}}
+# 15 "/home/claude/zig013/lib/libcxx/include/__assertion_handler" 2 3
+# 18 "/home/claude/zig013/lib/libcxx/include/__assertion_handler" 3
+# 14 "/home/claude/zig013/lib/libcxx/include/__assert" 2 3
+# 18 "/home/claude/zig013/lib/libcxx/include/__assert" 3
+# 248 "/home/claude/zig013/lib/libcxx/include/version" 2 3
+# 253 "/home/claude/zig013/lib/libcxx/include/version" 3
+# 2 "/usr/local/lib/python3.12/dist-packages/cmake/data/share/cmake-3.31/Modules/CXX-DetectStdlib.h" 2
+
+
+CMAKE-STDLIB-DETECT: libc++

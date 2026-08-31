@@ -7,6 +7,68 @@ Everything below this section is a reverse-chronological log (newest
 first). Read *this* section first; consult the log below only for the
 detail behind a specific claim.
 
+### One fix, three builds, and a regression of my own
+
+**far2l: my previous fix broke it in a new way.** The ordering change was
+right, the spelling was not. CMake de-duplicates compile options, so
+
+```cmake
+target_compile_options(t PRIVATE "-include" "dlfcn.h" "-include" "${solo}")
+```
+
+drops the second `-include` as a repeat and leaves the filename as a bare
+argument, which the driver treats as an input file. Confirmed against
+cmake 3.31, which generates `CXX_FLAGS = -include a.h b.h`. A `.h` input
+is a C header, so the C++ compile died with
+
+```
+error: invalid argument '-std=c++17' not allowed with 'C'
+```
+
+— a message naming neither the dropped option nor the file that became an
+input. `SHELL:` exists for this and keeps each pair intact.
+
+That is the class worth having a test for, and
+`tools/test-compile-option-pairing.sh` covers it two ways: a sweep over
+every `*.cmake` and `CMakeLists.txt` here for repeated bare paired
+options (`-include`, `-isystem`, `-Xclang`, `-imacros`, `-idirafter`,
+`-U`), and a live cmake probe proving the de-duplication still happens —
+so if CMake ever stops doing it, the test says so instead of quietly
+enforcing folklore. Reintroducing the exact far2l regression fails it.
+
+**konsole: the header is in a module the compile line never receives.**
+`qqmlintegration.h` is not in `include/QtQml`; it belongs to
+QtQmlIntegration, which the package ships but whose include directory
+Conan's `Qt6::Qml` target does not propagate — upstream Qt's does.
+Injected via `CMAKE_CXX_STANDARD_INCLUDE_DIRECTORIES`, which reaches
+every compile without touching `CMAKE_CXX_FLAGS` and the toolchain flags
+in it; verified with a real configure both ways. The Qt package root is
+read from Conan's own `qt_PACKAGE_FOLDER_RELEASE`, the same variable
+`import-qt-static-plugins.cmake` already uses, rather than reconstructed
+from a cache layout that is not ours to predict — and the lookup fails
+loudly rather than substituting an empty string.
+
+Also recorded, because it cost a wrong conclusion: `-DBUILD_WITH_QML=OFF`
+was already set and does nothing, since ki18n gates the subdirectory on
+`if (TARGET Qt6::Qml)` and Conan's config defines every component target.
+Both that and the missing propagation are filed in
+`contrib/konsole/UPSTREAM.md`.
+
+The preflight now also checks that **every** `@PLACEHOLDER@` in the
+template has a substitution in the script — an unsubstituted one renders
+a literal `@NAME@` into a path, which is the same class as the bug it was
+added alongside.
+
+**gnome-terminal: the collector had two collection blocks.** A merge left
+both the whole-log copies and the older 3000-line tails of the same two
+logs, doubling the artifact and inviting a reader to open the truncated
+copy of a log that was present in full. Tails removed.
+
+The vte failure itself is still unnamed: this artifact came from a run
+that predates the error extraction, so the error is once again outside
+the tail window while 2824 lines of `reflect.c` warnings are inside it.
+The next run will name it.
+
 ### far2l Profile U: the SoLo shim was included before the header it overrides
 
 The musl host-isolation fix moved the build forward; it then failed on
