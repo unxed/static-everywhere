@@ -1,10 +1,14 @@
 from conan import ConanFile
 from conan.tools.cmake import CMakeDeps, CMakeToolchain
+from conan.tools.files import save
+
+from qt_cmake_components import component_config, component_version_config
 
 
 class KonsoleQtHostConan(ConanFile):
     name = "static-everywhere-konsole-qt-host"
     version = "0.1"
+    exports = "qt_cmake_components.py"
     settings = "os", "compiler", "build_type", "arch"
 
     # This keeps the runtime surface focused on Widgets, X11 and OpenGL.
@@ -58,6 +62,27 @@ class KonsoleQtHostConan(ConanFile):
 
     def generate(self):
         CMakeDeps(self).generate()
+
+        # Conan Center's Qt recipe intentionally removes the upstream
+        # Qt6<Module>Config.cmake files and exports one component-aware
+        # Qt6Config.cmake through CMakeDeps. KDE Frameworks use both forms:
+        # find_package(Qt6 COMPONENTS Core) and find_package(Qt6Core). Keep
+        # the latter working for every component published by the dependency,
+        # instead of discovering one missing adapter at a time in CI.
+        qt_components = sorted(
+            component_name[2:]
+            for component_name in self.dependencies["qt"].cpp_info.components
+            if len(component_name) > 2
+            and component_name.startswith("qt")
+            and component_name != "qtPlatform"
+        )
+        for module in qt_components:
+            save(self, f"Qt6{module}Config.cmake", component_config(module))
+            save(self, f"Qt6{module}ConfigVersion.cmake", component_version_config())
+        self.output.info(
+            "Generated Qt6 component CMake compatibility adapters: "
+            + ", ".join(f"Qt6{module}" for module in qt_components)
+        )
 
         tc = CMakeToolchain(self)
         tc.variables["CMAKE_BUILD_TYPE"] = "Release"

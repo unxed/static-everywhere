@@ -12,7 +12,8 @@ pass() { printf 'PASS: %s\n' "$1"; }
 
 bash -n "$REPO_ROOT/tools/build-konsole.sh" "$REPO_ROOT/tools/preflight-konsole.sh" \
     "$REPO_ROOT/tools/run-konsole-smoke.sh" "$REPO_ROOT/tools/verify-konsole-artifact.sh" \
-    "$REPO_ROOT/contrib/konsole/qt-package-root.sh" "$REPO_ROOT/tools/test-konsole-qt-package-root.sh"
+    "$REPO_ROOT/contrib/konsole/qt-package-root.sh" "$REPO_ROOT/tools/test-konsole-qt-package-root.sh" \
+    "$REPO_ROOT/tools/test-konsole-qt-cmake-component-shims.sh"
 pass 'Konsole shell scripts parse'
 
 bash "$REPO_ROOT/tools/test-konsole-cmake-package-prefixes-regression.sh"
@@ -20,6 +21,9 @@ pass 'Conan CMake package prefixes are available to CONFIG-mode find_package'
 
 bash "$REPO_ROOT/tools/test-konsole-qt-package-root.sh"
 pass 'Qt package roots are discovered from CMakeDeps metadata'
+
+bash "$REPO_ROOT/tools/test-konsole-qt-cmake-component-shims.sh"
+pass 'Qt component-style CONFIG packages resolve through Conan aggregate metadata'
 
 for tool in msgmerge msgfmt flex bison; do
     command -v "$tool" >/dev/null 2>&1 || fail "Gettext tool is missing: $tool"
@@ -160,7 +164,18 @@ if grep -Eiq 'setup-go|go build|go test' "$workflow"; then
 fi
 pass 'workflow preserves f4 CI gates and has no Go setup'
 
-python3 -m py_compile "$REPO_ROOT/contrib/konsole/qt-host/conanfile.py"
+for needle in \
+    'exports = "qt_cmake_components.py"' \
+    'self.dependencies["qt"].cpp_info.components' \
+    'component_config(module)' \
+    'component_version_config()'; do
+    grep -Fq "$needle" "$REPO_ROOT/contrib/konsole/qt-host/conanfile.py" || \
+        fail "Conan recipe is missing Qt component adapter: $needle"
+done
+pass 'Conan recipe derives component adapters from the dependency metadata'
+
+python3 -m py_compile "$REPO_ROOT/contrib/konsole/qt-host/conanfile.py" \
+    "$REPO_ROOT/contrib/konsole/qt-host/qt_cmake_components.py"
 pass 'Conan recipe parses as Python'
 
 if command -v shellcheck >/dev/null 2>&1; then
