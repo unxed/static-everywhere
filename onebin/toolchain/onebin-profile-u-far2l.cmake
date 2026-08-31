@@ -7,6 +7,14 @@
 # putting a C++ archive in CMAKE_EXE_LINKER_FLAGS_INIT also contaminates
 # CMake's C compiler try_compile targets, which have no C++ runtime.
 
+# The deferred callback below runs in the top-level directory, while the
+# upstream targets are declared by subdirectories.  CMP0079 NEW makes
+# target_link_libraries preserve that cross-directory call instead of
+# rejecting it during the deferred pass.
+if(POLICY CMP0079)
+    cmake_policy(SET CMP0079 NEW)
+endif()
+
 if(NOT PROJECT_IS_TOP_LEVEL)
     return()
 endif()
