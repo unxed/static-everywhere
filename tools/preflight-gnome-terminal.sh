@@ -120,6 +120,13 @@ else
     fail 'host X11 closure still contains bare static -l arguments'
     printf '       %s\n' "$HOST_LIBS"
 fi
+if grep -Eq -- '(^| )-lpthread( |$)' <<<"$HOST_LIBS" \
+    && ! grep -Fq -- '/usr/lib/x86_64-linux-gnu/libpthread.so' <<<"$HOST_LIBS"; then
+    pass 'target pthread runtime remains outside the host GUI rewrite'
+else
+    fail 'host GUI rewrite captured target pthread runtime'
+    printf '       %s\n' "$HOST_LIBS"
+fi
 
 echo
 echo '== locked static stack =='
