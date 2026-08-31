@@ -122,15 +122,21 @@ for required in \
 done
 
 UUID_PATCH="${REPO_ROOT}/contrib/gnome-terminal/patches/util-linux-libuuid-only.patch"
+if git apply --numstat "$UUID_PATCH" >/dev/null 2>&1; then
+    pass 'captured util-linux patch is a valid Git patch'
+else
+    fail 'captured util-linux patch is not a valid Git patch'
+fi
+
 for required in \
     'diff --git a/lib/meson.build b/lib/meson.build' \
     "if get_option('libuuid-only')" \
     "randutils_c = files('randutils.c')" \
     'subdir_done()'; do
     if grep -Fq -- "$required" "$UUID_PATCH"; then
-        pass "generated util-linux patch contains ${required}"
+        pass "captured util-linux patch contains ${required}"
     else
-        fail "generated util-linux patch is missing ${required}"
+        fail "captured util-linux patch is missing ${required}"
     fi
 done
 

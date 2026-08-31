@@ -11,7 +11,6 @@ index 58d5da43f..890dfafe6 100644
  lib_common_sources = '''
  	blkdev.c
  	buffer.c
- 	canonicalize.c
 @@ -106,3 +111,4 @@ lib_tcolors = static_library(
    lib_color_sources,
    include_directories : dir_include,
