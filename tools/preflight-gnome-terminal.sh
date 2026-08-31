@@ -15,6 +15,36 @@ pass() { printf '  \033[32mok\033[0m   %s\n' "$1"; }
 fail() { printf '  \033[31mFAIL\033[0m %s\n' "$1"; FAILED=$((FAILED + 1)); }
 skip() { printf '  --   %s (skipped: %s)\n' "$1" "$2"; }
 
+echo '== recipe scripts and toolchain probes =='
+if bash -n "$BUILD_SCRIPT" "$DEPS_SCRIPT" "$VERIFY_SCRIPT" "$0" \
+    "$REPO_ROOT/tools/pkg-config-hybrid-host.sh" \
+    "$REPO_ROOT/tools/test-meson-zig-linker.sh" \
+    "$REPO_ROOT/tools/test-no-embedded-rpath.sh"; then
+    pass 'GNOME recipe scripts parse'
+else
+    fail 'GNOME recipe scripts parse'
+fi
+
+for tool in meson ninja zig cmake; do
+    if command -v "$tool" >/dev/null 2>&1; then
+        pass "$tool is available for preflight"
+    else
+        fail "$tool is unavailable for preflight"
+    fi
+done
+
+if "$REPO_ROOT/tools/test-meson-zig-linker.sh"; then
+    pass 'Meson/Zig linker detection and build probe'
+else
+    fail 'Meson/Zig linker detection and build probe'
+fi
+
+if "$REPO_ROOT/tools/test-no-embedded-rpath.sh"; then
+    pass 'CMake does not embed dependency RPATH'
+else
+    fail 'CMake embeds dependency RPATH'
+fi
+
 PLAN=$(mktemp)
 DEPS_PLAN=$(mktemp)
 trap 'rm -f "$PLAN" "$DEPS_PLAN"' EXIT
@@ -37,6 +67,10 @@ for required in \
     '-Dsearch_provider=false' \
     'gnome-terminal-server' \
     '--libexecdir libexec' \
+    'x86_64-linux-gnu.2.28' \
+    '-Wl,-z,relro' \
+    '-Wl,-z,now' \
+    '-Wl,-z,noexecstack' \
     'meson install' \
     'verify-gnome-terminal-static.sh'; do
     if grep -Fq -- "$required" "$PLAN"; then
@@ -56,11 +90,17 @@ fi
 for required in \
     'commit verified' \
     'host contract: X11, OpenGL/EGL, accessibility IPC, schemas, fonts and session services' \
+    'host library policy: pkg-config maps host GUI/desktop -l arguments to shared objects' \
     'fontconfig install: manual copy' \
     'HAVE_XRENDERCREATESOLIDFILL' \
     'HAVE_XRENDERCREATELINEARGRADIENT' \
     'HAVE_XRENDERCREATERADIALGRADIENT' \
     'HAVE_XRENDERCREATECONICALGRADIENT' \
+    'CMAKE_SIZEOF_VOID_P=8' \
+    'CMAKE_LIBRARY_ARCHITECTURE=x86_64-linux-gnu' \
+    'CMAKE_C_IMPLICIT_INCLUDE_DIRECTORIES=/usr/include' \
+    'CMAKE_CXX_IMPLICIT_INCLUDE_DIRECTORIES=/usr/include' \
+    'CMAKE_SKIP_RPATH=ON' \
     'zlib libffi pcre2 expat libpng pixman' \
     'gtk lz4 vte libhandy'; do
     if grep -Fq -- "$required" "$DEPS_PLAN"; then
