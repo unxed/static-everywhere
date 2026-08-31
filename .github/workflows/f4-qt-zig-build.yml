@@ -530,6 +530,7 @@ jobs:
           path: |
             out/f4-qt/f4
             out/f4-qt/f4-diag
+            out/f4-qt/run.sh
             out/f4-qt/smoke.log
           if-no-files-found: warn
           retention-days: 14

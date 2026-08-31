@@ -869,6 +869,11 @@ HOOKEOF"
     # what turns "it didn't work" into a log that says why.
     plan_step "cp ${REPO_ROOT}/contrib/f4-qt/f4-diag.sh ${OUT}/f4-diag"
     plan_step "chmod +x ${OUT}/f4-diag"
+    # Ship the known-good manual launcher alongside the binary. Keep the
+    # executable bit explicit because the artifact is downloaded as a
+    # standalone test bundle.
+    plan_step "cp ${REPO_ROOT}/run.sh ${OUT}/run.sh"
+    plan_step "chmod +x ${OUT}/run.sh"
     # Profile H, not S: goffi makes f4 dynamic on the C runtime by
     # construction (see the go build step). Contract is exactly
     # libc/libdl/libpthread, and through the hygiene wrapper for the

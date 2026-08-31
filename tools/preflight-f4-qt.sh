@@ -39,6 +39,7 @@ SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 # shellcheck disable=SC1007
 REPO_ROOT=$(CDPATH= cd -- "${SCRIPT_DIR}/.." && pwd)
 BUILD_SCRIPT="${REPO_ROOT}/tools/build-f4-qt.sh"
+RUN_SCRIPT="${REPO_ROOT}/run.sh"
 
 FAILED=0
 pass() { printf '  \033[32mok\033[0m   %s\n' "$1"; }
@@ -236,6 +237,20 @@ if DIAG_TEST=$("${REPO_ROOT}/tools/test-f4-diag.sh" 2>&1); then
 else
     fail "f4-diag regression"
     printf '%s\n' "$DIAG_TEST" | sed 's/^/       /'
+fi
+
+if [[ -x "${RUN_SCRIPT}" ]] && [[ "$(stat -c '%a' "${RUN_SCRIPT}")" == 755 ]] &&
+    grep -Fqx '#!/bin/bash' "${RUN_SCRIPT}" &&
+    grep -Fqx "F4_DETACHED=1 XDG_CONFIG_HOME=/tmp/f4-qt-manual-config F4_QT_HOST_CACHE_DIR=/tmp/f4-qt-manual-cache script -q -e -c './f4 --gui=qt --attached' /dev/null" "${RUN_SCRIPT}"; then
+    pass "manual run.sh has the documented executable launcher"
+else
+    fail "manual run.sh is missing, not executable, or differs from the documented launcher"
+fi
+if grep -Fq 'cp ${REPO_ROOT}/run.sh ${OUT}/run.sh' "${BUILD_SCRIPT}" &&
+    grep -Fq 'chmod +x ${OUT}/run.sh' "${BUILD_SCRIPT}"; then
+    pass "manual run.sh is included in the Linux artifact plan"
+else
+    fail "Linux artifact plan does not include manual run.sh"
 fi
 
 # The plan must assert the GL integrations are in the binary, and the
