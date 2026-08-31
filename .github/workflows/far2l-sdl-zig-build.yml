@@ -230,6 +230,13 @@ jobs:
             "$install/lib/far2l/far2l_ttyx.broker" \
             | tee out/far2l/far2l_ttyx.audit.txt
 
+      - name: Verify the far2l runtime data tree
+        run: |
+          install=out/far2l/build/install
+          test -d "$install/share/far2l"
+          test -s "$install/share/far2l/FarEng.lng"
+          test -s "$install/share/far2l/FarEng.hlf"
+
       - name: Run the graphical SDL smoke test
         run: |
           mkdir -p out/far2l/xvfb
@@ -278,9 +285,7 @@ jobs:
         with:
           name: far2l-sdl-zig-build
           path: |
-            out/far2l/build/install/bin/far2l
-            out/far2l/build/install/lib/far2l/far2l_sdl.so
-            out/far2l/build/install/lib/far2l/far2l_ttyx.broker
+            out/far2l/build/install
             out/far2l/*.audit.txt
             out/far2l/smoke
           if-no-files-found: warn

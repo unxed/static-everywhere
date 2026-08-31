@@ -15,6 +15,15 @@ OUT=$2
 mkdir -p "$OUT" "$OUT/config/far2l" "$OUT/runtime"
 chmod 700 "$OUT/runtime"
 
+install_root=$(CDPATH= cd -- "$(dirname -- "$FAR2L")/.." && pwd)
+runtime_data="$install_root/share/far2l"
+for required in FarEng.lng FarEng.hlf; do
+    if [ ! -s "$runtime_data/$required" ]; then
+        echo "run-far2l-sdl-smoke.sh: missing runtime data: $runtime_data/$required" >&2
+        exit 1
+    fi
+done
+
 command -v xdotool >/dev/null || { echo 'run-far2l-sdl-smoke.sh: xdotool is required' >&2; exit 2; }
 command -v xwininfo >/dev/null || { echo 'run-far2l-sdl-smoke.sh: xwininfo is required' >&2; exit 2; }
 command -v setsid >/dev/null || { echo 'run-far2l-sdl-smoke.sh: setsid is required' >&2; exit 2; }
