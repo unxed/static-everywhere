@@ -126,3 +126,42 @@ diff --git a/third_party/ZoinGallery/qml/ViewerMode.qml b/third_party/ZoinGaller
                  /*Image {
                      id: thumbnailImage
                      source: model.imageIdUrlRole
+diff --git a/third_party/ZoinGallery/qml/GalleryViewer.qml b/third_party/ZoinGallery/qml/GalleryViewer.qml
+--- a/third_party/ZoinGallery/qml/GalleryViewer.qml
++++ b/third_party/ZoinGallery/qml/GalleryViewer.qml
+@@ -1627,0 +1628,15 @@ FocusScope {
++                    // Keep navigation transitions visible with the raster
++                    // scenegraph too. The hardware shader remains above;
++                    // software renders the same provider image directly.
++                    Image {
++                        id: viewerNavigationNeighborSoftwareImage
++                        objectName: "galleryViewerNavigationNeighborSoftwareImage"
++                        anchors.fill: parent
++                        source: viewerNavigationNeighborImage.source
++                        fillMode: Image.PreserveAspectFit
++                        asynchronous: false
++                        cache: false
++                        mipmap: root.viewerNavigationTargetSourceLevel === 2
++                        visible: GraphicsInfo.api === GraphicsInfo.Software
++                                 && viewerNavigationNeighborImage.source != ""
++                    }
+diff --git a/third_party/ZoinGallery/qml/SphericViewer.qml b/third_party/ZoinGallery/qml/SphericViewer.qml
+--- a/third_party/ZoinGallery/qml/SphericViewer.qml
++++ b/third_party/ZoinGallery/qml/SphericViewer.qml
+@@ -67,0 +68,16 @@ Item {
++    // The spherical projection is a custom fragment shader and therefore has
++    // no raster-scenegraph implementation. Keep panorama files visible on
++    // software-only systems as a fitted equirectangular image; hardware
++    // renderers retain the interactive spherical projection above.
++    Image {
++        id: softwarePanoramaImage
++        objectName: "gallerySoftwarePanoramaImage"
++        anchors.fill: parent
++        source: flickableArea.source
++        fillMode: Image.PreserveAspectFit
++        asynchronous: false
++        cache: false
++        mipmap: false
++        visible: GraphicsInfo.api === GraphicsInfo.Software
++                 && flickableArea.source != ""
++    }

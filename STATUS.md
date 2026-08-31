@@ -22,11 +22,15 @@ The build recipe now applies
 ZoinGallery checkout. It adds ordinary `Image` overlays for thumbnails,
 viewer images, navigation neighbors and the filmstrip, guarded by
 `GraphicsInfo.Software`; the existing shader path is unchanged for hardware
-renderers. The overlay is checked before the expensive dependency build and
-removed after each build path (with an exit cleanup fallback), so it cannot
-silently drift or leave the source checkout dirty. `tools/preflight-f4-qt.sh`
-checks both the plan and patch applicability. A new full CI build and fresh
-artifact test are still required before calling this fixed.
+renderers. The same coverage includes the actual `GalleryViewer` navigation
+component and the panorama mode: on software-only systems a panorama falls
+back to a fitted equirectangular image, while hardware keeps the interactive
+spherical projection. The overlay is checked before the expensive dependency
+build and removed after each build path (with an exit cleanup fallback), so it
+cannot silently drift or leave the source checkout dirty.
+`tools/preflight-f4-qt.sh` checks the plan, all six QML coverage points and
+patch applicability. A new full CI build and fresh artifact test are still
+required before calling this fixed.
 
 ### 2026-08-29: fresh host dies with SIGILL before the ExtUI handshake
 

@@ -91,11 +91,21 @@ else
     fail "the software-renderer image fallback is missing from the build plan"
 fi
 
+for _qml in BrickDelegate GalleryEntryDelegate FlickableZoomable ViewerMode \
+            GalleryViewer SphericViewer; do
+    if grep -q "third_party/ZoinGallery/qml/${_qml}[.]qml" \
+         "${REPO_ROOT}/contrib/f4-qt/patches/zoin-gallery-software-images.patch"; then
+        pass "software Image coverage includes ${_qml}.qml"
+    else
+        fail "software Image coverage missing from ${_qml}.qml"
+    fi
+done
+
 if [ -f "${PWD}/f4-src/third_party/ZoinGallery/CMakeLists.txt" ]; then
-    if git -C "${PWD}/f4-src" apply --check \
+    if git -C "${PWD}/f4-src" apply --unidiff-zero --check \
          "${REPO_ROOT}/contrib/f4-qt/patches/zoin-gallery-software-images.patch"; then
         pass "the ZoinGallery software-image patch applies to the fetched f4 source"
-    elif git -C "${PWD}/f4-src" apply --reverse --check \
+    elif git -C "${PWD}/f4-src" apply --unidiff-zero --reverse --check \
            "${REPO_ROOT}/contrib/f4-qt/patches/zoin-gallery-software-images.patch"; then
         pass "the ZoinGallery software-image patch is already applied to the fetched f4 source"
     else
