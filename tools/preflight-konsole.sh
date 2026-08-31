@@ -14,6 +14,11 @@ bash -n "$REPO_ROOT/tools/build-konsole.sh" "$REPO_ROOT/tools/preflight-konsole.
     "$REPO_ROOT/tools/run-konsole-smoke.sh" "$REPO_ROOT/tools/verify-konsole-artifact.sh"
 pass 'Konsole shell scripts parse'
 
+for tool in msgmerge msgfmt; do
+    command -v "$tool" >/dev/null 2>&1 || fail "Gettext tool is missing: $tool"
+done
+pass 'Gettext tools required by KF6 translation catalogs are available'
+
 "$REPO_ROOT/tools/build-konsole.sh" --kde-builder "$REPO_ROOT" --print-plan >"$PLAN" || \
     fail '--print-plan failed'
 

@@ -24,7 +24,7 @@ jobs:
           sudo apt-get update -qq
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq \
             libgl-dev libegl-dev libx11-dev libxcb1-dev libxcb-xkb-dev \
-            python3-yaml
+            python3-yaml gettext
 
       - name: Install zig 0.13.0
         run: |
@@ -88,6 +88,7 @@ jobs:
             libxcb-xkb-dev libxcb-icccm4-dev libxcb-image0-dev \
             libxcb-keysyms1-dev libxcb-randr0-dev libxcb-shape0-dev \
             libxcb-sync-dev libxcb-xfixes0-dev libxcb-xinerama0-dev \
+            gettext \
             xvfb x11-utils x11-apps xdotool imagemagick ccache \
             python3-dbus python3-yaml python3-setproctitle
 
