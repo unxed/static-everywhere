@@ -11,6 +11,13 @@ cmake_minimum_required(VERSION 3.16)
 include("${CMAKE_CURRENT_LIST_DIR}/onebin-linux-static.cmake")
 
 set(_onebin_shared_link_flags
+    # SHARED/MODULE targets still have to be self-contained in Profile U.
+    # The -static/-pie executable pair is invalid with CMake's -shared link
+    # rule, but -Bstatic is the linker's library-selection policy and is
+    # valid there.  Without it, a module can silently acquire the target
+    # libc.so while every explicitly listed third-party library remains .a;
+    # that is exactly the partial-static failure Profile U is meant to catch.
+    "-Wl,-Bstatic"
     "-Wl,-z,relro"
     "-Wl,-z,now"
     "-Wl,-z,noexecstack"
