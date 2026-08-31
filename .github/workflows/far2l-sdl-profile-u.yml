@@ -140,7 +140,35 @@ jobs:
           git -C solo-src fetch --quiet --depth 1 origin "$solo_ref"
           git -C solo-src checkout --quiet --detach "$solo_ref"
           test "$(git -C solo-src rev-parse HEAD)" = "$solo_ref"
-          (cd solo-src && CC="$solo_cc" CXX="$solo_cxx" ./build) \
+          docker run --rm \
+            --env "CC=$solo_cc" \
+            --env "CXX=$solo_cxx" \
+            -v "$PWD/solo-src:/src" \
+            -w /src \
+            alpine:3.22 \
+            sh -ec '
+              apk add --no-cache build-base clang python3
+              machine=$(uname -m)
+              fallback=/tmp/solo-generated
+              mkdir -p "$fallback/bits" "$fallback/internal"
+              python3 ext/generate.py alltypes \
+                "$fallback/bits/alltypes.h" \
+                "ext/musl/arch/$machine/bits/alltypes.h.in" \
+                ext/musl/include/alltypes.h.in
+              python3 ext/generate.py syscall \
+                "$fallback/bits/syscall.h" \
+                "ext/musl/arch/$machine/bits/syscall.h.in"
+              python3 ext/generate.py version \
+                "$fallback/internal/version.h" \
+                ext/musl/VERSION
+              export CFLAGS="-I$fallback"
+              export CXXFLAGS="-I$fallback"
+              command -v "$CC"
+              command -v "$CXX"
+              "$CC" --version
+              "$CXX" --version
+              ./build
+            ' \
             2>&1 | tee /tmp/solo-build.log
           test -f solo-src/libdlfcn.a
           test -f solo-src/lib/dlfcn.h
