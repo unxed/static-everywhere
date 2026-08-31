@@ -149,8 +149,12 @@ ranlib = '${TOOLCHAIN}/zig-ranlib'
 strip = 'strip'
 
 [built-in options]
-c_args = ['-target', '${TARGET}', '-fPIE', '-ffunction-sections', '-fdata-sections', '-fstack-protector-strong', '-ffile-prefix-map=${SRC_ABS}=.']
-cpp_args = ['-target', '${TARGET}', '-fPIE', '-ffunction-sections', '-fdata-sections', '-fstack-protector-strong', '-ffile-prefix-map=${SRC_ABS}=.']
+# Map every physical tree that can supply a source, generated source or
+# installed header. The dependency pkg-config files intentionally point at
+# DEPS_ABS for build-time consumption, so mapping SRC_ABS alone leaves the
+# staging path visible through headers such as GLib's gobject cleanups.
+c_args = ['-target', '${TARGET}', '-fPIE', '-ffunction-sections', '-fdata-sections', '-fstack-protector-strong', '-ffile-prefix-map=${SRC_ABS}=.', '-ffile-prefix-map=${DEPS_ABS}=.', '-ffile-prefix-map=${OUT_ABS}=.']
+cpp_args = ['-target', '${TARGET}', '-fPIE', '-ffunction-sections', '-fdata-sections', '-fstack-protector-strong', '-ffile-prefix-map=${SRC_ABS}=.', '-ffile-prefix-map=${DEPS_ABS}=.', '-ffile-prefix-map=${OUT_ABS}=.']
 c_link_args = ['${GLIBC_SHIM_OBJ}', '-target', '${TARGET}', '-static-libgcc', '-Wl,--gc-sections', '-Wl,-z,relro', '-Wl,-z,now', '-Wl,-z,noexecstack', '-pie', '-s', '-L${DEPS_RUNTIME_ROOT}/lib', '-L${DEPS_RUNTIME_ROOT}/lib/x86_64-linux-gnu', '-L/usr/lib/x86_64-linux-gnu', '-L/usr/lib']
 cpp_link_args = ['${GLIBC_SHIM_OBJ}', '-target', '${TARGET}', '-static-libgcc', '-static-libstdc++', '-Wl,--gc-sections', '-Wl,-z,relro', '-Wl,-z,now', '-Wl,-z,noexecstack', '-pie', '-s', '-L${DEPS_RUNTIME_ROOT}/lib', '-L${DEPS_RUNTIME_ROOT}/lib/x86_64-linux-gnu', '-L/usr/lib/x86_64-linux-gnu', '-L/usr/lib']
 default_library = 'static'
@@ -177,6 +181,8 @@ jobs: ${JOBS}
 # stay in the prefix's private static dependency closure.
 # The install prefix is /usr and DESTDIR creates a directly installable tree;
 # no runtime path or environment-variable relocation is required.
+# source hygiene: remap SRC_ABS, DEPS_ABS and OUT_ABS with -ffile-prefix-map;
+# staged headers and generated sources must not leak their physical paths.
 # linker hardening: -Wl,-z,relro -Wl,-z,now -Wl,-z,noexecstack
 # captured GNOME source patch: ${GNOME_STATIC_PATCH}
 # glibc baseline compatibility source: ${GLIBC_SHIM_SOURCE}

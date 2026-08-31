@@ -97,8 +97,10 @@ requiring a source checkout, compiler or dependency prefix.
 
 The generated Meson native file pins the glibc target, enables PIE, full RELRO,
 BIND_NOW, a non-executable stack and static C/C++ runtimes. It also applies
-source-prefix remapping and keeps the dependency prefix ahead of system
-library directories. The dependency producer applies the captured GLib
+source-prefix remapping to the source, build, output and dependency staging
+trees; this includes paths reached through installed headers and generated
+sources, not only the GNOME checkout. It keeps the dependency prefix ahead of
+system library directories. The dependency producer applies the captured GLib
 source patch before configuration; the consumer applies the captured GNOME
 Terminal source patch and links the shared glibc-baseline compatibility object
 into the final targets. Together the two source patches preserve GNOME

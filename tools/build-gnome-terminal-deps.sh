@@ -138,6 +138,7 @@ cache identity: dependency commit plus recipe, patch and toolchain fingerprint
 build-time tools: ${PREFIX}${RUNTIME_PREFIX}/bin precedes the host PATH; producer tools are verified before consumers
 install contract: projects configure for /usr and install below DESTDIR; pkg-config metadata is rewritten only to the physical staging tree for the next build
 pkg-config boundary: normalize_pkgconfig() maps logical /usr metadata to the staging tree only for build-time consumers
+source hygiene: remap WORK and PREFIX with -ffile-prefix-map; installed headers and generated sources must not leak physical paths
 libc-free target guard: Meson compiler wrappers disable stack protection only for explicit -nostdlib/-nodefaultlibs targets
 PLAN
     for dependency in "${dependency_order[@]}"; do
@@ -285,8 +286,11 @@ ranlib = '${RANLIB}'
 strip = 'strip'
 
 [built-in options]
-c_args = ['-target', '${TARGET}', '-fPIE', '-ffunction-sections', '-fdata-sections', '-fstack-protector-strong', '-ffile-prefix-map=${WORK}=.', '-Wno-cast-function-type-strict', '-Wno-cast-function-type']
-cpp_args = ['-target', '${TARGET}', '-fPIE', '-ffunction-sections', '-fdata-sections', '-fstack-protector-strong', '-ffile-prefix-map=${WORK}=.', '-Wno-cast-function-type-strict', '-Wno-cast-function-type']
+# Map both the build work tree and the physical DESTDIR tree. A consumer can
+# include a generated or installed header whose __FILE__/debug path is under
+# PREFIX, so mapping WORK alone does not cover the complete dependency build.
+c_args = ['-target', '${TARGET}', '-fPIE', '-ffunction-sections', '-fdata-sections', '-fstack-protector-strong', '-ffile-prefix-map=${WORK}=.', '-ffile-prefix-map=${PREFIX}=.', '-Wno-cast-function-type-strict', '-Wno-cast-function-type']
+cpp_args = ['-target', '${TARGET}', '-fPIE', '-ffunction-sections', '-fdata-sections', '-fstack-protector-strong', '-ffile-prefix-map=${WORK}=.', '-ffile-prefix-map=${PREFIX}=.', '-Wno-cast-function-type-strict', '-Wno-cast-function-type']
 c_link_args = ['${GLIBC_SHIM_OBJ}', '-target', '${TARGET}', '-static-libgcc', '-Wl,--gc-sections', '-Wl,-z,relro', '-Wl,-z,now', '-Wl,-z,noexecstack', '-Wl,-z,nodelete', '-pie', '-s', '-L${STAGED_USR}/lib', '-L/usr/lib/x86_64-linux-gnu', '-L/usr/lib', '-L/lib/x86_64-linux-gnu']
 cpp_link_args = ['${GLIBC_SHIM_OBJ}', '-target', '${TARGET}', '-static-libgcc', '-static-libstdc++', '-Wl,--gc-sections', '-Wl,-z,relro', '-Wl,-z,now', '-Wl,-z,noexecstack', '-Wl,-z,nodelete', '-pie', '-s', '-L${STAGED_USR}/lib', '-L/usr/lib/x86_64-linux-gnu', '-L/usr/lib', '-L/lib/x86_64-linux-gnu']
 default_library = 'static'
@@ -561,7 +565,7 @@ autotools_dep() {
     (
         cd "${build_dir}"
         run_env CC="${CC}" AR="${AR}" RANLIB="${RANLIB}" \
-            CFLAGS="-target ${TARGET} -fPIC -ffile-prefix-map=${source}=." \
+            CFLAGS="-target ${TARGET} -fPIC -ffile-prefix-map=${source}=. -ffile-prefix-map=${WORK}=. -ffile-prefix-map=${PREFIX}=." \
             LDFLAGS="-target ${TARGET} -static-libgcc" \
             "${source}/configure" --host=x86_64-linux-gnu \
             --prefix="${RUNTIME_PREFIX}" --disable-shared --enable-static "$@"
@@ -802,7 +806,7 @@ if ! built lz4; then
     run make -C "${lz4_src}/lib" clean
     run make -C "${lz4_src}/lib" -j "${JOBS}" \
         CC="${CC}" AR="${AR}" RANLIB="${RANLIB}" \
-        CFLAGS="-target ${TARGET} -fPIC -ffile-prefix-map=${lz4_src}=." \
+        CFLAGS="-target ${TARGET} -fPIC -ffile-prefix-map=${lz4_src}=. -ffile-prefix-map=${WORK}=. -ffile-prefix-map=${PREFIX}=." \
         BUILD_STATIC=yes BUILD_SHARED=no
     run install -D "${lz4_src}/lib/liblz4.a" "${STAGED_USR}/lib/liblz4.a"
     run install -d "${STAGED_USR}/include"

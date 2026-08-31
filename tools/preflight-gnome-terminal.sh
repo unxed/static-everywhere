@@ -70,6 +70,7 @@ for required in \
     'package root (install with DESTDIR)' \
     'static dependency logical prefix: /usr' \
     'static dependency staging root:' \
+    'source hygiene: remap SRC_ABS, DEPS_ABS and OUT_ABS' \
     '--profile hybrid' \
     '--strict' \
     'libGL.so.1' \
@@ -139,6 +140,7 @@ for required in \
     'build-time tools: ' \
     'install contract: projects configure for /usr and install below DESTDIR' \
     'normalize_pkgconfig()' \
+    'source hygiene: remap WORK and PREFIX' \
     'libc-free target guard: Meson compiler wrappers disable stack protection only for explicit -nostdlib/-nodefaultlibs targets' \
     'gtk lz4 vte libhandy'; do
     if grep -Fq -- "$required" "$DEPS_PLAN"; then
@@ -147,6 +149,16 @@ for required in \
         fail "dependency plan is missing ${required}"
     fi
 done
+
+if grep -Fq -- '-ffile-prefix-map=${SRC_ABS}=.' "${BUILD_SCRIPT}" \
+    && grep -Fq -- '-ffile-prefix-map=${DEPS_ABS}=.' "${BUILD_SCRIPT}" \
+    && grep -Fq -- '-ffile-prefix-map=${OUT_ABS}=.' "${BUILD_SCRIPT}" \
+    && grep -Fq -- '-ffile-prefix-map=${WORK}=.' "${DEPS_SCRIPT}" \
+    && grep -Fq -- '-ffile-prefix-map=${PREFIX}=.' "${DEPS_SCRIPT}"; then
+    pass 'all physical GNOME recipe trees have compiler path remapping'
+else
+    fail 'GNOME recipe leaves a physical source, build or staging tree unmapped'
+fi
 
 if grep -Fq -- 'export PATH="${STAGED_USR}/bin:${TOOLCHAIN}:${PATH}"' "$DEPS_SCRIPT" \
     && grep -Fq -- 'require_prefix_program()' "$DEPS_SCRIPT" \
