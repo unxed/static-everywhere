@@ -39,6 +39,7 @@ for needle in \
     'conan cache clean' \
     'setproctitle' \
     'qtmultimedia=True' \
+    'qttools=True' \
     'qtwayland=False' \
     'with_egl=True' \
     'with_x11=True' \
