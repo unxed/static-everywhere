@@ -48,6 +48,13 @@ The display server, GPU driver, fonts, schemas and session services are runtime
 inputs by design. They are data, protocols or services, not a reason to make
 the GTK code dynamic.
 
+The pinned source also has a small, separate build-time host contract. Its
+`meson.build` needs the `gsettings-desktop-schemas` pkg-config metadata, and
+`data/meson.build` uses `i18n.itstool_join`; the workflow supplies these as
+`gsettings-desktop-schemas-dev` and `itstool`. This is build metadata/tooling
+and desktop data only. GLib generators and `gdbus-codegen` come from the
+static prefix, and no host GTK/UI library is added by this contract.
+
 ## 4. Build interface
 
 First produce the prefix from the commit pins:

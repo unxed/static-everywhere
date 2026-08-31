@@ -7,6 +7,32 @@ Everything below this section is a reverse-chronological log (newest
 first). Read *this* section first; consult the log below only for the
 detail behind a specific claim.
 
+### Run #41: pinned-source audit found two host build inputs
+
+Run #41 reached the GNOME Terminal configure step and failed before any
+compilation:
+
+```
+gnome-terminal-src/meson.build:370:16: ERROR: Dependency
+"gsettings-desktop-schemas" not found (tried pkg-config and cmake)
+```
+
+The pinned GNOME Terminal 3.52.0 sources were then inspected as a whole.
+The root `meson.build` requires `gsettings-desktop-schemas >= 0.1.0`; on
+Ubuntu the runtime schema package alone does not provide the required
+pkg-config metadata, so the workflow now installs its matching
+`gsettings-desktop-schemas-dev` package. Separately, `data/meson.build`
+unconditionally uses Meson's `i18n.itstool_join` for the two metainfo files;
+the workflow now installs `itstool` as well. `xsltproc` was already present.
+
+The other source branches were checked against the recipe: Nautilus,
+search-provider and documentation are disabled; GLib generators and
+`gdbus-codegen` come from the static prefix; `uuid` and all GTK/UI libraries
+remain in that prefix. The new workflow preflight checks the audited host
+build/data contract before the long dependency build. These packages provide
+build metadata, tools or desktop data, not host GTK/UI shared libraries, so
+the host ABI boundary is unchanged.
+
 ### Static VTE builds must not build the demo application
 
 The GNOME Terminal dependency build reached the end of VTE's 201-target

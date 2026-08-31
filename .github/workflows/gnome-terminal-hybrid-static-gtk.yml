@@ -55,7 +55,10 @@ jobs:
       - name: Install build tools and the host display contract
         # Only X11/OpenGL/EGL runtime libraries and desktop data are supplied
         # by the runner. GTK, GLib, Pango, Cairo, GdkPixbuf, VTE and libhandy
-        # come from deps.lock; D-Bus is used through static GLib.
+        # come from deps.lock; D-Bus is used through static GLib. The pinned
+        # GNOME Terminal source additionally needs host build metadata/tools:
+        # gsettings-desktop-schemas.pc and itstool are not part of the GTK
+        # code closure.
         run: |
           sudo apt-get update
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
@@ -65,7 +68,18 @@ jobs:
             libx11-dev libx11-xcb-dev libxext-dev libxi-dev libxrandr-dev libxrender-dev \
             libxcursor-dev libxdamage-dev libxfixes-dev libxcomposite-dev \
             libgl-dev libegl-dev libgl1-mesa-dev libegl1-mesa-dev mesa-utils \
-            gsettings-desktop-schemas
+            gsettings-desktop-schemas gsettings-desktop-schemas-dev itstool
+
+      - name: Verify source-audited GNOME Terminal build inputs
+        # GNOME Terminal 3.52.0's pinned meson.build requires the schemas
+        # pkg-config metadata, while data/meson.build unconditionally uses
+        # i18n.itstool_join even when documentation is disabled.
+        run: |
+          set -euo pipefail
+          for tool in itstool xsltproc; do
+            command -v "$tool"
+          done
+          pkg-config --atleast-version=0.1.0 gsettings-desktop-schemas
 
       - name: Free disk space on the runner
         run: |

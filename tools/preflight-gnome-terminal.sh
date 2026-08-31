@@ -8,6 +8,7 @@ BUILD_SCRIPT="${REPO_ROOT}/tools/build-gnome-terminal.sh"
 DEPS_SCRIPT="${REPO_ROOT}/tools/build-gnome-terminal-deps.sh"
 VERIFY_SCRIPT="${REPO_ROOT}/tools/verify-gnome-terminal-static.sh"
 LOCK="${REPO_ROOT}/contrib/gnome-terminal/deps.lock"
+WORKFLOW="${REPO_ROOT}/.github/workflows/gnome-terminal-hybrid-static-gtk.yml"
 ARTIFACT="${REPO_ROOT}/out/gnome-terminal/gnome-terminal-server"
 
 FAILED=0
@@ -89,6 +90,14 @@ if "$DEPS_SCRIPT" --print-plan >"$DEPS_PLAN" 2>&1; then
 else
     fail 'build-gnome-terminal-deps.sh --print-plan'
     sed 's/^/       /' "$DEPS_PLAN"
+fi
+
+if grep -Fq -- 'gsettings-desktop-schemas-dev' "$WORKFLOW" \
+    && grep -Fq -- 'itstool' "$WORKFLOW" \
+    && grep -Fq -- 'pkg-config --atleast-version=0.1.0 gsettings-desktop-schemas' "$WORKFLOW"; then
+    pass 'workflow provides the source-audited GNOME Terminal build-time/data contract'
+else
+    fail 'workflow is missing a source-audited GNOME Terminal build-time/data input'
 fi
 
 for required in \
