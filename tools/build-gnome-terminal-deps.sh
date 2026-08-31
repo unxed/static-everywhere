@@ -222,6 +222,11 @@ source_tree() {
             "${name}" "${actual}" "${commit}" >&2
         exit 1
     }
+    # The workflow caches source trees between runs. A failed patch can leave
+    # one of those trees partially modified, so restore the pinned checkout
+    # before any dependency-specific patch is applied.
+    run git -C "${dir}" reset --quiet --hard "${commit}"
+    run git -C "${dir}" clean -fdx
     printf '%s\n' "${dir}"
 }
 

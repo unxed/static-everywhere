@@ -120,6 +120,14 @@ for required in \
     fi
 done
 
+for required in 'reset --quiet --hard' 'clean -fdx'; do
+    if grep -Fq -- "$required" "$DEPS_SCRIPT"; then
+        pass "dependency source cache cleanup contains ${required}"
+    else
+        fail "dependency source cache cleanup is missing ${required}"
+    fi
+done
+
 if grep -Eiq 'dbus-1|atspi|atk-bridge' "$REPO_ROOT/tools/pkg-config-hybrid-host.sh" \
     || grep -Eiq 'libdbus|libatspi|libatk-bridge' "$REPO_ROOT/tools/build-gnome-terminal.sh"; then
     fail 'host contract contains a forbidden D-Bus/accessibility library'
