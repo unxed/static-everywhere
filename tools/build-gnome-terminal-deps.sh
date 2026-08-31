@@ -256,18 +256,15 @@ meson_dep() {
     shift 3
     built "${name}" && return 0
     local build_dir="${WORK}/build/${build_name}"
+    local native_file="${MESON_NATIVE_FILE:-${MESON_NATIVE}}"
     local -a setup_cmd=(
         meson setup --wipe "${build_dir}" "${source}"
-        --native-file "${MESON_NATIVE}"
+        --native-file "${native_file}"
         --prefix "${PREFIX}" --libdir lib --buildtype release
         --prefer-static --wrap-mode nodownload -Ddefault_library=static
     )
     setup_cmd+=("$@")
-    if [ -n "${MESON_EXTRA_CFLAGS:-}" ]; then
-        run_env CFLAGS="${MESON_EXTRA_CFLAGS}" "${setup_cmd[@]}"
-    else
-        run "${setup_cmd[@]}"
-    fi
+    run "${setup_cmd[@]}"
     run meson compile -C "${build_dir}" -j "${JOBS}"
     run meson install -C "${build_dir}"
     mark "${name}"
@@ -433,16 +430,30 @@ require_pc glib-2.0 fontconfig freetype2 libpng pixman-1 zlib
 # fail under -Werror-implicit-function-declaration even though all four
 # symbols and their types are present.  Keep the real XRender backend and
 # prevent Cairo from declaring fallback types that collide with Xrender.h.
-# Meson passes CFLAGS in addition to the native file's target flags.  Use it
-# here because the command-line array option would treat comma-separated
-# preprocessor definitions as one malformed -D argument.
-MESON_EXTRA_CFLAGS='-DHAVE_XRENDERCREATESOLIDFILL -DHAVE_XRENDERCREATELINEARGRADIENT -DHAVE_XRENDERCREATERADIALGRADIENT -DHAVE_XRENDERCREATECONICALGRADIENT'
+# Use a Cairo-only compiler wrapper.  This keeps the target flags from the
+# shared native file and adds four separate defines to every Cairo compiler
+# invocation; Meson's command-line array handling is not reliable for this
+# set of preprocessor definitions.
+CAIRO_NATIVE="${WORK}/cairo-onebin-linux-hybrid-meson.ini"
+CAIRO_CC="${WORK}/cairo-zig-cc"
+cat >"${CAIRO_CC}" <<EOF
+#!/usr/bin/env bash
+exec "${CC}" \
+    -DHAVE_XRENDERCREATESOLIDFILL \
+    -DHAVE_XRENDERCREATELINEARGRADIENT \
+    -DHAVE_XRENDERCREATERADIALGRADIENT \
+    -DHAVE_XRENDERCREATECONICALGRADIENT \
+    "\$@"
+EOF
+run chmod +x "${CAIRO_CC}"
+run sed "s|^c = .*|c = '${CAIRO_CC}'|" "${MESON_NATIVE}" >"${CAIRO_NATIVE}"
+MESON_NATIVE_FILE="${CAIRO_NATIVE}"
 meson_dep cairo "${cairo_src}" cairo \
     -Dfontconfig=enabled -Dfreetype=enabled -Dpng=enabled -Dzlib=enabled \
     -Dxlib=enabled -Dxcb=disabled -Dxlib-xcb=disabled -Dglib=enabled \
     -Dtee=disabled -Dspectre=disabled -Dsymbol-lookup=disabled \
     -Dtests=disabled -Dgtk2-utils=disabled
-unset MESON_EXTRA_CFLAGS
+unset MESON_NATIVE_FILE
 
 pango_src=$(source_tree pango)
 require_pc glib-2.0 fribidi harfbuzz cairo fontconfig freetype2
