@@ -315,7 +315,7 @@ normalize_pkgconfig() {
         # pkg-config field, including literal -I/-L values, not one package's
         # prefix line only.
         run sed -i \
-            -e "s#^prefix=/usr$#prefix=${STAGED_USR}#" \
+            -e "s#^prefix=/usr\$#prefix=${STAGED_USR}#" \
             -e "s#^\(exec_prefix\|libdir\|includedir\|datadir\|bindir\)=/usr/#\1=${STAGED_USR}/#" \
             -e "s#\(-[IL]\)/usr/#\1${STAGED_USR}/#g" \
             "${pc}"
