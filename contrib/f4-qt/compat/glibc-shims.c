@@ -125,3 +125,36 @@ int close_range(unsigned int first, unsigned int last, int flags)
     return -1;
 #endif
 }
+
+ 
+#include <fcntl.h>
+#include <stdarg.h>
+
+/*
+ * D-Bus is compiled with _FILE_OFFSET_BITS=64.  On glibc this redirects
+ * its fcntl() calls to fcntl64(), which is not in the glibc 2.27 symbol
+ * set, even though x86_64 has always used the same 64-bit fcntl syscall.
+ * The affected D-Bus call sites all pass an int third argument (including
+ * an explicit zero for F_GETFD/F_GETFL), so preserve exactly that ABI and
+ * invoke the stable kernel interface directly.
+ */
+__attribute__((weak))
+int fcntl64(int fd, int cmd, ...)
+{
+    va_list args;
+    int arg;
+
+    va_start(args, cmd);
+    arg = va_arg(args, int);
+    va_end(args);
+
+#ifdef SYS_fcntl
+    return (int)syscall(SYS_fcntl, fd, cmd, arg);
+#else
+    (void)fd;
+    (void)cmd;
+    (void)arg;
+    errno = ENOSYS;
+    return -1;
+#endif
+}
