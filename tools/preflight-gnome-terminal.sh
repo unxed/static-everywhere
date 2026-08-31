@@ -283,6 +283,17 @@ else
     skip 'static artifact verification' "no ${ARTIFACT}; run build-gnome-terminal.sh with a source checkout and static prefix"
 fi
 
+# The zig wrappers offer host headers and libraries as a last resort,
+# which is right for Profile H and wrong for Profile S/U. far2l's musl
+# build died on the host's glibc <execinfo.h> because of it. The
+# toolchain is shared, so this is checked from every preflight.
+if HOSTISO=$("${REPO_ROOT}/tools/test-toolchain-host-isolation.sh" 2>&1); then
+    pass "musl targets see no host headers; glibc targets still do"
+else
+    fail "toolchain host isolation regression"
+    printf '%s\n' "$HOSTISO" | sed 's/^/       /'
+fi
+
 echo
 if [ "$FAILED" -eq 0 ]; then
     echo 'preflight: all checks passed'

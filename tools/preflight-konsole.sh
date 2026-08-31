@@ -166,4 +166,12 @@ if command -v shellcheck >/dev/null 2>&1; then
 else
     printf 'SKIP: shellcheck is not installed\n'
 fi
+
+# The zig wrappers offer host headers and libraries as a last resort,
+# which is right for Profile H and wrong for Profile S/U. far2l's musl
+# build died on the host's glibc <execinfo.h> because of it. The
+# toolchain is shared, so this is checked from every preflight.
+"$REPO_ROOT/tools/test-toolchain-host-isolation.sh" \
+    || { printf 'FAIL: toolchain host isolation regression\n' >&2; exit 1; }
+
 printf 'Konsole preflight: PASS\n'

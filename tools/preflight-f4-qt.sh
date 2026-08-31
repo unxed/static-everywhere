@@ -400,6 +400,17 @@ else
     printf '%s\n' "$WAIVER_TEST" | sed 's/^/       /'
 fi
 
+# The zig wrappers offer host headers and libraries as a last resort,
+# which is right for Profile H and wrong for Profile S/U. far2l's musl
+# build died on the host's glibc <execinfo.h> because of it. Shared
+# toolchain, so this is checked from every preflight.
+if HOSTISO=$("${REPO_ROOT}/tools/test-toolchain-host-isolation.sh" 2>&1); then
+    pass "musl targets see no host headers; glibc targets still do"
+else
+    fail "toolchain host isolation regression"
+    printf '%s\n' "$HOSTISO" | sed 's/^/       /'
+fi
+
 # Cost: would have been a silently unreproducible artifact rather than a
 # failed build -- f4's own script clones qwindowkit from an unpinned
 # branch, so upstream could change what we ship without anything failing.

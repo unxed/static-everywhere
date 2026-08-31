@@ -136,13 +136,6 @@ eval "set --${_onebin_filtered_args}"
 # (xcb/*, X11/*) that pkg-config never emits a -I for. -idirafter
 # appends it after the built-in system paths, so zig's own libc
 # headers still win and the glibc pin is unaffected.
-set -- "$@" -idirafter /usr/include
-
-# Host libraries as a last-resort search path. See zig-cc for the full
-# reasoning: zig cc with -target does not search the host's
-# /usr/lib/<triple>, while Conan emits host-contract libraries as bare
-# -l names with no -L. Appended last so Conan's own directories are
-# searched first and a vendored library still beats a host copy.
 _onebin_triple=""
 _onebin_want_triple=0
 for _onebin_arg in "$@"; do
@@ -158,13 +151,45 @@ for _onebin_arg in "$@"; do
 done
 # x86_64-linux-gnu.2.27 -> x86_64-linux-gnu
 _onebin_triple="${_onebin_triple%%.*}"
-if [ -n "$_onebin_triple" ] && [ -d "/usr/lib/${_onebin_triple}" ]; then
-    set -- "$@" -L"/usr/lib/${_onebin_triple}"
+
+# Which libc is this build targeting? The answer decides whether the host
+# fallbacks below are appropriate at all.
+#
+# They exist for Profile H, which links against a declared host contract:
+# xcb/*, X11/* and friends live in /usr/include and pkg-config emits no
+# -I for them. For Profile S and U the whole promise is zero host
+# dependencies, so a host search path there cannot produce a right
+# answer -- only a wrong one that compiles.
+#
+# far2l's Profile U build is exactly that: musl has no backtrace(), so
+# utils/include/debug.h fell through to the host's glibc
+# /usr/include/execinfo.h, which opens with __BEGIN_DECLS and does not
+# parse outside glibc. A header the target libc does not implement was
+# offered by the host, and the build died several errors later in
+# cxxabi.h with the parser already derailed.
+case "$_onebin_triple" in
+    *musl*) _onebin_host_fallbacks=0 ;;
+    *)      _onebin_host_fallbacks=1 ;;
+esac
+
+if [ "$_onebin_host_fallbacks" = 1 ]; then
+    set -- "$@" -idirafter /usr/include
 fi
-for _onebin_libdir in /usr/lib64 /usr/lib; do
-    if [ -d "$_onebin_libdir" ]; then
-        set -- "$@" -L"$_onebin_libdir"
+
+# Host libraries as a last-resort search path. See zig-cc for the full
+# reasoning: zig cc with -target does not search the host's
+# /usr/lib/<triple>, while Conan emits host-contract libraries as bare
+# -l names with no -L. Appended last so Conan's own directories are
+# searched first and a vendored library still beats a host copy.
+if [ "$_onebin_host_fallbacks" = 1 ]; then
+    if [ -n "$_onebin_triple" ] && [ -d "/usr/lib/${_onebin_triple}" ]; then
+        set -- "$@" -L"/usr/lib/${_onebin_triple}"
     fi
-done
+    for _onebin_libdir in /usr/lib64 /usr/lib; do
+        if [ -d "$_onebin_libdir" ]; then
+            set -- "$@" -L"$_onebin_libdir"
+        fi
+    done
+fi
 
 exec zig c++ "$@"

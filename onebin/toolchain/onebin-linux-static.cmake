@@ -38,8 +38,29 @@ set(BUILD_SHARED_LIBS OFF)
 # --gc-sections).
 option(ONEBIN_EXPORT_DYNAMIC "This target exports an ABI to its own plugins" OFF)
 
+# -D__MUSL__ when the target is musl.
+#
+# musl deliberately defines no macro identifying itself, which leaves
+# portable code with no way to ask "is this musl?" in the preprocessor.
+# Downstream projects settled on __MUSL__ as the de-facto name and test
+# for it; nothing defines it, so those tests silently take the glibc
+# branch on a musl build.
+#
+# far2l is exactly that case. utils/include/debug.h guards its
+# <execinfo.h> include with a list that includes !defined(__MUSL__) --
+# the intent is unmistakable, since musl has no backtrace() at all -- and
+# the guard never fires. Supplying the macro makes the guard mean what it
+# says. This is not a patch to far2l (contrib/far2l/patches/README.md:
+# that source is built as-is); it supplies an input the source already
+# tests for, and the finding is written up in contrib/far2l/UPSTREAM.md.
+set(_onebin_libc_identity "")
+if(ONEBIN_ZIG_TARGET MATCHES "musl")
+    set(_onebin_libc_identity "-D__MUSL__")
+endif()
+
 set(_onebin_flags
     "-target ${ONEBIN_ZIG_TARGET}"
+    "${_onebin_libc_identity}"
     "-fstack-protector-strong"
     # So our own reference builds don't trip our own OB0060 (embedded
     # build-time path) — DESIGN-onebin.md §8's own explicit reminder.

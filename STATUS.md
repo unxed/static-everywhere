@@ -7,6 +7,59 @@ Everything below this section is a reverse-chronological log (newest
 first). Read *this* section first; consult the log below only for the
 detail behind a specific claim.
 
+### far2l Profile U died on the host's glibc header, offered by our own toolchain
+
+The SDL Profile U build failed at 30% with five errors in
+`/usr/include/execinfo.h` (`unknown type name '__BEGIN_DECLS'`), then
+`cxxabi.h: expected unqualified-id` with the parser already derailed,
+then `use of undeclared identifier 'backtrace'`. Three symptoms, one
+cause, and the cause is ours.
+
+`zig c++ -target x86_64-linux-musl` does not find `<execinfo.h>` — the
+correct answer, since musl has no `backtrace()`. Through
+`onebin/toolchain/zig-c++` it finds glibc's, because the wrapper appends
+`-idirafter /usr/include`.
+
+That line is right for Profile H, which links against a declared host
+contract: `xcb/*` and `X11/*` live in `/usr/include` and pkg-config emits
+no `-I` for them. For Profile S and U the whole promise is zero host
+dependencies, so a host search path cannot produce a right answer there —
+only a wrong one that compiles. Both wrappers now gate the host include
+and host `-L` fallbacks on a non-musl target; the triple was already
+being parsed for the library path, so the fix reuses it.
+
+### The other half: a guard on a macro that does not exist
+
+`far2l/utils/include/debug.h` includes `<execinfo.h>` under
+`!defined(__MUSL__)`. The intent is unmistakable — musl has no
+`backtrace()` — but **nothing defines `__MUSL__`**. musl deliberately
+provides no macro identifying itself; `__MUSL__` is a downstream
+invention that exists only if a build system passes `-D`. Verified rather
+than assumed: on a musl target neither `__MUSL__` nor `__GLIBC__` is
+defined.
+
+Project policy is that far2l is never patched
+(`contrib/far2l/patches/README.md`), so the fix supplies the input the
+source already tests for: `onebin-linux-static.cmake` passes `-D__MUSL__`
+for musl targets. Checked against far2l's real guard text — it now takes
+the musl branch, while glibc behaviour is unchanged. The finding is
+written up as `contrib/far2l/UPSTREAM.md` §6, with `__has_include` as the
+form that would not need the flag.
+
+### A test that reproduces the failure, and a control that proved the test weak
+
+`tools/test-toolchain-host-isolation.sh` compiles `<execinfo.h>` for both
+targets: musl must fail *by absence* (a parse error means the host header
+was offered), glibc must still succeed. Wired into all three preflights,
+since the toolchain is shared.
+
+Its first version checked `-D__MUSL__` by grepping the toolchain file —
+and the negative control passed when the flag was deleted, because the
+string also appears in that file's explanatory comment. Rewritten to
+configure with the real toolchain and read `CMAKE_C_FLAGS`. Reverting
+either half of the fix now reproduces the exact CI error and fails the
+gate.
+
 ### The util-linux patch: five attempts at the arithmetic, one look at the source
 
 `util-linux-libuuid-only.patch` stopped applying, and the four commits

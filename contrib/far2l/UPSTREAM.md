@@ -106,3 +106,56 @@ native file. This prevents the dynamic linker from ever unmapping the plugins,
 keeping their destructors valid at exit. No patch to `far2l` source code
 is required to achieve this, but upstream might still want to adopt one
 of the fixes for downstream packagers who do not use `-z nodelete`.
+
+## 6. `utils/include/debug.h` guards `<execinfo.h>` on a macro no libc defines
+
+`utils/include/debug.h` decides whether to include `<execinfo.h>` and
+define `HAS_BACKTRACE` with:
+
+```c
+#if !defined(__FreeBSD__) && !defined(__NetBSD__) && !defined(__DragonFly__) \
+    && !defined(__MUSL__) && !defined(__UCLIBC__) && !defined(__HAIKU__) \
+    && !defined(__ANDROID__)
+# include <execinfo.h>
+# define HAS_BACKTRACE
+#endif
+```
+
+The intent is clear and correct: musl has no `backtrace()` at all, so the
+header must not be included there. But **nothing defines `__MUSL__`**.
+musl deliberately provides no macro identifying itself, and `__MUSL__` is
+a downstream invention that only exists if a build system passes `-D`.
+So on a musl build the guard does not fire, `<execinfo.h>` is included,
+and what gets found is whatever the include path happens to offer — on a
+typical CI host, glibc's `/usr/include/execinfo.h`, which opens with
+`__BEGIN_DECLS` and does not parse outside glibc. The failure surfaces
+several cascading errors later, in `cxxabi.h`, with the parser already
+derailed.
+
+The use site is already guarded properly (`#ifdef HAS_BACKTRACE` at
+`debug.h:540`), so only the include condition needs to change.
+
+A robust form tests availability rather than libc identity, and matches
+the idiom `debug.h` already uses a few lines below for `<cxxabi.h>`:
+
+```c
+#if !defined(__FreeBSD__) && !defined(__NetBSD__) && !defined(__DragonFly__) \
+    && !defined(__UCLIBC__) && !defined(__HAIKU__) && !defined(__ANDROID__)
+# if !defined(__has_include) || __has_include(<execinfo.h>)
+#  include <execinfo.h>
+#  define HAS_BACKTRACE
+# endif
+#endif
+```
+
+This keeps every existing platform exclusion (the BSD ones are about
+`-lexecinfo`, not availability, so they must stay), drops the macro that
+never fires, and additionally covers any other libc without the header.
+
+**No patch to far2l is carried for this.** Static Everywhere passes
+`-D__MUSL__` for musl targets
+(`onebin/toolchain/onebin-linux-static.cmake`), which makes the existing
+guard mean what it says — supplying an input the source already tests
+for rather than modifying the source. The suggestion above is offered
+because the next person to build far2l against musl without that flag
+will hit the same wall.
