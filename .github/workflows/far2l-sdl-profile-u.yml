@@ -142,17 +142,31 @@ jobs:
           test "$(git -C solo-src rev-parse HEAD)" = "$solo_ref"
           git -C solo-src cat-file -e "$solo_ref:lib/dlfcn.h"
           test -f solo-src/lib/dlfcn.h
+          solo_archive="$PWD/solo-src/libdlfcn.a"
+          test ! -e "$solo_archive"
+          solo_container=
+          cleanup_solo_container() {
+            if [ -n "$solo_container" ]; then
+              docker rm -f "$solo_container" >/dev/null 2>&1 || true
+            fi
+          }
+          trap cleanup_solo_container EXIT
+          # Keep the container until the output has been copied back.  A
+          # bind mount is not a sufficient cross-namespace contract on every
+          # runner (and SoLo's dlfcn link is CAS/container-local), so move
+          # both the input tree and the regular output through docker cp.
+          solo_container=$(docker create \
+            --env "CC=$solo_cc" \
+            --env "CXX=$solo_cxx" \
+            -w /src \
+            alpine:3.22 \
+            sh -e -s)
+          docker cp solo-src/. "$solo_container:/src"
           set +e
           # Feed the container script on stdin instead of embedding it in
           # one quoted argument.  Apostrophes in comments or diagnostics
           # must not be able to terminate the host shell's command string.
-          docker run --rm \
-            --env "CC=$solo_cc" \
-            --env "CXX=$solo_cxx" \
-            -v "$PWD/solo-src:/src" \
-            -w /src \
-            alpine:3.22 \
-            sh -e -s <<'SOLO_SCRIPT' 2>&1 | tee /tmp/solo-build.log
+          docker start -ai "$solo_container" <<'SOLO_SCRIPT' 2>&1 | tee /tmp/solo-build.log
               # libc++ as well as clang: Alpine's clang defaults to
               # libstdc++, and the archive this container produces is
               # linked by zig, which provides libc++. Two C++ runtimes in
@@ -209,6 +223,7 @@ jobs:
             "${solo_status[0]}" "${solo_status[1]}"
           if [ "${solo_status[1]}" -ne 0 ]; then
             echo 'SoLo log tee failed' >&2
+            docker cp "$solo_container:/src/libdlfcn.a" "$solo_archive" 2>/dev/null || true
             exit "${solo_status[1]}"
           fi
           if [ "${solo_status[0]}" -ne 0 ]; then
@@ -223,11 +238,17 @@ jobs:
               exit 1
             fi
           fi
+          # Copy the regular archive before removing the stopped container.
+          # This is the only artifact crossing the Docker boundary; no
+          # container-local symlink is used by the host-side checks below.
+          docker cp "$solo_container:/src/libdlfcn.a" "$solo_archive"
+          docker rm "$solo_container" >/dev/null
+          solo_container=
+          trap - EXIT
           # The publisher's dlfcn link is an implementation detail of the
           # container's CAS namespace.  Docker is allowed to discard that
           # link when the container exits, so the cross-namespace contract is
-          # the explicit archive copied to the bind mount above.
-          solo_archive="$PWD/solo-src/libdlfcn.a"
+          # the explicit archive copied out of the stopped container above.
           test -f "$solo_archive" || {
             echo 'SoLo container did not materialize libdlfcn.a' >&2
             find solo-src -maxdepth 2 -name '*dlfcn*' -print >&2
