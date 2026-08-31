@@ -122,10 +122,12 @@ for required in \
     fi
 done
 
-if grep -Fq -- 'export PATH="${PREFIX}/bin:${TOOLCHAIN}:${PATH}"' "$DEPS_SCRIPT"; then
-    pass 'dependency build tools take precedence over host PATH'
+if grep -Fq -- 'export PATH="${PREFIX}/bin:${TOOLCHAIN}:${PATH}"' "$DEPS_SCRIPT" \
+    && grep -Fq -- 'require_prefix_program()' "$DEPS_SCRIPT" \
+    && grep -Fq -- 'require_prefix_program "${program}"' "$DEPS_SCRIPT"; then
+    pass 'dependency build tools are resolved from the static prefix before host PATH'
 else
-    fail 'dependency build tools are not placed before host PATH'
+    fail 'dependency build tools do not have a prefix-first resolution contract'
 fi
 
 UUID_PATCH="${REPO_ROOT}/contrib/gnome-terminal/patches/util-linux-libuuid-only.patch"

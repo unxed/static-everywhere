@@ -123,7 +123,7 @@ source patches: util-linux-libuuid-only.patch gtk-no-host-atk-bridge.patch vte-s
 subproject policy: materialize pinned gvdb; provide libc gettext through a prefix-local synthetic intl.pc; no Meson downloads
 uuid policy: util-linux libuuid-only=true; install only the pinned static libuuid archive and uuid.pc
 uuid-only graph audit: reject util-linux libcommon and non-UUID lib/ sources before compile
-build-time tools: ${PREFIX}/bin precedes the host PATH; GLib tools are reused by gdk-pixbuf
+build-time tools: ${PREFIX}/bin precedes the host PATH; producer tools are verified before consumers
 PLAN
     for dependency in "${dependency_order[@]}"; do
         printf '# pinned source: %s %s %s\n' \
@@ -187,6 +187,19 @@ export PKG_CONFIG_ALLOW_SYSTEM_LIBS=1
 export PKG_CONFIG_ALLOW_SYSTEM_CFLAGS=1
 export PKG_CONFIG_PATH="${PREFIX}/lib/pkgconfig:${PREFIX}/share/pkgconfig:/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/share/pkgconfig:${PKG_CONFIG_PATH:-}"
 export CMAKE_PREFIX_PATH="${PREFIX}"
+
+require_prefix_program() {
+    local program=$1 resolved
+    resolved=$(command -v "${program}" || true)
+    case "${resolved}" in
+        "${PREFIX}/bin/"*) ;;
+        *)
+            printf 'build-gnome-terminal-deps.sh: build-time tool is not provided by the static prefix: %s (%s)\n' \
+                "${program}" "${resolved:-not found}" >&2
+            exit 1
+            ;;
+    esac
+}
 
 source_tree() {
     local name=$1 dir commit url actual
@@ -429,6 +442,9 @@ meson_dep glib "${glib_src}" glib \
     -Ddocumentation=false -Dintrospection=disabled -Dselinux=disabled \
     -Dlibmount=disabled -Dlibelf=disabled -Dsysprof=disabled -Dsystemtap=false \
     -Dglib_debug=disabled -Dnls=disabled
+for program in glib-compile-resources glib-compile-schemas gdbus-codegen; do
+    require_prefix_program "${program}"
+done
 
 fribidi_src=$(source_tree fribidi)
 meson_dep fribidi "${fribidi_src}" fribidi \
