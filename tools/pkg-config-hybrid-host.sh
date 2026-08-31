@@ -2,8 +2,7 @@
 # Keep the hybrid boundary explicit when Meson asks pkg-config for a static
 # dependency closure. Static GTK/GLib archives must still receive their
 # private dependencies, so the recipe keeps --prefer-static; this wrapper
-# changes only declared host GUI/desktop -l arguments to explicit shared
-# objects.
+# changes only declared X11/OpenGL -l arguments to explicit shared objects.
 set -euo pipefail
 
 HOST_LIBDIR=/usr/lib/x86_64-linux-gnu
@@ -11,7 +10,7 @@ HOST_DYNAMIC_LIBS=(
     X11 Xext Xi Xrandr Xrender Xcursor Xdamage Xfixes Xcomposite Xinerama
     X11-xcb Xau Xdmcp ICE SM xcb xcb-render xcb-shm xcb-xkb
     xcb-render-util xcb-image xcb-keysyms xcb-util xcb-xinerama xcb-cursor
-    Xtst GL EGL GLX dbus-1 atspi atk-bridge-2.0
+    Xtst GL EGL GLX
 )
 
 host_shared_object() {

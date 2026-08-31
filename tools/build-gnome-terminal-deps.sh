@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Build the pinned Layer-1 dependency prefix consumed by
-# build-gnome-terminal.sh. The display server, GPU ABI, accessibility bridge
-# and desktop data remain host inputs of Profile H; the GTK/UI code does not.
+# build-gnome-terminal.sh. X11 client libraries and the GPU ABI are the only
+# non-C-runtime host inputs; the GTK/UI code and D-Bus protocol implementation
+# do not come from the host.
 set -euo pipefail
 
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
@@ -113,12 +114,12 @@ work: ${WORK}
 target: ${TARGET}
 source pins: ${LOCK} (commit verified)
 order: ${dependency_order[*]}
-host contract: X11, OpenGL/EGL, accessibility IPC, schemas, fonts and session services
-host library policy: pkg-config maps host GUI/desktop -l arguments to shared objects
+host contract: X11 client libraries plus the Profile H OpenGL/EGL runtime ABI
+host library policy: pkg-config maps only X11/OpenGL -l arguments to shared objects
 fontconfig install: manual copy (no meson install; protects host /etc/fonts)
 cairo XRender function checks: HAVE_XRENDERCREATESOLIDFILL HAVE_XRENDERCREATELINEARGRADIENT HAVE_XRENDERCREATERADIALGRADIENT HAVE_XRENDERCREATECONICALGRADIENT
 cmake contract: ${CMAKE_COMMON_ARGS[*]}
-source patches: util-linux-libuuid-only.patch vte-static-library.patch libhandy-static-library.patch
+source patches: util-linux-libuuid-only.patch gtk-no-host-atk-bridge.patch vte-static-library.patch libhandy-static-library.patch
 subproject policy: materialize pinned gvdb; provide libc gettext through a prefix-local synthetic intl.pc; no Meson downloads
 uuid policy: util-linux libuuid-only=true; install only the pinned static libuuid archive and uuid.pc
 PLAN
@@ -530,6 +531,7 @@ meson_dep epoxy "${epoxy_src}" epoxy \
     -Dglx=yes -Degl=yes -Dx11=true -Dtests=false -Ddocs=false
 
 gtk_src=$(source_tree gtk)
+apply_source_patch "${gtk_src}" "${REPO_ROOT}/contrib/gnome-terminal/patches/gtk-no-host-atk-bridge.patch"
 require_pc glib-2.0 gobject-2.0 gio-2.0 cairo pango pangocairo pangoft2 \
     gdk-pixbuf-2.0 fontconfig atk epoxy harfbuzz fribidi
 meson_dep gtk "${gtk_src}" gtk \

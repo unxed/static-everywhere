@@ -1047,6 +1047,8 @@ what experiment would settle it.
 - **Reproducible-build attestation as the SBOM's other half.** We ask projects to
   publish an SBOM; a rebuilder attestation would let a third party prove the
   binary matches the sources without trusting the publisher's CI.
+- **GTK accessibility bridge:** later evaluate a system bridge/host ABI only if
+  it is possible without reducing portability.
 - **Tier 3 desktop integration:** consider trying system GTK (and perhaps Qt)
   to improve integration with the desktop.
 

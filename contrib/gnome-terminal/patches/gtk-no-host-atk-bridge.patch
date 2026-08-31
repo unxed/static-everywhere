@@ -1,0 +1,48 @@
+diff --git a/meson.build b/meson.build
+--- a/meson.build
++++ b/meson.build
+@@ -442,7 +442,7 @@ iso_codes_dep  = dependency('iso-codes', required: false)
+ 
+ fontconfig_dep = [] # only used in x11 backend
+-atkbridge_dep  = [] # only used in x11 backend
++atkbridge_dep  = [] # the host D-Bus accessibility bridge is not part of Profile H
+ 
+ if os_win32
+   platform_gio_dep = giowin32_dep
+@@ -564,7 +564,6 @@ if x11_enabled
+   xdamage_dep    = dependency('xdamage', required: false)
+   xfixes_dep     = dependency('xfixes', required: false)
+   xcomposite_dep = dependency('xcomposite', required: false)
+   fontconfig_dep = dependency('fontconfig', fallback: ['fontconfig', 'fontconfig_dep'])
+-  atkbridge_dep  = dependency('atk-bridge-2.0', version: at_spi2_atk_req)
+ 
+   backend_immodules += ['xim']
+@@ -583,7 +582,6 @@ if x11_enabled
+     x11_pkgs += ['xdamage']
+   endif
+ 
+-  atk_pkgs += ['atk-bridge-2.0']
+ 
+   cdata.set('HAVE_XDAMAGE', xdamage_dep.found() ? 1 : false)
+   cdata.set('HAVE_XCURSOR', xcursor_dep.found() ? 1 : false)
+diff --git a/gtk/a11y/gtkaccessibility.c b/gtk/a11y/gtkaccessibility.c
+--- a/gtk/a11y/gtkaccessibility.c
++++ b/gtk/a11y/gtkaccessibility.c
+@@ -38,10 +38,6 @@
+ #include <gtk/gtkaccessible.h>
+ 
+-#ifdef GDK_WINDOWING_X11
+-#include <atk-bridge.h>
+-#endif
+ 
+ static gboolean gail_focus_watcher      (GSignalInvocationHint *ihint,
+@@ -989,10 +985,6 @@ _gtk_accessibility_init (void)
+   _gtk_accessibility_override_atk_util ();
+   do_window_event_initialization ();
+ 
+-#ifdef GDK_WINDOWING_X11
+-  atk_bridge_adaptor_init (NULL, NULL);
+-#endif
+ 
+   atk_misc_instance = g_object_new (GTK_TYPE_MISC_IMPL, NULL);
+ }

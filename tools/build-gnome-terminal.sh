@@ -84,8 +84,6 @@ GNOME_TERMINAL_HOST_CONTRACT=(
     --allow libxcb-keysyms.so.1 --allow libxcb-util.so.1
     --allow libxcb-xinerama.so.0 --allow libxcb-cursor.so.0
     --allow libXtst.so.6 --allow libGL.so.1 --allow libEGL.so.1
-    --allow libGLX.so.0 --allow libdbus-1.so.3
-    --allow libatspi.so.0 --allow libatk-bridge-2.0.so.0
 )
 
 quote_cmd() {
@@ -143,9 +141,9 @@ jobs: ${JOBS}
 # FreeType, HarfBuzz, Fontconfig, VTE, libhandy and libuuid archives plus their
 # .pc files.
 # The dependency lock is contrib/gnome-terminal/deps.lock.
-# Host X11/OpenGL/EGL and desktop libraries remain dynamic through the
-# hybrid pkg-config wrapper; --prefer-static is retained for the prefix's
-# private static dependency closure.
+# Only host X11/OpenGL/EGL libraries remain dynamic through the hybrid
+# pkg-config wrapper; GTK, GLib, D-Bus and the rest of the UI stack stay in the
+# prefix's private static dependency closure.
 # The install prefix is /usr and DESTDIR creates a directly installable tree;
 # no runtime path or environment-variable relocation is required.
 # linker hardening: -Wl,-z,relro -Wl,-z,now -Wl,-z,noexecstack

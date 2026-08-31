@@ -59,9 +59,10 @@ First produce the prefix from the commit pins:
 ```
 
 The producer verifies every source checkout against `contrib/gnome-terminal/deps.lock`
-and builds the Layer-1 archives in dependency order. It deliberately leaves
-X11, OpenGL/EGL, accessibility IPC, schemas, fonts and session services to the
-Profile H host contract.
+and builds the Layer-1 archives in dependency order. The hybrid boundary is
+limited to X11 client libraries and the Profile H OpenGL/EGL runtime ABI.
+GTK's accessibility bridge is disabled for this PoC; D-Bus remains a protocol
+used through static GLib rather than a host library dependency.
 
 `tools/build-gnome-terminal.sh` accepts:
 

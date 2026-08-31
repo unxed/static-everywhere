@@ -93,8 +93,8 @@ fi
 
 for required in \
     'commit verified' \
-    'host contract: X11, OpenGL/EGL, accessibility IPC, schemas, fonts and session services' \
-    'host library policy: pkg-config maps host GUI/desktop -l arguments to shared objects' \
+    'host contract: X11 client libraries plus the Profile H OpenGL/EGL runtime ABI' \
+    'host library policy: pkg-config maps only X11/OpenGL -l arguments to shared objects' \
     'fontconfig install: manual copy' \
     'HAVE_XRENDERCREATESOLIDFILL' \
     'HAVE_XRENDERCREATELINEARGRADIENT' \
@@ -107,6 +107,7 @@ for required in \
     'CMAKE_SKIP_RPATH=ON' \
     'zlib libffi pcre2 expat libpng pixman' \
     'util-linux-libuuid-only.patch' \
+    'gtk-no-host-atk-bridge.patch' \
     'vte-static-library.patch' \
     'libhandy-static-library.patch' \
     'synthetic intl.pc' \
@@ -118,6 +119,13 @@ for required in \
         fail "dependency plan is missing ${required}"
     fi
 done
+
+if grep -Eiq 'dbus-1|atspi|atk-bridge' "$REPO_ROOT/tools/pkg-config-hybrid-host.sh" \
+    || grep -Eiq 'libdbus|libatspi|libatk-bridge' "$REPO_ROOT/tools/build-gnome-terminal.sh"; then
+    fail 'host contract contains a forbidden D-Bus/accessibility library'
+else
+    pass 'host contract excludes D-Bus and accessibility libraries'
+fi
 
 echo
 echo '== hybrid pkg-config boundary =='
