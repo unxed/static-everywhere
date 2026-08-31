@@ -7,6 +7,39 @@ Everything below this section is a reverse-chronological log (newest
 first). Read *this* section first; consult the log below only for the
 detail behind a specific claim.
 
+### 180 MB of one warning, and the error somewhere inside it
+
+The gnome-terminal run produced a diagnostics artifact too large to
+download. Its content was a single warning repeated: `cast from 'void
+(*)(void *)' to 'void (*)()'`, from every `G_DEFINE_AUTOPTR_CLEANUP_FUNC`
+expansion in GTK's `gtk-autocleanups.h`, roughly 2800 per translation
+unit.
+
+Measured rather than guessed: `-Wcast-function-type-strict` is not in
+`-Wall` or `-Wextra` — it fires only when asked for by name. vte asks,
+through `cc.get_supported_arguments()`. gcc has no such flag, so upstream
+silently drops it and never sees this; clang has it, so we get all of it,
+about third-party macro expansions we neither own nor can change.
+
+Set `-Wno-cast-function-type-strict` in the meson native file's built-in
+options, which meson places after the project's own arguments — verified
+against a meson project that enables the warning via
+`add_project_arguments`, where the `-Wno-` wins.
+
+### The class is worse than the warning
+
+An artifact nobody can download is worth less than a truncated one that
+says so. The collector now caps each copied log at 200k lines, keeping
+the first and last 50k with an explicit notice of how many were dropped
+and a pointer to `06-errors-*.txt` — which is extracted from the original
+log, not from the truncated copy, so the failure survives the cap.
+Verified on a 250k-line log: head, tail and the final line all present.
+
+So the noise has three independent defences now: it is not generated, it
+would not fill the artifact if it were, and the error is extracted
+separately regardless. The vte failure itself is still unnamed — the last
+artifact predates all of this — but it can no longer hide behind volume.
+
 ### The same asymmetry, seen from the other side: strict C had no `Dl_info`
 
 C++ now compiles; a C source did not:

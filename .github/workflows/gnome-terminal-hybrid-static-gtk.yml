@@ -190,8 +190,39 @@ jobs:
           set +e
           diag=/tmp/gnome-terminal-diagnostic-logs
           mkdir -p "$diag"
-          cp "$RUNNER_TEMP/gnome-terminal-deps-build.log" "$diag/00-deps-build.log" 2>/dev/null || true
-          cp "$RUNNER_TEMP/gnome-terminal-build.log" "$diag/01-gnome-terminal-build.log" 2>/dev/null || true
+          # Copy the logs whole, but not without limit.
+          #
+          # A build whose third-party headers warn on every macro
+          # expansion produced a 180 MB artifact that could not be
+          # downloaded at all -- the error was in there, and unreachable.
+          # An artifact nobody can open is worth less than a truncated
+          # one that says it was truncated.
+          #
+          # Above the cap, keep the head and the tail: the head carries
+          # the configure summary and the first failure, the tail carries
+          # the last. The error extract below is unaffected either way,
+          # because it greps the original log, not this copy.
+          copy_log() {  # $1 = source, $2 = destination
+            local src=$1 dst=$2 lines
+            [ -f "$src" ] || return 0
+            lines=$(wc -l <"$src")
+            if [ "$lines" -le 200000 ]; then
+              cp "$src" "$dst"
+              return 0
+            fi
+            {
+              printf '=== TRUNCATED: %s lines, keeping the first and last 50000 ===\n' \
+                "$lines"
+              printf '=== The full log was too large to attach. If the failure is\n'
+              printf '=== not visible here, look at 06-errors-*.txt, which is\n'
+              printf '=== extracted from the whole log rather than from this copy.\n\n'
+              head -n 50000 "$src"
+              printf '\n=== ... %s lines omitted ...\n\n' "$((lines - 100000))"
+              tail -n 50000 "$src"
+            } >"$dst"
+          }
+          copy_log "$RUNNER_TEMP/gnome-terminal-deps-build.log" "$diag/00-deps-build.log"
+          copy_log "$RUNNER_TEMP/gnome-terminal-build.log" "$diag/01-gnome-terminal-build.log"
 
           # Point at the failure inside those logs.
           #
