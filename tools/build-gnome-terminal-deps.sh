@@ -95,6 +95,7 @@ target: ${TARGET}
 source pins: ${LOCK} (commit verified)
 order: ${dependency_order[*]}
 host contract: X11, OpenGL/EGL, accessibility IPC, schemas, fonts and session services
+fontconfig install: manual copy (no meson install; protects host /etc/fonts)
 PLAN
     for dependency in "${dependency_order[@]}"; do
         printf '# pinned source: %s %s %s\n' \
@@ -365,10 +366,38 @@ fi
 
 fontconfig_src=$(source_tree fontconfig)
 require_pc freetype2 expat
-meson_dep fontconfig "${fontconfig_src}" fontconfig \
-    -Ddoc=disabled -Dtests=disabled -Dtools=disabled -Dcache-build=disabled \
-    -Diconv=disabled -Dnls=disabled -Dsysconfdir=/etc -Ddatadir=/usr/share \
-    -Dcache-dir=/var/cache/fontconfig
+if ! built fontconfig; then
+    fontconfig_build="${WORK}/build/fontconfig"
+    # Fontconfig's conf.d/link_confs.py install hook ignores DESTDIR and can
+    # modify the runner's real /etc/fonts. Build it, then copy only the
+    # library, pkg-config file and headers needed by the static prefix.
+    run mkdir -p "${fontconfig_build}" "${PREFIX}/lib/pkgconfig" "${PREFIX}/include"
+    run meson setup --wipe "${fontconfig_build}" "${fontconfig_src}" \
+        --native-file "${MESON_NATIVE}" \
+        --prefix "${PREFIX}" --libdir lib --buildtype release \
+        --prefer-static --wrap-mode nodownload -Ddefault_library=static \
+        -Ddoc=disabled -Dtests=disabled -Dtools=disabled -Dcache-build=disabled \
+        -Diconv=disabled -Dnls=disabled -Dsysconfdir=/etc -Ddatadir=/usr/share \
+        -Dcache-dir=/var/cache/fontconfig
+    run meson compile -C "${fontconfig_build}" -j "${JOBS}"
+
+    fontconfig_lib=$(find "${fontconfig_build}" -type f -name libfontconfig.a -print -quit)
+    fontconfig_pc=$(find "${fontconfig_build}" -type f -name fontconfig.pc -print -quit)
+    if [ -z "${fontconfig_lib}" ] || [ -z "${fontconfig_pc}" ]; then
+        printf 'build-gnome-terminal-deps.sh: Fontconfig outputs were not found\n' >&2
+        exit 1
+    fi
+    run install -D "${fontconfig_lib}" "${PREFIX}/lib/libfontconfig.a"
+    run install -D "${fontconfig_pc}" "${PREFIX}/lib/pkgconfig/fontconfig.pc"
+    run mkdir -p "${PREFIX}/include/fontconfig"
+    while IFS= read -r header; do
+        run install -m 644 "${header}" "${PREFIX}/include/fontconfig/"
+    done < <(find "${fontconfig_src}/fontconfig" -maxdepth 1 -type f -name '*.h' -print)
+    while IFS= read -r header; do
+        run install -m 644 "${header}" "${PREFIX}/include/fontconfig/"
+    done < <(find "${fontconfig_build}" -type f -path '*/fontconfig/*.h' -print)
+    mark fontconfig
+fi
 
 cairo_src=$(source_tree cairo)
 require_pc glib-2.0 fontconfig freetype2 libpng pixman-1 zlib
