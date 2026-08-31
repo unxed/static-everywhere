@@ -108,7 +108,7 @@ window_id=
 attempts=0
 while [ "${attempts}" -lt 90 ]; do
     window_id=$(timeout --foreground --kill-after=1s 2s \
-        xdotool search --onlyvisible --name 'far2l' 2>/dev/null \
+        xdotool search --onlyvisible --name '[Ff][Aa][Rr]2[Ll]' 2>/dev/null \
         | head -n 1 || true)
     if [ -n "$window_id" ]; then
         break
