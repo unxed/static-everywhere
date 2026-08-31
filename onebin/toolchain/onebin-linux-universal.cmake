@@ -13,7 +13,7 @@ set(ONEBIN_EXPORT_DYNAMIC ON CACHE BOOL
 set(ONEBIN_SOLO_ROOT "" CACHE PATH
     "SoLo handoff root containing libdlfcn.a and lib/dlfcn.h")
 
-include("${CMAKE_CURRENT_LIST_DIR}/onebin-linux-static.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/onebin-linux-universal-deps.cmake")
 
 set(ONEBIN_PROFILE "universal")
 
@@ -54,8 +54,7 @@ if(ONEBIN_SOLO_ROOT)
     endif()
 endif()
 
-# CMake has a separate flag family for add_library(... MODULE ...). The
-# included static toolchain predates MODULE consumers, so mirror its static
-# hardening flags here instead of letting a module acquire a dynamic linker
-# or host DT_NEEDED entries by accident.
-set(CMAKE_MODULE_LINKER_FLAGS_INIT "${CMAKE_SHARED_LINKER_FLAGS_INIT}")
+# onebin-linux-universal-deps.cmake keeps -static/-pie on EXE targets but
+# removes those mutually-exclusive flags from SHARED/MODULE targets. The
+# module still gets the musl target and static dependency search policy; its
+# link rule supplies -shared itself.

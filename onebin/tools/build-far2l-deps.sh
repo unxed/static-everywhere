@@ -47,7 +47,7 @@ case "${PROFILE}" in
         ;;
     universal)
         MESON_NATIVE="${TOOLCHAIN}/onebin-linux-universal-meson.ini"
-        CMAKE_TOOLCHAIN="${TOOLCHAIN}/onebin-linux-universal.cmake"
+        CMAKE_TOOLCHAIN="${TOOLCHAIN}/onebin-linux-universal-deps.cmake"
         TARGET="x86_64-linux-musl"
         ;;
     *)
@@ -192,6 +192,7 @@ export PKG_CONFIG_PATH="${PREFIX}/zlib/lib/pkgconfig:${PREFIX}/mbedtls/lib/pkgco
 zlib_src=$(source_tree zlib)
 if ! built zlib; then
     cmake_dep zlib zlib "${zlib_src}" zlib \
+        -DZLIB_BUILD_SHARED=OFF \
         -DZLIB_BUILD_TESTING=OFF
     # zlib's CMake build emits shared objects despite BUILD_SHARED_LIBS=OFF.
     # Leaving them beside libz.a makes a later -lz silently choose the .so.
