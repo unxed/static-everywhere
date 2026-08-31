@@ -1,7 +1,7 @@
 git -C ./far2l-src describe --tags --exact-match
 test -n "${DEPS_PREFIX:?--deps-prefix is required for --config sdl}"
 mkdir -p ./out/far2l-sdl
-cmake -S ./far2l-src -B ./out/far2l-sdl/_build -DCMAKE_TOOLCHAIN_FILE=<repo>/onebin/toolchain/onebin-linux-hybrid.cmake -DCMAKE_BUILD_TYPE=Release -DUSEWX=no -DUSESDL=YES -DPYTHON=no -DUNRAR=no -DICU_MODE=prebuilt -DNR_AWS=no -DCOLORER=no -DMULTIARC=no -DUSEUCD=no -DLIBSSH_LIBRARIES='/libssh/lib/libssh.a;/mbedtls/lib/libmbedtls.a;/mbedtls/lib/libmbedx509.a;/mbedtls/lib/libmbedcrypto.a;/zlib/lib/libz.a' -DLIBSSH_INCLUDE_DIRS=/libssh/include -DLIBNFS_LIBRARY=/libnfs/lib/libnfs.a -DLIBNFS_INCLUDE_DIR=/libnfs/include -DOPENSSL_ROOT_DIR=/openssl -DOPENSSL_USE_STATIC_LIBS=TRUE -DNEON_LIBRARY=/neon/lib/libneon.a -DNEON_INCLUDE_DIR=/neon/include/neon  -DCMAKE_INSTALL_PREFIX=./out/far2l-sdl/install
+cmake -S ./far2l-src -B ./out/far2l-sdl/_build -DCMAKE_TOOLCHAIN_FILE=<repo>/onebin/toolchain/onebin-linux-hybrid.cmake -DCMAKE_BUILD_TYPE=Release -DUSEWX=no -DUSESDL=YES -DPYTHON=no -DUNRAR=no -DICU_MODE=prebuilt -DNR_AWS=no -DCOLORER=no -DMULTIARC=no -DUSEUCD=no -DLIBSSH_LIBRARIES='/libssh/lib/libssh.a;/mbedtls/lib/libmbedtls.a;/mbedtls/lib/libmbedx509.a;/mbedtls/lib/libmbedcrypto.a;/zlib/lib/libz.a' -DLIBSSH_INCLUDE_DIRS=/libssh/include -DLIBNFS_LIBRARY=/libnfs/lib/libnfs.a -DLIBNFS_INCLUDE_DIR=/libnfs/include -DOPENSSL_ROOT_DIR=/openssl -DOPENSSL_USE_STATIC_LIBS=TRUE -DNEON_LIBRARY=/neon/lib/libneon.a -DNEON_INCLUDE_DIR=/neon/include/neon  -DCMAKE_INSTALL_PREFIX=./out/far2l-sdl/install -DCMAKE_SKIP_RPATH=ON
 cmake --build ./out/far2l-sdl/_build --parallel 4
 cmake --install ./out/far2l-sdl/_build
 <repo>/onebin/build/onebin audit --profile hybrid --level 1 --strict ./out/far2l-sdl/install/far2l

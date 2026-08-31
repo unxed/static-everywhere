@@ -315,7 +315,11 @@ configure_build_install() {
     args=$(cmake_config_args "${CONFIG}" | tr '\n' ' ')
     plan_step "mkdir -p ${OUT}"
     # shellcheck disable=SC2086
-    plan_step "cmake -S ${SRC} -B ${OUT}/_build ${args} -DCMAKE_INSTALL_PREFIX=${OUT}/install"
+    # Keep this explicit in the configure command as well as in the
+    # toolchain: far2l's CMake adds target_link_directories() for the SDL
+    # module, and the hosted build proved that the toolchain-only setting can
+    # still leave an absolute dependency RUNPATH in that MODULE artifact.
+    plan_step "cmake -S ${SRC} -B ${OUT}/_build ${args} -DCMAKE_INSTALL_PREFIX=${OUT}/install -DCMAKE_SKIP_RPATH=ON"
     plan_step "cmake --build ${OUT}/_build --parallel ${JOBS}"
     plan_step "cmake --install ${OUT}/_build"
 }
