@@ -121,6 +121,7 @@ cairo XRender function checks: HAVE_XRENDERCREATESOLIDFILL HAVE_XRENDERCREATELIN
 cmake contract: ${CMAKE_COMMON_ARGS[*]}
 source patches: util-linux-libuuid-only.patch gdk-pixbuf-static-loader-deps.patch gtk-no-host-atk-bridge.patch vte-static-library.patch libhandy-static-library.patch
 dependency patch contract: every patch is a valid Git diff captured from its pinned checkout
+VTE linker feature contract: _b_symbolic_functions=false for Zig 0.13 (unsupported -Bsymbolic-functions)
 subproject policy: materialize pinned gvdb; provide libc gettext through a prefix-local synthetic intl.pc; no Meson downloads
 uuid policy: util-linux libuuid-only=true; install only the pinned static libuuid archive and uuid.pc
 uuid-only graph audit: reject util-linux libcommon and non-UUID lib/ sources before compile
@@ -692,9 +693,14 @@ fi
 require_pc glib-2.0 pango gtk+-3.0 libpcre2-8 fribidi liblz4
 vte_src=$(source_tree vte)
 apply_source_patch "${vte_src}" "${REPO_ROOT}/contrib/gnome-terminal/patches/vte-static-library.patch"
+# VTE deliberately exposes this switch for linkers without -Bsymbolic-functions.
+# Keep the decision in the pinned project's declared option instead of
+# patching out its capability check; this prevents the same class of failure
+# for this toolchain whenever VTE probes the linker during configure.
 meson_dep vte "${vte_src}" vte \
     -Dgtk3=true -Dgtk4=false -Dfribidi=true -Dgnutls=false -Dicu=false \
-    -D_systemd=false -Dgir=false -Dvapi=false -Dglade=false -Ddocs=false
+    -D_systemd=false -Dgir=false -Dvapi=false -Dglade=false -Ddocs=false \
+    -D_b_symbolic_functions=false
 
 libhandy_src=$(source_tree libhandy)
 require_pc gtk+-3.0 glib-2.0

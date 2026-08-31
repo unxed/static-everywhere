@@ -112,6 +112,7 @@ for required in \
     'vte-static-library.patch' \
     'libhandy-static-library.patch' \
     'dependency patch contract: every patch is a valid Git diff captured from its pinned checkout' \
+    'VTE linker feature contract: _b_symbolic_functions=false for Zig 0.13 (unsupported -Bsymbolic-functions)' \
     'synthetic intl.pc' \
     'libuuid-only=true' \
     'uuid-only graph audit: reject util-linux libcommon and non-UUID lib/ sources before compile' \
