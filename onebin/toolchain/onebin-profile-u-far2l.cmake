@@ -57,8 +57,31 @@ function(_onebin_profile_u_attach_far2l)
     # dlfcn.h replaces the libc dl* declarations with SoLo's bridge for
     # application and module sources.  It is target-scoped, so CMake's own
     # C and C++ compiler probes remain ordinary probes.
-    target_compile_options(far2l PRIVATE "-include" "${_solo_header}")
-    target_compile_options(far2l_sdl PRIVATE "-include" "${_solo_header}")
+    #
+    # The libc header is force-included FIRST, and the order is the whole
+    # point rather than a detail.  SoLo's header is written to be read
+    # after it: it opens with `#undef RTLD_LAZY` and friends before
+    # redefining them, and it wraps its own `Dl_info` in
+    # `#if !defined(_DLFCN_H)`.  Both only make sense once the libc
+    # header has already been seen.
+    #
+    # Force-including SoLo alone put it first, so `_DLFCN_H` was still
+    # undefined, SoLo defined `Dl_info`, and then far2l's own
+    # `utils/include/debug.h` pulled in <dlfcn.h>, which defined the same
+    # typedef again:
+    #
+    #   generic-musl/dlfcn.h:33:3: error: typedef redefinition with
+    #                              different types
+    #
+    # Reading the libc header first lets musl own `Dl_info` and the
+    # `_DLFCN_H` guard, after which SoLo's `#undef`s and `#define dlopen
+    # stub_dlopen` layer cleanly on top -- which is the arrangement its
+    # author documented in the header itself.
+    foreach(_solo_target far2l far2l_sdl)
+        target_compile_options(${_solo_target} PRIVATE
+            "-include" "dlfcn.h"
+            "-include" "${_solo_header}")
+    endforeach()
 
     # CMake emits the correct --whole-archive / --no-whole-archive pair
     # around this one imported archive, and only for far2l.  The executable's

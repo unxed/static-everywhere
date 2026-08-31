@@ -411,6 +411,16 @@ else
     printf '%s\n' "$HOSTISO" | sed 's/^/       /'
 fi
 
+# A force-included shim that overrides a libc header must come after that
+# header. far2l's Profile U build died on a duplicate Dl_info because
+# SoLo's dlfcn.h was included first. Same class for any future shim.
+if SHIMORD=$("${REPO_ROOT}/tools/test-shim-include-order.sh" 2>&1); then
+    pass "libc-overriding shims are force-included after the libc header"
+else
+    fail "shim include-order regression"
+    printf '%s\n' "$SHIMORD" | sed 's/^/       /'
+fi
+
 # Cost: would have been a silently unreproducible artifact rather than a
 # failed build -- f4's own script clones qwindowkit from an unpinned
 # branch, so upstream could change what we ship without anything failing.

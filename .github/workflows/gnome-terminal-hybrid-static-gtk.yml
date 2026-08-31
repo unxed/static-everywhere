@@ -190,43 +190,92 @@ jobs:
           set +e
           diag=/tmp/gnome-terminal-diagnostic-logs
           mkdir -p "$diag"
-          # Keep only bounded tails of the two CI logs. The complete logs are
-          # already visible in Actions, while retaining them here makes a
-          # failure artifact unnecessarily large for mobile downloads.
-          tail -n 2500 "$RUNNER_TEMP/gnome-terminal-deps-build.log" \
-            > "$diag/00-deps-build-tail.log" 2>/dev/null || true
-          tail -n 2500 "$RUNNER_TEMP/gnome-terminal-build.log" \
-            > "$diag/01-gnome-terminal-build-tail.log" 2>/dev/null || true
-          # Do not copy an entire cached source/build tree. Record its size
-          # inventory, then whitelist only small files that explain configure
-          # failures without carrying source code or compiled output.
+          cp "$RUNNER_TEMP/gnome-terminal-deps-build.log" "$diag/00-deps-build.log" 2>/dev/null || true
+          cp "$RUNNER_TEMP/gnome-terminal-build.log" "$diag/01-gnome-terminal-build.log" 2>/dev/null || true
+
+          # Point at the failure inside those logs.
+          #
+          # Copying them whole fixed the truncation that lost the vte
+          # error, but a six-figure line count still has to be searched.
+          # The konsole workflow has extracted errors for a while and its
+          # failures read in one step; this does the same, with context,
+          # because "error: X" without the command above it and the note
+          # below it is usually not enough either.
+          for log_name in 00-deps-build 01-gnome-terminal-build; do
+            src="$diag/${log_name}.log"
+            [ -f "$src" ] || continue
+            grep -nE -B 5 -A 15 \
+              'error:|FAILED|fatal error|Traceback|undefined reference|ninja: build stopped' \
+              "$src" 2>/dev/null | tail -n 800 \
+              > "$diag/06-errors-${log_name}.txt" || true
+            if [ ! -s "$diag/06-errors-${log_name}.txt" ]; then
+              printf 'Nothing matched the failure patterns in %s.\n' \
+                "${log_name}.log" > "$diag/06-errors-${log_name}.txt"
+              printf 'If the build failed, widen the patterns in the\n' \
+                >> "$diag/06-errors-${log_name}.txt"
+              printf 'workflow -- do not read this as a clean log.\n' \
+                >> "$diag/06-errors-${log_name}.txt"
+            fi
+          done
           find out/gnome-terminal -type f -newer /tmp/job-start-marker \
-            -printf '%s\t%p\n' | sort -nr | head -n 500 \
-            > "$diag/02-output-size-inventory.txt"
-          find out/gnome-terminal -type f -newer /tmp/job-start-marker \
-            \( -path '*/meson-logs/meson-log.txt' \
-               -o -name '*.audit.txt' \
-               -o -name 'config.h' \) \
-            -size -2M -print | sort > "$diag/03-selected-files.txt"
+            ! -name '*.a' ! -name '*.o' ! -name '*.so' ! -name '*.so.*' \
+            -size -2M -print | sort > "$diag/02-output-listing.txt"
           while IFS= read -r file; do
             rel=${file#out/gnome-terminal/}
-            target="$diag/04-selected/$rel"
+            target="$diag/03-text/$rel"
             mkdir -p "$(dirname "$target")"
             cp "$file" "$target" 2>/dev/null || true
-          done < "$diag/03-selected-files.txt"
+          done < "$diag/02-output-listing.txt"
+          tail -n 3000 "$RUNNER_TEMP/gnome-terminal-build.log" \
+            > "$diag/04-build-output-tail.txt" 2>/dev/null || true
+          tail -n 3000 "$RUNNER_TEMP/gnome-terminal-deps-build.log" \
+            > "$diag/05-deps-output-tail.txt" 2>/dev/null || true
+
+          # Extract the failures, do not just tail.
+          #
+          # A tail is not a diagnosis. The vte build failed while
+          # reflect.c was emitting 2806 warnings, so all 3000 tailed
+          # lines were warnings and the error itself -- from a parallel
+          # ninja job that had finished earlier -- was outside the
+          # window. grep -c error on the whole artifact returned 0. The
+          # konsole workflow has extracted errors for a while and its
+          # failures have been diagnosable in one step; this brings the
+          # two collectors level.
+          #
+          # -B/-A give the surrounding lines, because "error: X" without
+          # the command above it and the note below it usually is not
+          # enough either.
+          for log_name in gnome-terminal-build gnome-terminal-deps-build; do
+            src="$RUNNER_TEMP/${log_name}.log"
+            [ -f "$src" ] || continue
+            grep -nE -B 5 -A 15 \
+              'error:|ERROR|FAILED|fatal error|Traceback|undefined reference|ninja: build stopped' \
+              "$src" 2>/dev/null | tail -n 800 \
+              > "$diag/06-errors-${log_name}.txt" || true
+          done
+
+          # If the build failed and nothing was extracted, say so in the
+          # artifact rather than leaving a reader to conclude the logs
+          # are fine. Silence here means the patterns above missed the
+          # failure and need widening -- that is itself the finding.
+          for f in "$diag"/06-errors-*.txt; do
+            [ -e "$f" ] || continue
+            if [ ! -s "$f" ]; then
+              printf 'No line matched the failure patterns in this log.\n' \
+                > "$f"
+              printf 'If the build failed, the patterns in the workflow\n' \
+                >> "$f"
+              printf 'need widening -- do not conclude the log is clean.\n' \
+                >> "$f"
+            fi
+          done
           {
             echo '=== df -h ==='; df -h
             echo '=== free -h ==='; free -h
             echo '=== dmesg OOM traces ==='
             sudo dmesg 2>/dev/null | grep -iE 'killed process|out of memory|oom' || true
-          } > "$diag/05-system-state.txt"
-          du -sh "$diag" > "$diag/06-collection-size.txt" 2>&1 || true
-          diag_bytes=$(du -sb "$diag" 2>/dev/null | awk '{print $1}')
-          max_diag_bytes=$((32 * 1024 * 1024))
-          if [ "${diag_bytes:-0}" -gt "$max_diag_bytes" ]; then
-            echo "diagnostics exceed ${max_diag_bytes} bytes: ${diag_bytes}" >&2
-            exit 1
-          fi
+          } > "$diag/06-system-state.txt"
+          du -sh "$diag" > "$diag/07-collection-size.txt" 2>&1 || true
 
       - name: Save GNOME Terminal dependency prefix and ccache
         if: always()

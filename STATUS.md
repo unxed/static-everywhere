@@ -7,6 +7,79 @@ Everything below this section is a reverse-chronological log (newest
 first). Read *this* section first; consult the log below only for the
 detail behind a specific claim.
 
+### far2l Profile U: the SoLo shim was included before the header it overrides
+
+The musl host-isolation fix moved the build forward; it then failed on
+
+```
+generic-musl/dlfcn.h:33:3: error: typedef redefinition with different types
+                           ('struct Dl_info' vs 'struct Dl_info')
+```
+
+Reading SoLo's `lib/dlfcn.h` at the pinned commit settles it in one look.
+The header opens with `#undef RTLD_LAZY` and friends before redefining
+them, and wraps its own `Dl_info` in `#if !defined(_DLFCN_H)`. Both are
+only meaningful once the libc header has already been read: its author
+wrote it to layer *on top of* `<dlfcn.h>`, not to replace it.
+
+The hook force-included it alone, so it came first. `_DLFCN_H` was still
+undefined, SoLo defined `Dl_info`, and far2l's `utils/include/debug.h`
+then pulled in `<dlfcn.h>`, which defined the same typedef again. The fix
+is `-include dlfcn.h -include <solo>/lib/dlfcn.h` — ordering, not a new
+guard.
+
+Verified against the real compiler and the real SoLo header: the old
+order reproduces the CI error exactly, the new one compiles, and `nm`
+confirms the object still calls `stub_dlopen` rather than libc's — the
+collision is gone without defeating the point of the shim.
+
+### The class, not the instance
+
+Any force-included shim that redefines libc macros or types has this
+requirement, and the failure never appears where the shim is configured —
+it appears in whichever unrelated source file happens to include the real
+header. `tools/test-shim-include-order.sh` checks the hook structurally
+(libc header first) and behaviourally (compiles, redirection intact),
+with a negative control asserting the shim-first order still fails, so
+the test cannot stop telling the two apart. Wired into the preflight.
+
+### The gnome-terminal collector lost the failure; upstream and I fixed
+different halves of it
+
+The vte build died while `reflect.c` was emitting 2806 warnings, so all
+3000 tailed lines were warnings and the error — from a parallel ninja job
+that finished earlier — fell outside the window. `grep -c error` on the
+whole artifact returned 0.
+
+`8b5c47c` had already replaced the tails with whole-log copies, which
+removes the truncation. Layered on top: the failure still has to be found
+inside a six-figure line count, so the logs are now also grepped into
+`06-errors-*.txt` with `-B 5 -A 15` of context, the way the konsole
+workflow has done for a while — which is why konsole's failure read in
+one step. An empty result is written out as "widen the patterns" rather
+than left to read as a clean log.
+
+### Two collector filters have now misled me, and that is the real lesson
+
+Diagnosing konsole I concluded from `01-conan-listing.txt` that the Qt
+package lacked `qqmlintegration.h`. It does not follow: that listing is
+`find -newer /tmp/job-start-marker`, so it shows only files touched
+during the job. `qstring.h` and `qwidget.h` are missing from it too. The
+earlier `*/lib/cmake/*` exclusion cost a whole round of wrong conclusions
+in the same way.
+
+What settled konsole was the compiler, which is direct evidence: the
+include path *does* contain `.../include/QtQml`, and the header is not
+there. It lives in a separate module, `include/QtQmlIntegration/`, which
+the ki18n compile line never receives — the build sees `Qt6Qml` and
+`Qt6Quick` among its components but not `Qt6QmlIntegration`. Also worth
+recording: `-DBUILD_WITH_QML=OFF` was already in the yaml and does not
+help, because ki18n gates the subdirectory on `if (TARGET Qt6::Qml)`,
+which Conan's Qt config defines regardless.
+
+Rule for the next diagnosis: a collector listing is a filtered view, not
+an inventory. Absence in it is not evidence of absence on disk.
+
 ### far2l Profile U died on the host's glibc header, offered by our own toolchain
 
 The SDL Profile U build failed at 30% with five errors in
