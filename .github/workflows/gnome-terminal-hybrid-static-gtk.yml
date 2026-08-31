@@ -120,7 +120,7 @@ jobs:
             out/gnome-terminal/static-prefix
             out/gnome-terminal/deps-work/sources
             ~/.cache/ccache
-          key: gnome-terminal-gtk-${{ hashFiles('contrib/gnome-terminal/deps.lock', 'tools/build-gnome-terminal-deps.sh', 'tools/build-gnome-terminal.sh', 'tools/verify-gnome-terminal-static.sh', 'contrib/gnome-terminal/**', 'onebin/toolchain/**') }}
+          key: gnome-terminal-gtk-${{ hashFiles('contrib/gnome-terminal/deps.lock', 'tools/build-gnome-terminal-deps.sh', 'tools/build-gnome-terminal.sh', 'tools/pkg-config-hybrid-host.sh', 'tools/verify-gnome-terminal-static.sh', 'contrib/gnome-terminal/**', 'onebin/toolchain/**') }}
           restore-keys: |
             gnome-terminal-gtk-
 
