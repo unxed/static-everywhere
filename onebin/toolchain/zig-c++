@@ -152,6 +152,39 @@ done
 # x86_64-linux-gnu.2.27 -> x86_64-linux-gnu
 _onebin_triple="${_onebin_triple%%.*}"
 
+# CMake's Linux shared-library rule expands <LINK_FLAGS> before its
+# <CMAKE_SHARED_LIBRARY_CREATE_CXX_FLAGS> value, whose standard value is
+# -shared.  Profile U puts -static in the former, so a literal argv would be
+#
+#   ... -static ... -shared ...
+#
+# Zig 0.13 honours the last driver mode and therefore still adds libc.so to
+# the MODULE.  For every musl shared link, canonicalise the whole class here:
+# remove any earlier -static and append exactly one after all -shared/create
+# flags.  This is deliberately driver-wide rather than a far2l target hack;
+# every CMake SHARED/MODULE target using the musl wrapper gets the same rule.
+case "${_onebin_triple}" in
+    *musl*)
+        _onebin_compile_only=0
+        for _onebin_arg in "$@"; do
+            case "$_onebin_arg" in
+                -c|-S|-E) _onebin_compile_only=1 ;;
+            esac
+        done
+        if [ "$has_shared" = 1 ] && [ "$_onebin_compile_only" = 0 ]; then
+            _onebin_rebuilt=""
+            for _onebin_arg in "$@"; do
+                case "$_onebin_arg" in
+                    -static) continue ;;
+                esac
+                _onebin_rebuilt="$_onebin_rebuilt $(_onebin_shell_quote "$_onebin_arg")"
+            done
+            _onebin_rebuilt="$_onebin_rebuilt -static"
+            eval "set --${_onebin_rebuilt}"
+        fi
+        ;;
+esac
+
 # Which libc is this build targeting? The answer decides whether the host
 # fallbacks below are appropriate at all.
 #

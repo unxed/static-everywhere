@@ -44,6 +44,6 @@ if(ONEBIN_SOLO_ROOT)
 endif()
 
 # onebin-linux-universal-deps.cmake keeps -static/-pie on EXE targets and
-# places -static after CMake's -shared create flag for SHARED/MODULE targets.
-# Thus every U shared object uses static target libraries while retaining its
-# ET_DYN form and no host DT_NEEDED boundary.
+# asks the zig wrappers to place -static after CMake's -shared create flag
+# for SHARED/MODULE targets. Thus every U shared object uses static target
+# libraries while retaining its ET_DYN form and no host DT_NEEDED boundary.
