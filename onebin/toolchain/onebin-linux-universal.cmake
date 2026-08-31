@@ -43,7 +43,7 @@ if(ONEBIN_SOLO_ROOT)
         "${CMAKE_CURRENT_LIST_DIR}/onebin-profile-u-far2l.cmake")
 endif()
 
-# onebin-linux-universal-deps.cmake keeps -static/-pie on EXE targets but
-# removes those mutually-exclusive flags from SHARED/MODULE targets. The
-# module still gets the musl target and static dependency search policy; its
-# link rule supplies -shared itself.
+# onebin-linux-universal-deps.cmake keeps -static/-pie on EXE targets and
+# places -static after CMake's -shared create flag for SHARED/MODULE targets.
+# Thus every U shared object uses static target libraries while retaining its
+# ET_DYN form and no host DT_NEEDED boundary.
