@@ -120,6 +120,7 @@ for required in \
     'Meson option contract: every recipe -D option is declared by the pinned project or Meson core' \
     'cache identity: dependency commit plus recipe, patch and toolchain fingerprint' \
     'build-time tools: ' \
+    'libc-free target guard: Meson compiler wrappers disable stack protection only for explicit -nostdlib/-nodefaultlibs targets' \
     'gtk lz4 vte libhandy'; do
     if grep -Fq -- "$required" "$DEPS_PLAN"; then
         pass "dependency plan contains ${required}"
@@ -151,6 +152,14 @@ if grep -Fq -- 'meson_core_option()' "$DEPS_SCRIPT" \
     pass 'Meson options and dependency cache markers are tied to pinned recipe inputs'
 else
     fail 'Meson options or dependency cache markers are not tied to pinned recipe inputs'
+fi
+
+if grep -Fq -- 'write_libc_free_compiler_wrapper()' "$DEPS_SCRIPT" \
+    && grep -Fq -- '-nostdlib|-nostdlib++|-nodefaultlibs' "$DEPS_SCRIPT" \
+    && grep -Fq -- 'exec "${compiler}" "\$@" -fno-stack-protector' "$DEPS_SCRIPT"; then
+    pass 'Meson libc-free targets do not collide with global stack protection'
+else
+    fail 'Meson libc-free target stack-protection guard is missing'
 fi
 
 PATCH_DIR="${REPO_ROOT}/contrib/gnome-terminal/patches"

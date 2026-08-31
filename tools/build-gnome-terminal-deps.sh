@@ -53,6 +53,8 @@ AR="${TOOLCHAIN}/zig-ar"
 RANLIB="${TOOLCHAIN}/zig-ranlib"
 CMAKE_TOOLCHAIN="${TOOLCHAIN}/onebin-linux-hybrid.cmake"
 MESON_NATIVE="${WORK}/onebin-linux-hybrid-meson.ini"
+MESON_CC="${WORK}/gnome-terminal-zig-cc"
+MESON_CXX="${WORK}/gnome-terminal-zig-c++"
 TARGET="x86_64-linux-gnu.${BASELINE}"
 
 # Zig cannot provide all of the compiler introspection results that CMake
@@ -130,6 +132,7 @@ source_tree contract: cleanup diagnostics never contaminate the returned source 
 Meson option contract: every recipe -D option is declared by the pinned project or Meson core
 cache identity: dependency commit plus recipe, patch and toolchain fingerprint
 build-time tools: ${PREFIX}/bin precedes the host PATH; producer tools are verified before consumers
+libc-free target guard: Meson compiler wrappers disable stack protection only for explicit -nostdlib/-nodefaultlibs targets
 PLAN
     for dependency in "${dependency_order[@]}"; do
         printf '# pinned source: %s %s %s\n' \
@@ -178,13 +181,49 @@ RECIPE_FINGERPRINT=$(
         "${REPO_ROOT}/contrib/gnome-terminal/patches/"*.patch \
         "${REPO_ROOT}/onebin/toolchain/onebin-linux-hybrid.cmake" \
         "${REPO_ROOT}/onebin/toolchain/onebin-linux-static.cmake" \
+        "${REPO_ROOT}/onebin/toolchain/zig-cc" \
+        "${REPO_ROOT}/onebin/toolchain/zig-c++" \
         | sha256sum | awk '{print $1}'
 )
 
+# Zig 0.13 rejects stack-protector code generation when a target explicitly
+# requests a libc-free compilation with -nostdlib or -nodefaultlibs. Pinned
+# Meson projects can add either flag to one target while the shared Profile H
+# native file supplies -fstack-protector-strong to every target. Keep the
+# source project's libc-free request intact, but append the matching compiler
+# override only for that target. This wrapper is deliberately generic for the
+# whole GNOME Meson dependency graph; it is not a VTE-specific patch and will
+# cover the same class of target in a future pinned dependency as well.
+write_libc_free_compiler_wrapper() {
+    local wrapper=$1 compiler=$2
+    cat >"${wrapper}" <<EOF
+#!/usr/bin/env bash
+set -euo pipefail
+
+needs_libc=0
+for arg in "\$@"; do
+    case "\$arg" in
+        -nostdlib|-nostdlib++|-nodefaultlibs)
+            needs_libc=1
+            ;;
+    esac
+done
+
+if [ "\$needs_libc" -eq 1 ]; then
+    exec "${compiler}" "\$@" -fno-stack-protector
+fi
+exec "${compiler}" "\$@"
+EOF
+    chmod +x "${wrapper}"
+}
+
+write_libc_free_compiler_wrapper "${MESON_CC}" "${CC}"
+write_libc_free_compiler_wrapper "${MESON_CXX}" "${CXX}"
+
 cat >"${MESON_NATIVE}" <<EOF
 [binaries]
-c = '${CC}'
-cpp = '${CXX}'
+c = '${MESON_CC}'
+cpp = '${MESON_CXX}'
 ar = '${AR}'
 ranlib = '${RANLIB}'
 strip = 'strip'
