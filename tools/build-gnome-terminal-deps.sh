@@ -51,6 +51,20 @@ CMAKE_TOOLCHAIN="${TOOLCHAIN}/onebin-linux-hybrid.cmake"
 MESON_NATIVE="${WORK}/onebin-linux-hybrid-meson.ini"
 TARGET="x86_64-linux-gnu.${BASELINE}"
 
+# Zig cannot provide all of the compiler introspection results that CMake
+# normally derives by compiling probes. These values are part of this
+# recipe's fixed x86_64 Linux target, and keep CMake from silently falling
+# back to host architecture/include decisions. CMAKE_SKIP_RPATH is the
+# corresponding portability rule: dependency build directories must never
+# be recorded in an installed artefact.
+CMAKE_COMMON_ARGS=(
+    '-DCMAKE_SIZEOF_VOID_P=8'
+    '-DCMAKE_LIBRARY_ARCHITECTURE=x86_64-linux-gnu'
+    '-DCMAKE_C_IMPLICIT_INCLUDE_DIRECTORIES=/usr/include'
+    '-DCMAKE_CXX_IMPLICIT_INCLUDE_DIRECTORIES=/usr/include'
+    '-DCMAKE_SKIP_RPATH=ON'
+)
+
 dependency_order=(
     zlib libffi pcre2 expat libpng pixman glib fribidi freetype harfbuzz
     fontconfig cairo pango gdk-pixbuf atk epoxy gtk lz4 vte libhandy
@@ -97,6 +111,7 @@ order: ${dependency_order[*]}
 host contract: X11, OpenGL/EGL, accessibility IPC, schemas, fonts and session services
 fontconfig install: manual copy (no meson install; protects host /etc/fonts)
 cairo XRender function checks: HAVE_XRENDERCREATESOLIDFILL HAVE_XRENDERCREATELINEARGRADIENT HAVE_XRENDERCREATERADIALGRADIENT HAVE_XRENDERCREATECONICALGRADIENT
+cmake contract: ${CMAKE_COMMON_ARGS[*]}
 PLAN
     for dependency in "${dependency_order[@]}"; do
         printf '# pinned source: %s %s %s\n' \
@@ -134,8 +149,8 @@ ranlib = '${RANLIB}'
 strip = 'strip'
 
 [built-in options]
-c_args = ['-target', '${TARGET}', '-fPIE', '-ffunction-sections', '-fdata-sections', '-fstack-protector-strong']
-cpp_args = ['-target', '${TARGET}', '-fPIE', '-ffunction-sections', '-fdata-sections', '-fstack-protector-strong']
+c_args = ['-target', '${TARGET}', '-fPIE', '-ffunction-sections', '-fdata-sections', '-fstack-protector-strong', '-ffile-prefix-map=${WORK}=.']
+cpp_args = ['-target', '${TARGET}', '-fPIE', '-ffunction-sections', '-fdata-sections', '-fstack-protector-strong', '-ffile-prefix-map=${WORK}=.']
 c_link_args = ['-target', '${TARGET}', '-static-libgcc', '-Wl,--gc-sections', '-Wl,-z,relro', '-Wl,-z,now', '-Wl,-z,noexecstack', '-Wl,-z,nodelete', '-pie', '-s', '-L${PREFIX}/lib', '-L/usr/lib/x86_64-linux-gnu', '-L/usr/lib', '-L/lib/x86_64-linux-gnu']
 cpp_link_args = ['-target', '${TARGET}', '-static-libgcc', '-static-libstdc++', '-Wl,--gc-sections', '-Wl,-z,relro', '-Wl,-z,now', '-Wl,-z,noexecstack', '-Wl,-z,nodelete', '-pie', '-s', '-L${PREFIX}/lib', '-L/usr/lib/x86_64-linux-gnu', '-L/usr/lib', '-L/lib/x86_64-linux-gnu']
 default_library = 'static'
@@ -145,7 +160,7 @@ EOF
 export PATH="${TOOLCHAIN}:${PATH}"
 export PKG_CONFIG_ALLOW_SYSTEM_LIBS=1
 export PKG_CONFIG_ALLOW_SYSTEM_CFLAGS=1
-export PKG_CONFIG_PATH="${PREFIX}/lib/pkgconfig:${PREFIX}/share/pkgconfig:/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/share/pkgconfig"
+export PKG_CONFIG_PATH="${PREFIX}/lib/pkgconfig:${PREFIX}/share/pkgconfig:/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/share/pkgconfig:${PKG_CONFIG_PATH:-}"
 export CMAKE_PREFIX_PATH="${PREFIX}"
 
 source_tree() {
@@ -229,6 +244,7 @@ cmake_dep() {
         -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
         -DBUILD_SHARED_LIBS=OFF \
         -DCMAKE_PREFIX_PATH="${PREFIX}" \
+        "${CMAKE_COMMON_ARGS[@]}" \
         "$@"
     run cmake --build "${build_dir}" --parallel "${JOBS}"
     run cmake --install "${build_dir}"
@@ -240,10 +256,18 @@ meson_dep() {
     shift 3
     built "${name}" && return 0
     local build_dir="${WORK}/build/${build_name}"
-    run meson setup --wipe "${build_dir}" "${source}" \
-        --native-file "${MESON_NATIVE}" \
-        --prefix "${PREFIX}" --libdir lib --buildtype release \
-        --prefer-static --wrap-mode nodownload -Ddefault_library=static "$@"
+    local -a setup_cmd=(
+        meson setup --wipe "${build_dir}" "${source}"
+        --native-file "${MESON_NATIVE}"
+        --prefix "${PREFIX}" --libdir lib --buildtype release
+        --prefer-static --wrap-mode nodownload -Ddefault_library=static
+    )
+    setup_cmd+=("$@")
+    if [ -n "${MESON_EXTRA_CFLAGS:-}" ]; then
+        run_env CFLAGS="${MESON_EXTRA_CFLAGS}" "${setup_cmd[@]}"
+    else
+        run "${setup_cmd[@]}"
+    fi
     run meson compile -C "${build_dir}" -j "${JOBS}"
     run meson install -C "${build_dir}"
     mark "${name}"
@@ -356,6 +380,7 @@ if [ ! -f "${PREFIX}/.built-freetype-harfbuzz" ]; then
         -DCMAKE_INSTALL_LIBDIR=lib -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
         -DBUILD_SHARED_LIBS=OFF -DFT_DISABLE_HARFBUZZ=OFF \
         -DFT_DYNAMIC_HARFBUZZ=OFF -DFT_REQUIRE_HARFBUZZ=ON \
+        "${CMAKE_COMMON_ARGS[@]}" \
         -DHarfBuzz_INCLUDE_DIR="${PREFIX}/include/harfbuzz" \
         -DHarfBuzz_LIBRARY="${PREFIX}/lib/libharfbuzz.a" \
         -DZLIB_LIBRARY="${PREFIX}/lib/libz.a" \
@@ -408,12 +433,16 @@ require_pc glib-2.0 fontconfig freetype2 libpng pixman-1 zlib
 # fail under -Werror-implicit-function-declaration even though all four
 # symbols and their types are present.  Keep the real XRender backend and
 # prevent Cairo from declaring fallback types that collide with Xrender.h.
+# Meson passes CFLAGS in addition to the native file's target flags.  Use it
+# here because the command-line array option would treat comma-separated
+# preprocessor definitions as one malformed -D argument.
+MESON_EXTRA_CFLAGS='-DHAVE_XRENDERCREATESOLIDFILL -DHAVE_XRENDERCREATELINEARGRADIENT -DHAVE_XRENDERCREATERADIALGRADIENT -DHAVE_XRENDERCREATECONICALGRADIENT'
 meson_dep cairo "${cairo_src}" cairo \
     -Dfontconfig=enabled -Dfreetype=enabled -Dpng=enabled -Dzlib=enabled \
     -Dxlib=enabled -Dxcb=disabled -Dxlib-xcb=disabled -Dglib=enabled \
     -Dtee=disabled -Dspectre=disabled -Dsymbol-lookup=disabled \
-    -Dtests=disabled -Dgtk2-utils=disabled \
-    -Dc_args=-DHAVE_XRENDERCREATESOLIDFILL,-DHAVE_XRENDERCREATELINEARGRADIENT,-DHAVE_XRENDERCREATERADIALGRADIENT,-DHAVE_XRENDERCREATECONICALGRADIENT
+    -Dtests=disabled -Dgtk2-utils=disabled
+unset MESON_EXTRA_CFLAGS
 
 pango_src=$(source_tree pango)
 require_pc glib-2.0 fribidi harfbuzz cairo fontconfig freetype2
