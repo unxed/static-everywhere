@@ -111,6 +111,7 @@ for required in \
     'gtk-no-host-atk-bridge.patch' \
     'vte-static-library.patch' \
     'libhandy-static-library.patch' \
+    'dependency patch contract: every patch is a valid Git diff captured from its pinned checkout' \
     'synthetic intl.pc' \
     'libuuid-only=true' \
     'uuid-only graph audit: reject util-linux libcommon and non-UUID lib/ sources before compile' \
@@ -151,7 +152,25 @@ else
     fail 'Meson options or dependency cache markers are not tied to pinned recipe inputs'
 fi
 
-UUID_PATCH="${REPO_ROOT}/contrib/gnome-terminal/patches/util-linux-libuuid-only.patch"
+PATCH_DIR="${REPO_ROOT}/contrib/gnome-terminal/patches"
+PATCH_COUNT=0
+for patch in "${PATCH_DIR}"/*.patch; do
+    if [ -f "${patch}" ]; then
+        PATCH_COUNT=$((PATCH_COUNT + 1))
+        if git apply --numstat "${patch}" >/dev/null 2>&1; then
+            pass "captured dependency patch is a valid Git diff: $(basename "${patch}")"
+        else
+            fail "captured dependency patch is malformed: $(basename "${patch}")"
+        fi
+    fi
+done
+if [ "${PATCH_COUNT}" -gt 0 ]; then
+    pass "validated ${PATCH_COUNT} captured dependency patch(es)"
+else
+    fail 'no captured dependency patches found'
+fi
+
+UUID_PATCH="${PATCH_DIR}/util-linux-libuuid-only.patch"
 if git apply --numstat "$UUID_PATCH" >/dev/null 2>&1; then
     pass 'captured util-linux patch is a valid Git patch'
 else
@@ -185,6 +204,20 @@ for required in \
         pass "captured gdk-pixbuf patch contains ${required}"
     else
         fail "captured gdk-pixbuf patch is missing ${required}"
+    fi
+done
+
+GTK_PATCH="${PATCH_DIR}/gtk-no-host-atk-bridge.patch"
+for required in \
+    'diff --git a/meson.build b/meson.build' \
+    "-  atkbridge_dep  = dependency('atk-bridge-2.0'" \
+    "-  atk_pkgs += ['atk-bridge-2.0']" \
+    '-#include <atk-bridge.h>' \
+    '-  atk_bridge_adaptor_init (NULL, NULL);'; do
+    if grep -Fq -- "${required}" "${GTK_PATCH}"; then
+        pass "captured GTK patch contains ${required}"
+    else
+        fail "captured GTK patch is missing ${required}"
     fi
 done
 

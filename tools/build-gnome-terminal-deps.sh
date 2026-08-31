@@ -120,6 +120,7 @@ fontconfig install: manual copy (no meson install; protects host /etc/fonts)
 cairo XRender function checks: HAVE_XRENDERCREATESOLIDFILL HAVE_XRENDERCREATELINEARGRADIENT HAVE_XRENDERCREATERADIALGRADIENT HAVE_XRENDERCREATECONICALGRADIENT
 cmake contract: ${CMAKE_COMMON_ARGS[*]}
 source patches: util-linux-libuuid-only.patch gdk-pixbuf-static-loader-deps.patch gtk-no-host-atk-bridge.patch vte-static-library.patch libhandy-static-library.patch
+dependency patch contract: every patch is a valid Git diff captured from its pinned checkout
 subproject policy: materialize pinned gvdb; provide libc gettext through a prefix-local synthetic intl.pc; no Meson downloads
 uuid policy: util-linux libuuid-only=true; install only the pinned static libuuid archive and uuid.pc
 uuid-only graph audit: reject util-linux libcommon and non-UUID lib/ sources before compile
@@ -318,6 +319,11 @@ source_tree() {
 
 apply_source_patch() {
     local source=$1 patch=$2
+    if ! git -C "${source}" apply --numstat "${patch}" >/dev/null 2>&1; then
+        printf 'build-gnome-terminal-deps.sh: malformed captured dependency patch: %s\n' \
+            "${patch}" >&2
+        return 1
+    fi
     if git -C "${source}" apply --reverse --check "${patch}" >/dev/null 2>&1; then
         return 0
     fi
