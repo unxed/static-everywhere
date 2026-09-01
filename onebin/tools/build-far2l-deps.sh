@@ -13,6 +13,8 @@ set -euo pipefail
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 # shellcheck disable=SC1007
 REPO_ROOT=$(CDPATH= cd -- "${SCRIPT_DIR}/../.." && pwd)
+# shellcheck source=download-pinned-source.sh
+source "${SCRIPT_DIR}/download-pinned-source.sh"
 LOCK="${REPO_ROOT}/contrib/far2l/deps.lock"
 TOOLCHAIN="${REPO_ROOT}/onebin/toolchain"
 MESON_NATIVE="${TOOLCHAIN}/onebin-linux-hybrid-meson.ini"
@@ -108,14 +110,11 @@ source_tree() {
 
     mkdir -p "${WORK}/archives" "${WORK}/sources"
     archive="${WORK}/archives/$(basename "${url%%\?*}")"
-    if [ ! -f "${archive}" ]; then
-        curl --fail --location --retry 3 --retry-delay 2 --silent --show-error \
-            --output "${archive}" "${url}"
-    fi
-    printf '%s  %s\n' "${sha}" "${archive}" | sha256sum --check --status - || {
-        echo "build-far2l-deps.sh: sha256 mismatch for ${name} ${version}" >&2
+    if ! download_pinned_archive "${name}" "${version}" "${sha}" \
+        "${url}" "${archive}"; then
+        echo "build-far2l-deps.sh: unable to prepare ${name} ${version}" >&2
         exit 1
-    }
+    fi
 
     if [ -d "${WORK}/sources/${name}" ]; then
         printf '%s\n' "${WORK}/sources/${name}"

@@ -72,10 +72,12 @@ jobs:
           make -C onebin far2l-plan
           bash -n onebin/tools/build-far2l.sh \
             onebin/tools/build-far2l-deps.sh \
+            onebin/tools/download-pinned-source.sh \
             onebin/tools/run-far2l-sdl-smoke.sh \
             tools/test-meson-zig-linker.sh
           shellcheck onebin/tools/build-far2l.sh \
             onebin/tools/build-far2l-deps.sh \
+            onebin/tools/download-pinned-source.sh \
             onebin/tools/run-far2l-sdl-smoke.sh \
             tools/test-meson-zig-linker.sh
           tools/test-meson-zig-linker.sh
@@ -156,7 +158,7 @@ jobs:
           path: |
             out/far2l/deps-prefix
             out/far2l/deps-work
-          key: far2l-sdl-deps-${{ hashFiles('contrib/far2l/deps.lock', 'onebin/tools/build-far2l-deps.sh', 'onebin/toolchain/**') }}
+          key: far2l-sdl-deps-v2-${{ hashFiles('contrib/far2l/deps.lock', 'onebin/tools/build-far2l-deps.sh', 'onebin/tools/download-pinned-source.sh', 'onebin/toolchain/**') }}
           restore-keys: |
             far2l-sdl-deps-
 
