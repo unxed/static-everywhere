@@ -14,7 +14,8 @@ bash -n "$REPO_ROOT/tools/build-konsole.sh" "$REPO_ROOT/tools/preflight-konsole.
     "$REPO_ROOT/tools/run-konsole-smoke.sh" "$REPO_ROOT/tools/verify-konsole-artifact.sh" \
     "$REPO_ROOT/contrib/konsole/qt-package-root.sh" "$REPO_ROOT/tools/test-konsole-qt-package-root.sh" \
     "$REPO_ROOT/tools/test-konsole-qt-cmake-component-shims.sh" \
-    "$REPO_ROOT/tools/test-konsole-host-cmake-discovery.sh"
+    "$REPO_ROOT/tools/test-konsole-host-cmake-discovery.sh" \
+    "$REPO_ROOT/tools/test-konsole-host-python-modules.sh"
 pass 'Konsole shell scripts parse'
 
 bash "$REPO_ROOT/tools/test-konsole-cmake-package-prefixes-regression.sh"
@@ -162,6 +163,7 @@ for needle in \
     'libmount-dev' \
     'libcanberra-dev' \
     'libdbus-1-dev' \
+    'python3-lxml' \
     'run-konsole-smoke.sh' \
     'Scan Konsole sources for newer glibc symbols'; do
     grep -Fq "$needle" "$workflow" || fail "workflow is missing: $needle"
@@ -170,6 +172,15 @@ if grep -Eiq 'setup-go|go build|go test' "$workflow"; then
     fail 'workflow unexpectedly contains a Go step'
 fi
 pass 'workflow preserves f4 CI gates and has no Go setup'
+
+while read -r apt_package python_module extra; do
+    [[ -z "${apt_package:-}" || "$apt_package" == \#* ]] && continue
+    [[ -n "${python_module:-}" && -z "${extra:-}" ]] || \
+        fail 'host Python module manifest has a malformed entry'
+    grep -Fq "$apt_package" "$workflow" || \
+        fail "workflow does not install host Python package: $apt_package"
+done < "$REPO_ROOT/contrib/konsole/host-python-modules.txt"
+pass 'workflow installs declared host Python build modules'
 
 for needle in \
     'exports = "qt_cmake_components.py"' \

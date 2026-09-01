@@ -87,6 +87,13 @@ that are not safe with a Widgets-only, no-QtWayland target:
   disabled for this target. KNotifications' Linux build also requires the
   QtDBus CMake package and Canberra development files even with application
   DBus disabled, so those build inputs are installed explicitly.
+- Breeze Icons enables `WITH_ICON_GENERATION` by default. Its source
+  `CMakeLists.txt` invokes `tools/generate-24px-versions.py`, whose pinned
+  source imports `lxml`; the generated build command uses the system Python
+  interpreter rather than the Conan venv. The apt package/module mapping is
+  recorded in `host-python-modules.txt`, installed in both workflow jobs and
+  imported by an early gate. This makes missing system Python modules a
+  fail-fast, auditable class of host build-tool errors.
 - Designer plugins and text-to-speech are optional framework features and are
   disabled to keep the built graph aligned with Konsole's actual application
   targets.
@@ -128,6 +135,11 @@ GitHub workflow dispatch:
    existing fixture/locale guards.
 10. The f4 reference itself was not modified. No hosted build was dispatched
    during either pass.
+
+The host Python module manifest is checked against both workflow apt install
+blocks, and the hosted preflight imports every declared module with
+`/usr/bin/python3`; therefore a newly declared KDE generator dependency cannot
+silently be present only in the Conan virtual environment.
 
 The reverse check also found and fixed three preflight issues before this
 record was finalized: the missing `zig-c++` plan variable, a false host-path
