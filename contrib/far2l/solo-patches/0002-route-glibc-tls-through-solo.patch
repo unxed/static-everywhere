@@ -1,0 +1,12 @@
+diff --git a/lib/glibc_shim.cpp b/lib/glibc_shim.cpp
+index 41771d6..1064309 100644
+--- a/lib/glibc_shim.cpp
++++ b/lib/glibc_shim.cpp
+@@ -5694,6 +5694,7 @@ GlibcAdapter::GlibcAdapter()
+         "getopt_long_only",
+         "__cxa_finalize",
+         "__cxa_thread_atexit_impl",
++        "__tls_get_addr",
+         "_dl_find_object",
+         "__duplocale",
+         "__freelocale",
