@@ -53,7 +53,7 @@ jobs:
             onebin/tools/build-far2l-deps.sh \
             onebin/tools/download-pinned-source.sh \
             onebin/tools/run-far2l-sdl-smoke.sh
-          shellcheck onebin/tools/build-far2l.sh \
+          shellcheck -x onebin/tools/build-far2l.sh \
             onebin/tools/build-far2l-deps.sh \
             onebin/tools/download-pinned-source.sh \
             onebin/tools/run-far2l-sdl-smoke.sh \
