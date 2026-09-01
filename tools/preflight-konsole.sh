@@ -13,11 +13,15 @@ pass() { printf 'PASS: %s\n' "$1"; }
 bash -n "$REPO_ROOT/tools/build-konsole.sh" "$REPO_ROOT/tools/preflight-konsole.sh" \
     "$REPO_ROOT/tools/run-konsole-smoke.sh" "$REPO_ROOT/tools/verify-konsole-artifact.sh" \
     "$REPO_ROOT/contrib/konsole/qt-package-root.sh" "$REPO_ROOT/tools/test-konsole-qt-package-root.sh" \
-    "$REPO_ROOT/tools/test-konsole-qt-cmake-component-shims.sh"
+    "$REPO_ROOT/tools/test-konsole-qt-cmake-component-shims.sh" \
+    "$REPO_ROOT/tools/test-konsole-host-cmake-discovery.sh"
 pass 'Konsole shell scripts parse'
 
 bash "$REPO_ROOT/tools/test-konsole-cmake-package-prefixes-regression.sh"
 pass 'Conan CMake package prefixes are available to CONFIG-mode find_package'
+
+bash "$REPO_ROOT/tools/test-konsole-host-cmake-discovery.sh"
+pass 'host CMake module discovery survives Zig ABI-probe metadata loss'
 
 bash "$REPO_ROOT/tools/test-konsole-qt-package-root.sh"
 pass 'Qt package roots are discovered from CMakeDeps metadata'

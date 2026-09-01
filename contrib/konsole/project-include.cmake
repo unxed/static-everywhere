@@ -28,6 +28,34 @@ function(_se_promote_conan_package_prefixes)
     endif()
 endfunction()
 
+# zig-cc identifies itself to CMake as Clang, but its compatibility target
+# flags make CMake's compiler ABI probe fail. CMake then overwrites the
+# target metadata that the Conan toolchain supplied with empty values in
+# CMakeFiles/<version>/CMake{,CXX}Compiler.cmake. That is not cosmetic:
+# find_library() uses CMAKE_LIBRARY_ARCHITECTURE to find Debian/Ubuntu's
+# multiarch libraries, and the implicit include list keeps a host header
+# from shadowing a vendored dependency. Restore the fixed target contract
+# after project() has loaded the compiler files and before the project's
+# find_package() calls run. This must be before the top-level Konsole guard:
+# CMAKE_PROJECT_INCLUDE also runs for each KDE framework project.
+# The condition leaves native compiler metadata untouched and is intentionally
+# limited to this recipe's x86_64 Linux target.
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND
+   CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|amd64)$")
+    if(NOT CMAKE_SIZEOF_VOID_P)
+        set(CMAKE_SIZEOF_VOID_P 8)
+    endif()
+    if(NOT CMAKE_LIBRARY_ARCHITECTURE)
+        set(CMAKE_LIBRARY_ARCHITECTURE "x86_64-linux-gnu")
+    endif()
+    if(NOT CMAKE_C_IMPLICIT_INCLUDE_DIRECTORIES)
+        set(CMAKE_C_IMPLICIT_INCLUDE_DIRECTORIES "/usr/include")
+    endif()
+    if(NOT CMAKE_CXX_IMPLICIT_INCLUDE_DIRECTORIES)
+        set(CMAKE_CXX_IMPLICIT_INCLUDE_DIRECTORIES "/usr/include")
+    endif()
+endif()
+
 _se_promote_conan_package_prefixes()
 
 if(NOT PROJECT_IS_TOP_LEVEL)
@@ -46,6 +74,7 @@ include("${CMAKE_CURRENT_LIST_DIR}/import-static-qt-plugins.cmake")
 # runtime; X11 remains a normal host dependency. Widgets does not use the
 # Quick fallback path, but the constructor is harmless and keeps the same
 # host-OpenGL behavior as the reference recipe.
+
 include("${_SE_REPO_ROOT}/contrib/f4-qt/optional-gl.cmake")
 
 function(_se_konsole_assert_static_graph)

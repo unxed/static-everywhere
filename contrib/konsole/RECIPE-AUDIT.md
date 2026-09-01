@@ -44,8 +44,10 @@ The host boundary is therefore: X11/xcb and the OpenGL ABI are host-owned;
 Qt, KF6 and the application are built in the CI source graph. CMake's global
 prefix exclusion is explicitly cleared because KGuiAddons and KWindowSystem
 use the `FindX11`/`FindXCB` MODULEs to discover those host headers and
-libraries. Conan config prefixes remain first, while the top-level static
-graph assertion rejects a host Qt/KF6 target if one is ever selected.
+libraries. The common CMake hook restores the fixed x86_64 multiarch metadata
+after Zig's failed ABI probe, so that discovery reaches `/usr/lib`'s
+multiarch directory. Conan config prefixes remain first, while the top-level
+static graph assertion rejects a host Qt/KF6 target if one is ever selected.
 `qt-install-dir` is deliberately absent from kde-builder configuration, so
 kde-builder does not select a host or separately managed Qt tree.
 
@@ -65,9 +67,11 @@ that are not safe with a Widgets-only, no-QtWayland target:
   switches are set to `OFF` while QtWayland remains outside this X11 scope.
 - With `WITH_X11=ON`, KGuiAddons calls CMake's `FindX11` and `FindXCB`
   MODULEs, so the host `/usr` prefix must be searchable. This is a class-level
-  host-ABI discovery rule, not a one-library workaround; static Qt/KF6
-  selection remains protected by Conan prefix ordering and the final graph
-  assertion.
+  host-ABI discovery rule, not a one-library workaround. Because Zig's CMake
+  ABI probe leaves multiarch metadata empty, the common hook restores the
+  pointer size, architecture and implicit include contract before these
+  finders run. Static Qt/KF6 selection remains protected by Conan prefix
+  ordering and the final graph assertion.
 - KArchive defaults BZip2, LZMA, OpenSSL and Zstd to required. BZip2, LZMA and
   Zlib are direct Conan requirements because KArchive compiles sources that
   include their headers; the recipe disables the unused OpenSSL/Zstd paths.
@@ -100,18 +104,21 @@ GitHub workflow dispatch:
 2. `python3 -m py_compile` passed for the Conan recipe.
 3. The rendered kde-builder YAML and workflow parsed with PyYAML; the
    configuration has `include-dependencies: true`, `BUILD_SHARED_LIBS=OFF`,
-   an explicitly cleared `CMAKE_IGNORE_PREFIX_PATH` for host ABI discovery,
-   and a pinned Konsole revision.
+   an explicitly cleared `CMAKE_IGNORE_PREFIX_PATH`, the Zig target-metadata
+   restoration hook for host ABI discovery, and a pinned Konsole revision.
 4. `tools/preflight-konsole.sh` passed its plan assertions, including the
    glibc target, shim, cache preservation, static Qt options, CMake hook,
    hygiene audit and graphical smoke command. It also verified that no Go
    step is present.
-5. A miniature CMake project with fake static qxcb/GL plugin archives
+5. A host CMake discovery regression with intentionally erased Zig ABI
+   metadata found the real X11 library through `FindX11` in the multiarch
+   directory.
+6. A miniature CMake project with fake static qxcb/GL plugin archives
    configured and built successfully. It exercised the Itanium symbol parser,
    `.prl` closure, executable-only `INTERFACE_SOURCES`, optional-GL CXX
    compilation and static-graph assertion.
-6. `./tools/test-optional-gl-cxx-only.sh` passed.
-7. `make -C onebin test` passed: 273 tests passed and 3 were skipped by their
+7. `./tools/test-optional-gl-cxx-only.sh` passed.
+8. `make -C onebin test` passed: 273 tests passed and 3 were skipped by their
    existing fixture/locale guards.
 8. The f4 reference itself was not modified. No hosted build was dispatched
    during either pass.
