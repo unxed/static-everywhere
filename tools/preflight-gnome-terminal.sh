@@ -162,14 +162,6 @@ for required in \
     fi
 done
 
-LIBHANDY_PATCH="${PATCH_DIR}/libhandy-static-library.patch"
-if grep -Fq -- '--manual-register' "${LIBHANDY_PATCH}" \
-    && grep -Fq -- 'hdy_register_resource' "${LIBHANDY_PATCH}"; then
-    pass 'libhandy GResources are explicitly retained and registered for static archives'
-else
-    fail 'libhandy static-resource registration is missing from the captured source diff'
-fi
-
 if grep -Fq -- '-ffile-prefix-map=${SRC_ABS}=.' "${BUILD_SCRIPT}" \
     && grep -Fq -- '-ffile-prefix-map=${DEPS_ABS}=.' "${BUILD_SCRIPT}" \
     && grep -Fq -- '-ffile-prefix-map=${OUT_ABS}=.' "${BUILD_SCRIPT}" \
@@ -215,6 +207,14 @@ else
 fi
 
 PATCH_DIR="${REPO_ROOT}/contrib/gnome-terminal/patches"
+LIBHANDY_PATCH="${PATCH_DIR}/libhandy-static-library.patch"
+if grep -Fq -- '--manual-register' "${LIBHANDY_PATCH}" \
+    && grep -Fq -- 'hdy_register_resource' "${LIBHANDY_PATCH}"; then
+    pass 'libhandy GResources are explicitly retained and registered for static archives'
+else
+    fail 'libhandy static-resource registration is missing from the captured source diff'
+fi
+
 PATCH_COUNT=0
 for patch in "${PATCH_DIR}"/*.patch; do
     if [ -f "${patch}" ]; then
