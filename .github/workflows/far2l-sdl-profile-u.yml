@@ -432,6 +432,17 @@ jobs:
             -size -2M -print | sort > "$diag/03-output-listing.txt"
           find out/far2l -maxdepth 3 -type f -print 2>/dev/null | sort \
             > "$diag/04-all-files.txt"
+          # CMake records try_compile commands and their stderr in these
+          # files, but they live below the shallow listing above. Preserve
+          # them for every dependency so a configure probe failure can be
+          # diagnosed from the artifact instead of guessed from its summary.
+          while IFS= read -r -d '' log; do
+            rel=${log#out/far2l/deps-work/build/}
+            mkdir -p "$diag/cmake/$(dirname "$rel")"
+            cp "$log" "$diag/cmake/$rel"
+          done < <(find out/far2l/deps-work/build -type f \
+            \( -name CMakeConfigureLog.yaml -o -name CMakeError.log \
+               -o -name CMakeOutput.log \) -print0 2>/dev/null)
 
       - name: Upload Profile U diagnostic logs
         if: failure() || cancelled()
