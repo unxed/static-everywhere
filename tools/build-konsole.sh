@@ -154,8 +154,13 @@ else
         conan export "$fontconfig_copy" --name=fontconfig --version=2.15.0
 fi
 
-# Conan package IDs do not include the glibc baseline, so every native target
-# package in the graph is rebuilt instead of silently taking a GCC binary.
+# Conan package IDs do not include the glibc baseline, so the native packages
+# that are compiled into the target are explicitly rebuilt instead of silently
+# taking a GCC binary. libmount is deliberately absent from this list: the
+# CCI util-linux recipe cannot be rebuilt with the Zig glibc headers because
+# its syscall compatibility wrappers collide with declarations in that
+# header set. Its direct Conan requirement still supplies the headers and
+# static target metadata; Conan may use its compatible published package.
 conan_args=(
     install "$REPO_ROOT/contrib/konsole/qt-host"
     --build=missing
@@ -163,7 +168,7 @@ conan_args=(
     --build='expat/*' --build='fontconfig/*' --build='freetype/*'
     --build='harfbuzz/*' --build='icu/*' --build='libffi/*'
     --build='libiconv/*' --build='libpng/*' --build='md4c/*'
-    --build='libmount/*' --build='pcre2/*' --build='qt/*' --build='xkbcommon/*'
+    --build='pcre2/*' --build='qt/*' --build='xkbcommon/*'
     --build='xz_utils/*' --build='zlib/*'
     -s:h build_type=Release -s:h compiler.cppstd=gnu20
     -s:b build_type=Release -s:b compiler.cppstd=gnu20
