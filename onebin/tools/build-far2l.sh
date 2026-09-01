@@ -375,6 +375,21 @@ configure_deps_env() {
     export PKG_CONFIG_PATH
     CMAKE_PREFIX_PATH="${DEPS_PREFIX}/sdl2:${DEPS_PREFIX}/freetype:${DEPS_PREFIX}/harfbuzz:${DEPS_PREFIX}/fontconfig:${DEPS_PREFIX}/expat:${DEPS_PREFIX}/zlib${CMAKE_PREFIX_PATH:+:${CMAKE_PREFIX_PATH}}"
     export CMAKE_PREFIX_PATH
+
+    if [ "${PRINT_PLAN}" -eq 0 ] &&
+       [ "${PROFILE}" = universal ] && [ -z "${ONEBIN_HOST_INCLUDE_DIR:-}" ]; then
+        # build-far2l-deps.sh stores the declared graphics-header boundary
+        # next to the dependency prefix. Infer it for the consumer so a
+        # Profile U build does not depend on an undocumented environment
+        # variable or on a broad host include fallback.
+        host_include_dir="$(dirname "${DEPS_PREFIX}")/deps-work/host-graphics-include"
+        if [ ! -d "${host_include_dir}" ]; then
+            echo "error: Profile U host graphics include boundary is missing: ${host_include_dir}" >&2
+            exit 1
+        fi
+        ONEBIN_HOST_INCLUDE_DIR="${host_include_dir}"
+        export ONEBIN_HOST_INCLUDE_DIR
+    fi
 }
 
 # ------------------------------------------------------------ build steps

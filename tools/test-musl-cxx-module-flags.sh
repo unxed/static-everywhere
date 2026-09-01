@@ -24,9 +24,13 @@ printf '%s\n' \
     'fi' \
     'printf "<%s>\\n" "$@"' >"$PROBE/zig"
 chmod +x "$PROBE/zig"
+mkdir -p "$PROBE/graphics"
 
-PATH="$PROBE:$PATH" "$REPO_ROOT/onebin/toolchain/zig-c++" \
-    -target x86_64-linux-musl -fPIC -shared -pthread -o module.so module.o \
+PATH="$PROBE:$PATH" ONEBIN_HOST_INCLUDE_DIR="$PROBE/graphics" \
+    "$REPO_ROOT/onebin/toolchain/zig-c++" \
+    -target x86_64-linux-musl -fPIC -shared -pthread \
+    -I/usr/include -isystem /usr/include -idirafter/usr/include \
+    -o module.so module.o \
     -lc++ -lc++abi -lunwind >"$PROBE/out"
 
 assert_line() {
@@ -54,6 +58,8 @@ assert_line '<-nolibc>'
 assert_line '<-nostdlib>'
 assert_line '<-static>'
 assert_line '<-D_REENTRANT>'
+assert_line '<-I>'
+assert_line "<$PROBE/graphics>"
 assert_line '</opt/zig/libc++abi.a>'
 assert_line '</opt/zig/libc++.a>'
 assert_line '</opt/zig/libunwind.a>'
@@ -61,6 +67,11 @@ assert_absent '<-lc++>'
 assert_absent '<-lc++abi>'
 assert_absent '<-lunwind>'
 assert_absent '<-pthread>'
+if grep -Fq '/usr/include' "$PROBE/out"; then
+    printf 'zig-c++ passed a generic host include root through to musl\n' >&2
+    sed 's/^/  /' "$PROBE/out" >&2
+    exit 1
+fi
 
 PATH="$PROBE:$PATH" "$REPO_ROOT/onebin/toolchain/zig-cc" \
     -target x86_64-linux-musl -pthread -c module.c -o module.o >"$PROBE/cc-out"
@@ -70,6 +81,30 @@ grep -Fqx '<-D_REENTRANT>' "$PROBE/cc-out" \
          exit 1; }
 if grep -Fqx '<-pthread>' "$PROBE/cc-out"; then
     printf 'zig-cc passed the target-inappropriate musl -pthread link request\n' >&2
+    exit 1
+fi
+
+# CMake's CMAKE_REQUIRED_INCLUDES emits both attached and split include
+# spellings. A declared graphics staging directory may replace all of them,
+# but the host's generic libc roots must never survive the wrapper.
+PATH="$PROBE:$PATH" ONEBIN_HOST_INCLUDE_DIR="$PROBE/graphics" \
+    "$REPO_ROOT/onebin/toolchain/zig-cc" \
+    -target x86_64-linux-musl -I/usr/include -isystem /usr/include \
+    -idirafter/usr/include -c module.c -o module.o >"$PROBE/host-include-out"
+grep -Fqx '<-I>' "$PROBE/host-include-out" \
+    || { printf 'zig-cc did not preserve the rewritten host include option\n' >&2; exit 1; }
+grep -Fqx "<$PROBE/graphics>" "$PROBE/host-include-out" \
+    || { printf 'zig-cc did not route host includes through the staging directory\n' >&2; exit 1; }
+if grep -Fq '/usr/include' "$PROBE/host-include-out"; then
+    printf 'zig-cc passed a generic host include root through to musl\n' >&2
+    sed 's/^/  /' "$PROBE/host-include-out" >&2
+    exit 1
+fi
+
+PATH="$PROBE:$PATH" "$REPO_ROOT/onebin/toolchain/zig-cc" \
+    -target x86_64-linux-musl -I/usr/include -c module.c -o module.o >"$PROBE/no-host-include-out"
+if grep -Fq '/usr/include' "$PROBE/no-host-include-out"; then
+    printf 'zig-cc passed an undeclared generic host include root through to musl\n' >&2
     exit 1
 fi
 

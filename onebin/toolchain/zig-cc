@@ -181,27 +181,21 @@ _onebin_filtered_args=$(_onebin_emit_filtered_args "$@")
 eval "set --${_onebin_filtered_args}"
 
 
-# Host headers as a last-resort search path. zig cc with an explicit
-# -target uses ONLY its own bundled libc headers and does not search the
-# host's /usr/include the way a native gcc/clang does. That is correct
-# for libc -- it is how this project pins the glibc baseline -- but it
-# also hides genuinely host-provided headers that are part of the Layer
-# 1/2 host contract (xcb/*, X11/*), which pkg-config deliberately does
-# NOT emit a -I for, because /usr/include is a compiler default
-# everywhere else. Diagnosed from xkbcommon's own meson-log.txt:
-# `pkgconf --cflags xcb-xkb` returns success with EMPTY output while
-# `--libs` returns -L/usr/lib/... (Conan sets
-# PKG_CONFIG_ALLOW_SYSTEM_LIBS=1 but has no cflags equivalent), so the
-# compile got no -I at all and failed on 'xcb/xkb.h' file not found.
+# Host headers need an explicit boundary. zig cc with an explicit -target
+# uses only its target libc headers and does not search the host's
+# /usr/include the way a native gcc/clang does. That is correct for libc,
+# but a few host contracts (X11/GL/GLES) deliberately provide headers which
+# the target does not ship. Passing the whole host directory is not safe:
+# CMake's find_path()/try_compile() commonly turns it into -I/usr/include,
+# after which a musl probe reads glibc's pthread.h/features.h and fails (or,
+# worse, compiles against the wrong libc).
 #
-# -idirafter, NOT -I: it appends the directory AFTER all built-in system
-# include paths, so zig's own libc headers still win for anything it
-# provides and the glibc pin is untouched; only headers zig does not
-# ship at all fall through to the host. Verified against real zig 0.13.0
-# rather than assumed: the failure reproduces exactly without this flag,
-# builds with it, `-E -H` confirms stdio.h still resolves to zig's own
-# generic-glibc copy, a linked binary's highest symbol version stays at
-# GLIBC_2.4, and X11/Xlib.h (which Qt will need next) resolves too.
+# U callers may set ONEBIN_HOST_INCLUDE_DIR to a staging directory containing
+# only declared host-contract header trees. Exact generic host include flags
+# are rewritten to that directory; without the variable they are dropped.
+# This keeps the rule driver-wide, so CMake, Meson, and hand-written probes
+# receive the same libc isolation. The dependency producer owns the staging
+# directory; this wrapper never guesses which host headers a target wants.
 _onebin_triple=""
 _onebin_want_triple=0
 for _onebin_arg in "$@"; do
@@ -319,6 +313,75 @@ esac
 if [ "$_onebin_host_fallbacks" = 1 ]; then
     set -- "$@" -idirafter /usr/include
 fi
+
+# An explicit generic host include is just as dangerous as the fallback above
+# and is frequently emitted by CMake's CMAKE_REQUIRED_INCLUDES. On musl,
+# replace only the generic libc roots with the declared graphics staging root.
+# Keep host subtrees such as -I/usr/include/X11 untouched: they are already a
+# narrow caller-declared contract and do not expose /usr/include/bits by
+# themselves. Multiarch libc roots are blocked for the same reason as the
+# generic root.
+case "$_onebin_triple" in
+    *musl*)
+        _onebin_host_include_dir=${ONEBIN_HOST_INCLUDE_DIR:-}
+        if [ -n "$_onebin_host_include_dir" ] &&
+           [ ! -d "$_onebin_host_include_dir" ]; then
+            echo "zig-cc: ONEBIN_HOST_INCLUDE_DIR is not a directory: $_onebin_host_include_dir" >&2
+            exit 1
+        fi
+        case "$_onebin_host_include_dir" in
+            /usr/include|/usr/include/|/usr/local/include|/usr/local/include/|/usr/include/*-linux-gnu|/usr/include/*-linux-gnu/)
+                echo "zig-cc: ONEBIN_HOST_INCLUDE_DIR must be a filtered staging directory: $_onebin_host_include_dir" >&2
+                exit 1
+                ;;
+        esac
+        _onebin_rebuilt=""
+        _onebin_pending_include=""
+        for _onebin_arg in "$@"; do
+            if [ -n "$_onebin_pending_include" ]; then
+                case "$_onebin_arg" in
+                    /usr/include|/usr/include/|/usr/local/include|/usr/local/include/|/usr/include/*-linux-gnu|/usr/include/*-linux-gnu/)
+                        if [ -n "$_onebin_host_include_dir" ]; then
+                            _onebin_rebuilt="$_onebin_rebuilt $(_onebin_shell_quote "$_onebin_pending_include") $(_onebin_shell_quote "$_onebin_host_include_dir")"
+                        fi
+                        ;;
+                    *)
+                        _onebin_rebuilt="$_onebin_rebuilt $(_onebin_shell_quote "$_onebin_pending_include") $(_onebin_shell_quote "$_onebin_arg")"
+                        ;;
+                esac
+                _onebin_pending_include=""
+                continue
+            fi
+            case "$_onebin_arg" in
+                -I|-isystem|-idirafter)
+                    _onebin_pending_include="$_onebin_arg"
+                    ;;
+                -I/usr/include|-I/usr/include/|-I/usr/local/include|-I/usr/local/include/|-I/usr/include/*-linux-gnu|-I/usr/include/*-linux-gnu/)
+                    if [ -n "$_onebin_host_include_dir" ]; then
+                        _onebin_rebuilt="$_onebin_rebuilt -I $(_onebin_shell_quote "$_onebin_host_include_dir")"
+                    fi
+                    ;;
+                -isystem/usr/include|-isystem/usr/include/|-isystem/usr/local/include|-isystem/usr/local/include/|-isystem/usr/include/*-linux-gnu|-isystem/usr/include/*-linux-gnu/)
+                    if [ -n "$_onebin_host_include_dir" ]; then
+                        _onebin_rebuilt="$_onebin_rebuilt -isystem $(_onebin_shell_quote "$_onebin_host_include_dir")"
+                    fi
+                    ;;
+                -idirafter/usr/include|-idirafter/usr/include/|-idirafter/usr/local/include|-idirafter/usr/local/include/|-idirafter/usr/include/*-linux-gnu|-idirafter/usr/include/*-linux-gnu/)
+                    if [ -n "$_onebin_host_include_dir" ]; then
+                        _onebin_rebuilt="$_onebin_rebuilt -idirafter $(_onebin_shell_quote "$_onebin_host_include_dir")"
+                    fi
+                    ;;
+                *)
+                    _onebin_rebuilt="$_onebin_rebuilt $(_onebin_shell_quote "$_onebin_arg")"
+                    ;;
+            esac
+        done
+        if [ -n "$_onebin_pending_include" ]; then
+            _onebin_rebuilt="$_onebin_rebuilt $(_onebin_shell_quote "$_onebin_pending_include")"
+        fi
+        eval "set --${_onebin_rebuilt}"
+        ;;
+esac
 
 # Host libraries as a last-resort search path -- the exact counterpart of
 # the -idirafter above, and needed for the same reason. zig cc with an

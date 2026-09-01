@@ -5,7 +5,7 @@
 # populated --deps-prefix, while this script is the reproducible CI producer
 # for that prefix. The host is used only for X11/OpenGL headers and libraries
 # which SDL loads at runtime; the graphics and NetRocks libraries come from
-# contrib/far2l/deps.lock.
+# contrib/far2l/deps.lock. Host libc headers are never part of this contract.
 
 set -euo pipefail
 
@@ -187,6 +187,39 @@ meson_dep() {
 }
 
 mkdir -p "${PREFIX}" "${WORK}"
+
+if [ "${PROFILE}" = universal ]; then
+    # SDL's CMake checks discover X11 by finding /usr/include and then pass
+    # that whole directory as -I to every try_compile. That is valid for a
+    # native compiler but lets a musl compiler read the host's glibc headers.
+    # Stage only the declared graphics header trees and let the Zig wrappers
+    # rewrite generic /usr/include flags to this directory. Keeping this
+    # beside the cached work tree makes the host-header boundary reproducible
+    # for the later far2l configure invocation as well.
+    HOST_GRAPHICS_INCLUDE_DIR="${WORK}/host-graphics-include"
+    mkdir -p "${HOST_GRAPHICS_INCLUDE_DIR}"
+    for graphics_dir in X11 GL EGL GLES GLES2 GLES3 KHR xcb; do
+        host_graphics_dir="/usr/include/${graphics_dir}"
+        if [ -e "${host_graphics_dir}" ]; then
+            if [ -e "${HOST_GRAPHICS_INCLUDE_DIR}/${graphics_dir}" ] ||
+               [ -L "${HOST_GRAPHICS_INCLUDE_DIR}/${graphics_dir}" ]; then
+                rm -f "${HOST_GRAPHICS_INCLUDE_DIR}/${graphics_dir}"
+            fi
+            ln -s "${host_graphics_dir}" "${HOST_GRAPHICS_INCLUDE_DIR}/${graphics_dir}"
+        fi
+    done
+    for required_graphics_dir in X11 GL; do
+        if [ ! -d "${HOST_GRAPHICS_INCLUDE_DIR}/${required_graphics_dir}" ]; then
+            echo "build-far2l-deps.sh: required host graphics headers are missing: /usr/include/${required_graphics_dir}" >&2
+            exit 1
+        fi
+    done
+    export ONEBIN_HOST_INCLUDE_DIR="${HOST_GRAPHICS_INCLUDE_DIR}"
+    printf 'host graphics include boundary: %s\n' "${ONEBIN_HOST_INCLUDE_DIR}"
+    find "${HOST_GRAPHICS_INCLUDE_DIR}" -mindepth 1 -maxdepth 1 -type l \
+        -printf '  %f -> %l\n' | sort
+fi
+
 export PKG_CONFIG_PATH="${PREFIX}/zlib/lib/pkgconfig:${PREFIX}/mbedtls/lib/pkgconfig:${PREFIX}/openssl/lib/pkgconfig:${PREFIX}/expat/lib/pkgconfig:${PREFIX}/freetype/lib/pkgconfig:${PREFIX}/harfbuzz/lib/pkgconfig:${PREFIX}/fontconfig/lib/pkgconfig:${PREFIX}/sdl2/lib/pkgconfig:${PKG_CONFIG_PATH:-}"
 
 zlib_src=$(source_tree zlib)

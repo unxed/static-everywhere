@@ -55,9 +55,12 @@ jobs:
           shellcheck onebin/tools/build-far2l.sh \
             onebin/tools/build-far2l-deps.sh \
             onebin/tools/run-far2l-sdl-smoke.sh \
-            tools/test-musl-cxx-module-flags.sh
-          bash -n tools/test-musl-cxx-module-flags.sh
+            tools/test-musl-cxx-module-flags.sh \
+            tools/test-toolchain-host-isolation.sh
+          bash -n tools/test-musl-cxx-module-flags.sh \
+            tools/test-toolchain-host-isolation.sh
           tools/test-musl-cxx-module-flags.sh
+          tools/test-toolchain-host-isolation.sh
           onebin/build/onebin audit --help | grep -F universal
           onebin/tools/build-far2l-deps.sh --profile universal --print-plan
 
@@ -122,7 +125,7 @@ jobs:
           # an older prefix under a new recipe key can therefore skip every
           # rebuild and silently carry old feature detection into a new
           # profile. Only an exact recipe/toolchain key is safe here.
-          key: far2l-sdl-profile-u-deps-v2-${{ hashFiles('contrib/far2l/deps.lock', 'onebin/tools/build-far2l-deps.sh', 'onebin/toolchain/**') }}
+          key: far2l-sdl-profile-u-deps-v3-${{ hashFiles('contrib/far2l/deps.lock', 'onebin/tools/build-far2l-deps.sh', 'onebin/toolchain/**') }}
 
       - name: Mark the start of this build for diagnostics
         run: touch /tmp/job-start-marker

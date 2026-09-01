@@ -1,23 +1,23 @@
 #!/usr/bin/env bash
-# The zig wrappers must not offer host headers or host libraries to a
-# musl target.
+# The zig wrappers must not offer host libc headers or host libraries to a
+# musl target. Declared graphics headers use a separate staging boundary.
 #
 # Why this exists
 # ---------------
 # zig-cc and zig-c++ append `-idirafter /usr/include` and `-L/usr/lib*`
-# as last-resort fallbacks. Those exist for Profile H, which links
-# against a declared host contract: xcb/*, X11/* live in /usr/include and
-# pkg-config emits no -I for them.
+# only for non-musl targets. Those fallbacks exist for Profile H, which
+# links against a declared host contract: xcb/*, X11/* live in /usr/include
+# and pkg-config emits no -I for them.
 #
-# For Profile S and U the whole promise is zero host dependencies, so a
-# host search path cannot produce a right answer there -- only a wrong
-# one that compiles. far2l's Profile U build proved it: musl has no
-# backtrace(), utils/include/debug.h fell through to the host's glibc
-# /usr/include/execinfo.h, and the build died on __BEGIN_DECLS, several
-# cascading errors away from the cause.
+# Profile S and U still must not see the host libc. Profile U's SDL recipe
+# has a narrow, explicit graphics-header contract, staged by
+# build-far2l-deps.sh; the generic /usr/include root is never part of it.
+# The original far2l failure proved why: musl has no backtrace(), and a broad
+# host include path made utils/include/debug.h fall through to glibc's
+# /usr/include/execinfo.h before the parser failed on __BEGIN_DECLS.
 #
-# So: musl target -> no host paths; gnu target -> host paths, because
-# Profile H needs them.
+# So: musl target -> no host libc paths; gnu target -> host paths, because
+# Profile H needs them. U's graphics exception is opt-in and filtered.
 set -euo pipefail
 
 # shellcheck disable=SC1007
@@ -58,6 +58,23 @@ for tool_lang in "$CC:c" "$CXX:cpp"; do
             printf 'a musl build failed on <execinfo.h>, but not by absence:\n' >&2
             printf '%s\n' "$out" | head -5 | sed 's/^/  /' >&2
             printf '  (a parse error here means the host header was offered)\n' >&2
+            exit 1
+            ;;
+    esac
+
+    # CMake frequently emits the generic root explicitly rather than relying
+    # on the compiler default. It must be filtered just like the implicit
+    # fallback above; otherwise a later try_compile can reintroduce glibc.
+    if out=$("$tool" -target x86_64-linux-musl -I/usr/include "$PROBE/probe.$ext" \
+                -o "$PROBE/out" 2>&1); then
+        printf 'an explicit musl -I/usr/include compiled <execinfo.h>: host libc leaked\n' >&2
+        exit 1
+    fi
+    case "$out" in
+        *"file not found"*) ;;
+        *)
+            printf 'an explicit musl host-root include failed unexpectedly:\n' >&2
+            printf '%s\n' "$out" | head -5 | sed 's/^/  /' >&2
             exit 1
             ;;
     esac
