@@ -167,9 +167,10 @@ _onebin_triple="${_onebin_triple%%.*}"
 # that route reliably: Zig's libc++ archives mark parts of the ABI hidden in a
 # static PIE, so `--export-dynamic` does not make those definitions visible to
 # a later dlopen.  Link the C++ runtime archives into the module itself while
-# keeping libc suppressed.  `zig c++` still adds its cached libc.so for a C++
-# link even with `-nolibc`; use the C driver for the object-only shared link so
-# the final runtime set is explicit and static.
+# keeping libc suppressed.  `zig cc` treats `-lc++` as a request for its whole
+# default C++ runtime and adds a dynamic libc even with `-nolibc`; pass the
+# exact target archives instead, and use the C driver for the object-only
+# shared link so the final runtime set is explicit and static.
 # Compile-only invocations continue to use the C++ driver below.
 # This is deliberately driver-wide rather than a far2l target hack; every
 # CMake SHARED/MODULE target using the musl wrapper gets the same rule.
@@ -183,6 +184,34 @@ case "${_onebin_triple}" in
             esac
         done
         if [ "$has_shared" = 1 ] && [ "$_onebin_compile_only" = 0 ]; then
+            # Ask the same Zig target driver which concrete archives it would
+            # select for a C++ link.  The paths live in Zig's content-addressed
+            # cache and are deliberately not guessed from the installation
+            # layout; this also follows a future cache-layout change without
+            # making the Profile U module rule target-specific.  We use
+            # -###, so this is a command-line probe, not a second link.
+            _onebin_runtime_probe=$(
+                zig cc -### "$@" \
+                    -nolibc -nostdlib -static -lc++ -lc++abi -lunwind \
+                    2>&1 || true
+            )
+            _onebin_runtime_probe=$(printf '%s\n' "$_onebin_runtime_probe" | tr -d '"')
+            _onebin_cxxabi=$(printf '%s\n' "$_onebin_runtime_probe" |
+                awk '{ for (i = 1; i <= NF; i++)
+                           if ($i ~ /\/libc[+][+]abi[.]a$/) { print $i; exit } }')
+            _onebin_cxx=$(printf '%s\n' "$_onebin_runtime_probe" |
+                awk '{ for (i = 1; i <= NF; i++)
+                           if ($i ~ /\/libc[+][+][.]a$/) { print $i; exit } }')
+            _onebin_unwind=$(printf '%s\n' "$_onebin_runtime_probe" |
+                awk '{ for (i = 1; i <= NF; i++)
+                           if ($i ~ /\/libunwind[.]a$/) { print $i; exit } }')
+            if [ -z "$_onebin_cxxabi" ] || [ -z "$_onebin_cxx" ] ||
+               [ -z "$_onebin_unwind" ]; then
+                echo "zig-c++: cannot discover Zig's target C++ runtime archives" >&2
+                printf '%s\n' "$_onebin_runtime_probe" >&2
+                exit 1
+            fi
+
             _onebin_rebuilt=""
             for _onebin_arg in "$@"; do
                 case "$_onebin_arg" in
@@ -201,6 +230,14 @@ case "${_onebin_triple}" in
                         # the exported U executable supplies them.
                         continue
                         ;;
+                    -lc++|-lc++abi|-lunwind|\
+                    -l:libc++.a|-l:libc++abi.a|-l:libunwind.a)
+                        # Replace any project-provided spelling with the
+                        # concrete archives discovered above.  Leaving a
+                        # bare -lc++ here would re-enable Zig's implicit
+                        # libc.so and break the no-DT_NEEDED module boundary.
+                        continue
+                        ;;
                 esac
                 _onebin_rebuilt="$_onebin_rebuilt $(_onebin_shell_quote "$_onebin_arg")"
             done
@@ -209,7 +246,10 @@ case "${_onebin_triple}" in
             # final executable; -static makes the choice independent of any
             # host libc++ installation.  libc itself is intentionally absent
             # and is resolved by SoLo against the executable's musl image.
-            _onebin_rebuilt="$_onebin_rebuilt -nolibc -nostdlib -static -lc++ -lc++abi -lunwind"
+            _onebin_rebuilt="$_onebin_rebuilt -nolibc -nostdlib -static"
+            _onebin_rebuilt="$_onebin_rebuilt $(_onebin_shell_quote "$_onebin_cxxabi")"
+            _onebin_rebuilt="$_onebin_rebuilt $(_onebin_shell_quote "$_onebin_cxx")"
+            _onebin_rebuilt="$_onebin_rebuilt $(_onebin_shell_quote "$_onebin_unwind")"
             eval "set --${_onebin_rebuilt}"
             _onebin_use_c_driver=1
         fi
