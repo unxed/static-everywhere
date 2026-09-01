@@ -226,12 +226,14 @@ _onebin_triple="${_onebin_triple%%.*}"
 #
 # Zig 0.13 honours the last driver mode and also adds its default libc to the
 # MODULE.  For every musl shared link, canonicalise the whole class here:
-# remove any earlier -static, suppress implicit default libraries and startup
+# remove any earlier -static, suppress Zig's implicit libc plus startup
 # objects, and append the final driver mode after all -shared/create flags.
 # The module's libc symbols remain undefined so the exported U executable
-# supplies the one process-wide libc instance.  This is deliberately
-# driver-wide rather than a far2l target hack; every CMake SHARED/MODULE
-# target using the musl wrapper gets the same rule.
+# supplies the one process-wide libc instance.  `-nolibc` is Zig's
+# target-libc switch; `-nostdlib` alone still leaves Zig's cached libc.so in
+# the link job.  This is deliberately driver-wide rather than a far2l target
+# hack; every CMake SHARED/MODULE target using the musl wrapper gets the same
+# rule.
 case "${_onebin_triple}" in
     *musl*)
         _onebin_compile_only=0
@@ -248,7 +250,7 @@ case "${_onebin_triple}" in
                 esac
                 _onebin_rebuilt="$_onebin_rebuilt $(_onebin_shell_quote "$_onebin_arg")"
             done
-            _onebin_rebuilt="$_onebin_rebuilt -nostdlib -static"
+            _onebin_rebuilt="$_onebin_rebuilt -nolibc -nostdlib -static"
             eval "set --${_onebin_rebuilt}"
         fi
         ;;

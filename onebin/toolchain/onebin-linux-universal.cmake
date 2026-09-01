@@ -44,8 +44,9 @@ if(ONEBIN_SOLO_ROOT)
 endif()
 
 # onebin-linux-universal-deps.cmake keeps -static/-pie on EXE targets.  For
-# musl SHARED/MODULE targets, the zig wrappers suppress implicit libc/startup
-# libraries, retain the required C++ runtime archives, and place -static
-# after CMake's -shared create flag. Thus every U shared object retains its
-# ET_DYN form without a host DT_NEEDED boundary; libc symbols bind from the
-# exported U executable at load time.
+# musl SHARED/MODULE targets, the zig wrappers suppress Zig's implicit
+# libc/startup libraries (-nolibc/-nostdlib), use the C driver for C++
+# object-only module links, and place -static after CMake's -shared create
+# flag. Thus every U shared object retains its ET_DYN form without a host
+# DT_NEEDED boundary; libc and C++ runtime symbols bind from the exported U
+# executable at load time.
