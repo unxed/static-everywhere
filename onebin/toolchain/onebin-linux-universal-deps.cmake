@@ -39,10 +39,43 @@ if(ONEBIN_PROFILE_U_DLOPEN_HEADER AND
         "-include \"${ONEBIN_PROFILE_U_DLOPEN_HEADER}\"")
     string(JOIN " " _onebin_profile_u_dlfcn_flags_str
            ${_onebin_profile_u_dlfcn_flags})
-    set(CMAKE_C_FLAGS_INIT
-        "${CMAKE_C_FLAGS_INIT} ${_onebin_profile_u_dlfcn_flags_str}")
-    set(CMAKE_CXX_FLAGS_INIT
-        "${CMAKE_CXX_FLAGS_INIT} ${_onebin_profile_u_dlfcn_flags_str}")
+
+    # CMake may evaluate a toolchain file more than once while it identifies
+    # the compiler.  On the first pass CMAKE_*_FLAGS_INIT is still consumed,
+    # but on a later pass CMake already has CMAKE_*_FLAGS in the cache and a
+    # change to the *_INIT variables is ignored.  Put the opt-in in the final
+    # cache flags as well, preserving the static toolchain's flags and any
+    # caller-provided flags.  This keeps every CMake target that includes
+    # <dlfcn.h> on the Profile U ABI, not just the target that exposed the
+    # original failure.
+    foreach(_onebin_profile_u_lang C CXX)
+        if(_onebin_profile_u_lang STREQUAL "C")
+            set(_onebin_profile_u_flags_var CMAKE_C_FLAGS)
+            set(_onebin_profile_u_flags_init_var CMAKE_C_FLAGS_INIT)
+        else()
+            set(_onebin_profile_u_flags_var CMAKE_CXX_FLAGS)
+            set(_onebin_profile_u_flags_init_var CMAKE_CXX_FLAGS_INIT)
+        endif()
+
+        string(FIND "${${_onebin_profile_u_flags_var}}"
+               "${ONEBIN_PROFILE_U_DLOPEN_HEADER}"
+               _onebin_profile_u_header_pos)
+        if(_onebin_profile_u_header_pos EQUAL -1)
+            if(DEFINED ${_onebin_profile_u_flags_var} AND
+               NOT "${${_onebin_profile_u_flags_var}}" STREQUAL "")
+                set(_onebin_profile_u_current_flags
+                    "${${_onebin_profile_u_flags_var}}")
+            else()
+                set(_onebin_profile_u_current_flags
+                    "${${_onebin_profile_u_flags_init_var}}")
+            endif()
+            string(APPEND _onebin_profile_u_current_flags " "
+                   "${_onebin_profile_u_dlfcn_flags_str}")
+            set(${_onebin_profile_u_flags_var}
+                "${_onebin_profile_u_current_flags}" CACHE STRING
+                "Profile U ${_onebin_profile_u_lang} compiler flags" FORCE)
+        endif()
+    endforeach()
     set(_ONEBIN_PROFILE_U_DLOPEN_FLAGS_ADDED TRUE)
 endif()
 
