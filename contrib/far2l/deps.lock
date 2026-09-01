@@ -238,9 +238,9 @@ fontconfig 2.18.3 9ae01e1d53acdef56010c5451cd34aa41d325b2faccd8606448d8fa01b2496
 # SDL_ALSA/SDL_PULSEAUDIO=ON (both dlopen'd), SDL_LIBUDEV=ON,
 # SDL_DBUS=ON, SDL_IBUS=ON -- SDL dlopens every one of these itself, by
 # design, matching this project's own Profile H doctrine exactly (Layer
-# 3: "protocol first, dlopen only where physics demands it"). Nothing
-# in deps.lock or the build recipe was needed to make that happen; it's
-# how SDL2 already ships.
+# 3: "protocol first, dlopen only where physics demands it"). The recipe
+# makes the X11/OpenGL contract explicit because Profile U's dependency
+# toolchain intentionally uses stricter static-first discovery defaults.
 #
 # Verified for real: a smoketest (not just a link check) calls
 # SDL_Init(SDL_INIT_VIDEO), lists every compiled-in video driver

@@ -194,15 +194,24 @@ if ! built zlib; then
     cmake_dep zlib zlib "${zlib_src}" zlib \
         -DZLIB_BUILD_SHARED=OFF \
         -DZLIB_BUILD_TESTING=OFF
-    # zlib's CMake build emits shared objects despite BUILD_SHARED_LIBS=OFF.
-    # Leaving them beside libz.a makes a later -lz silently choose the .so.
-    find "${PREFIX}/zlib/lib" -maxdepth 1 \
-        \( -name 'libz.so' -o -name 'libz.so.*' \) -delete
-    mkdir -p "${PREFIX}/zlib/lib/pkgconfig"
-    # shellcheck disable=SC2016  # pkg-config variables must remain literal in zlib.pc
-    printf 'prefix=%s\nexec_prefix=\${prefix}\nlibdir=\${prefix}/lib\nincludedir=\${prefix}/include\n\nName: zlib\nDescription: zlib\nVersion: 1.3.2\nLibs: -L\${libdir} -lz\nCflags: -I\${includedir}\n' \
-        "${PREFIX}/zlib" > "${PREFIX}/zlib/lib/pkgconfig/zlib.pc"
     mark zlib
+fi
+# zlib's CMake build emits shared objects despite BUILD_SHARED_LIBS=OFF.
+# Leaving them beside libz.a makes a later -lz silently choose the .so. Do
+# this on every run so restored prefixes are normalized before consumers use
+# them, even when the zlib marker says the build itself can be skipped.
+find "${PREFIX}/zlib/lib" -maxdepth 1 \
+    \( -name 'libz.so' -o -name 'libz.so.*' \) -delete
+mkdir -p "${PREFIX}/zlib/lib/pkgconfig"
+# Keep pkg-config variables literal. The format is single-quoted, so an
+# extra backslash would become part of the .pc file and pkg-config would
+# pass paths such as -I\/home/... to compilers.
+printf 'prefix=%s\nexec_prefix=${prefix}\nlibdir=${prefix}/lib\nincludedir=${prefix}/include\n\nName: zlib\nDescription: zlib\nVersion: 1.3.2\nLibs: -L${libdir} -lz\nCflags: -I${includedir}\n' \
+    "${PREFIX}/zlib" > "${PREFIX}/zlib/lib/pkgconfig/zlib.pc"
+if [ ! -f "${PREFIX}/zlib/lib/pkgconfig/zlib.pc" ] || \
+   grep -Fq '\${' "${PREFIX}/zlib/lib/pkgconfig/zlib.pc"; then
+    echo 'build-far2l-deps.sh: zlib.pc contains escaped or missing pkg-config variables' >&2
+    exit 1
 fi
 
 mbedtls_src=$(source_tree mbedtls)
