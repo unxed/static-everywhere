@@ -107,12 +107,38 @@ function(_onebin_profile_u_attach_far2l)
     # -- a message that says nothing about include ordering and points at
     # the wrong flag entirely. SHELL: keeps each option and its argument
     # together as one unit, which is what that prefix exists for.
-    foreach(_solo_target far2l far2l_sdl)
-        target_compile_options(${_solo_target} PRIVATE
-            "-D_GNU_SOURCE"
-            "SHELL:-include dlfcn.h"
-            "SHELL:-include ${_solo_header}")
-    endforeach()
+    # far2l's source tree puts dlfcn users in several upstream targets, not
+    # only in the final executable and SDL module: WinPort contains the
+    # backend entry point, utils contains the install-path and stack-symbol
+    # helpers, and optional modules such as arclite, python, and adb contain
+    # their own dl* calls.  Applying the shim only to far2l/far2l_sdl leaves
+    # those static libraries and modules bound to musl's non-loader dlopen
+    # stub ("Dynamic loading not supported") or to a host-libc fallback.
+    # Walk the complete upstream target tree so every far2l translation unit
+    # shares one dlfcn personality.  This is deliberately target-scoped:
+    # CMake's own compiler probes and external dependency builds remain
+    # untouched.
+    function(_onebin_profile_u_apply_dlfcn directory)
+        get_property(_targets DIRECTORY "${directory}" PROPERTY BUILDSYSTEM_TARGETS)
+        foreach(_target IN LISTS _targets)
+            get_target_property(_imported ${_target} IMPORTED)
+            get_target_property(_type ${_target} TYPE)
+            if(NOT _imported AND NOT _type STREQUAL "INTERFACE_LIBRARY"
+               AND NOT _type STREQUAL "UTILITY")
+                target_compile_options(${_target} PRIVATE
+                    "-D_GNU_SOURCE"
+                    "SHELL:-include dlfcn.h"
+                    "SHELL:-include ${_solo_header}")
+            endif()
+        endforeach()
+
+        get_property(_subdirectories DIRECTORY "${directory}" PROPERTY SUBDIRECTORIES)
+        foreach(_subdirectory IN LISTS _subdirectories)
+            _onebin_profile_u_apply_dlfcn("${_subdirectory}")
+        endforeach()
+    endfunction()
+
+    _onebin_profile_u_apply_dlfcn("${CMAKE_SOURCE_DIR}")
 
     # CMake emits the correct --whole-archive / --no-whole-archive pair
     # around this one imported archive, and only for far2l.  The executable's
