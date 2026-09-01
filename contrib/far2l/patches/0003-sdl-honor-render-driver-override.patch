@@ -1,0 +1,41 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Static Everywhere <noreply@example.invalid>
+Date: Tue, 1 Sep 2026 14:45:00 +0200
+Subject: [PATCH] SDL: honor an explicit software renderer override
+
+SDL honors SDL_RENDER_DRIVER=software while selecting a renderer, but the
+far2l renderer bookkeeping previously only marked software when its own
+fallback path requested it.  That made an explicitly selected software
+renderer report and follow the accelerated path.  Treat the environment
+override as an intentional software request.
+
+---
+ WinPort/src/Backend/SDL/SDLConsoleRendererImpl.hpp | 5 ++++-
+ 1 file changed, 4 insertions(+), 1 deletion(-)
+
+diff --git a/WinPort/src/Backend/SDL/SDLConsoleRendererImpl.hpp b/WinPort/src/Backend/SDL/SDLConsoleRendererImpl.hpp
+index 0e2e1f50..fb0e1532 100644
+--- a/WinPort/src/Backend/SDL/SDLConsoleRendererImpl.hpp
++++ b/WinPort/src/Backend/SDL/SDLConsoleRendererImpl.hpp
+@@ -1,6 +1,7 @@
+ #pragma once
+ 
+ #include <cmath>
++#include <cstring>
+ 
+ #include "SDLShared.h"
+ #include "SDLBackendUtils.h"
+@@ -174,7 +175,9 @@ public:
+ 				getenv("SDL_VIDEODRIVER") ? getenv("SDL_VIDEODRIVER") : "",
+ 				getenv("SDL_RENDER_DRIVER") ? getenv("SDL_RENDER_DRIVER") : "");
+ 		}
+-		const bool force_software = false;
++		const char *render_driver = getenv("SDL_RENDER_DRIVER");
++		const bool force_software = render_driver &&
++			std::strcmp(render_driver, "software") == 0;
+ 		const char *wsl_distro = getenv("WSL_DISTRO_NAME");
+ 		const bool prefer_software = wsl_distro && *wsl_distro;
+ 		bool is_software = false;
+-- 
+2.43.0
+
