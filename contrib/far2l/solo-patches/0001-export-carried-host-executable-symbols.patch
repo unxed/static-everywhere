@@ -1,5 +1,5 @@
 diff --git a/lib/elf_loader.cpp b/lib/elf_loader.cpp
-index c67e99d..0732b41 100644
+index c67e99d..e446598 100644
 --- a/lib/elf_loader.cpp
 +++ b/lib/elf_loader.cpp
 @@ -374,2 +374,3 @@ namespace {
@@ -101,3 +101,24 @@ index c67e99d..0732b41 100644
 +    initializeHostExecutable();
 +
      for (auto* image : globalImages_) {
+@@ -2088,2 +2172,20 @@ Definition Loader::resolveSymbol(LinkMap& image, size_t symbolIndex) {
+ 
++    // Carried-loader static providers (the embedded musl symbols and the
++    // dlfcn bridge) are the equivalent of the host's libc/libdl namespace.
++    // They are already used by explicit dlsym(RTLD_DEFAULT, ...), but module
++    // relocations must consult the same namespace after ELF scopes too.  A
++    // host .dynsym is incomplete by design: for example, the executable may
++    // export dlopen and dlsym while the bridge's dlclose remains only in this
++    // registry.  Keep versioned references strict because these providers
++    // have no symbol-version metadata, and let the ABI personality above
++    // retain precedence where it supplies a compatible implementation.
++    if (!address && version.empty()) {
++        auto* staticAddress = stub_dlsym(stub_dlopen("", RTLD_LOCAL), name.data());
++        stub_dlerror();
++        if (staticAddress) {
++            debugBinding(image, name, "SoLo static provider");
++            return {reinterpret_cast<uintptr_t>(staticAddress), nullptr, nullptr};
++        }
++    }
++
+     if (!address && !weak) {
