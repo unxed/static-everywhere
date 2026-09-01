@@ -182,7 +182,14 @@ case "${_onebin_triple}" in
             _onebin_rebuilt=""
             for _onebin_arg in "$@"; do
                 case "$_onebin_arg" in
-                    -static) continue ;;
+                    -static|-fstack-protector|-fstack-protector-*)
+                        # CMake repeats compile-only hardening flags on its
+                        # object-only link command.  The objects already
+                        # contain stack protection; keeping this flag here
+                        # makes Zig require libc while producing a module
+                        # whose libc symbols must stay unresolved.
+                        continue
+                        ;;
                 esac
                 _onebin_rebuilt="$_onebin_rebuilt $(_onebin_shell_quote "$_onebin_arg")"
             done
