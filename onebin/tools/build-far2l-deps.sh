@@ -13,7 +13,7 @@ set -euo pipefail
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 # shellcheck disable=SC1007
 REPO_ROOT=$(CDPATH= cd -- "${SCRIPT_DIR}/../.." && pwd)
-# shellcheck source=download-pinned-source.sh
+# shellcheck source=onebin/tools/download-pinned-source.sh
 source "${SCRIPT_DIR}/download-pinned-source.sh"
 LOCK="${REPO_ROOT}/contrib/far2l/deps.lock"
 TOOLCHAIN="${REPO_ROOT}/onebin/toolchain"

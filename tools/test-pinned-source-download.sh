@@ -8,7 +8,7 @@ set -euo pipefail
 
 # shellcheck disable=SC1007
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-# shellcheck source=../onebin/tools/download-pinned-source.sh
+# shellcheck source=onebin/tools/download-pinned-source.sh
 source "${SCRIPT_DIR}/../onebin/tools/download-pinned-source.sh"
 
 PROBE=$(mktemp -d)
