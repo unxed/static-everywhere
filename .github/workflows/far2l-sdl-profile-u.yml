@@ -390,7 +390,7 @@ jobs:
             xvfb-run -a -s '-screen 0 1280x900x24 +extension GLX +render -noreset' \
             onebin/tools/run-far2l-sdl-smoke.sh \
             "$PWD/out/far2l/build/install/bin/far2l" \
-            "$PWD/out/far2l/smoke" universal
+            "$PWD/out/far2l/smoke"
 
       - name: Collect Profile U diagnostics on failure or cancellation
         if: failure() || cancelled()
