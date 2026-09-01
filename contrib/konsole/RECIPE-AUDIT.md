@@ -41,9 +41,13 @@ The load-bearing decisions were classified before adapting them:
 | f4 QWindowKit and f4 application-specific tests | intentionally omitted |
 
 The host boundary is therefore: X11/xcb and the OpenGL ABI are host-owned;
-Qt, KF6 and the application are built in the CI source graph. `qt-install-dir`
-is deliberately absent from kde-builder configuration, so kde-builder does
-not select a host or separately managed Qt tree.
+Qt, KF6 and the application are built in the CI source graph. CMake's global
+prefix exclusion is explicitly cleared because KGuiAddons and KWindowSystem
+use the `FindX11`/`FindXCB` MODULEs to discover those host headers and
+libraries. Conan config prefixes remain first, while the top-level static
+graph assertion rejects a host Qt/KF6 target if one is ever selected.
+`qt-install-dir` is deliberately absent from kde-builder configuration, so
+kde-builder does not select a host or separately managed Qt tree.
 
 ## Source-graph audit before the hosted build
 
@@ -59,6 +63,11 @@ that are not safe with a Widgets-only, no-QtWayland target:
   `OFF` where the source provides them.
 - KGuiAddons and KWindowSystem default to Wayland on Linux; their Wayland
   switches are set to `OFF` while QtWayland remains outside this X11 scope.
+- With `WITH_X11=ON`, KGuiAddons calls CMake's `FindX11` and `FindXCB`
+  MODULEs, so the host `/usr` prefix must be searchable. This is a class-level
+  host-ABI discovery rule, not a one-library workaround; static Qt/KF6
+  selection remains protected by Conan prefix ordering and the final graph
+  assertion.
 - KArchive defaults BZip2, LZMA, OpenSSL and Zstd to required. BZip2, LZMA and
   Zlib are direct Conan requirements because KArchive compiles sources that
   include their headers; the recipe disables the unused OpenSSL/Zstd paths.
@@ -91,7 +100,8 @@ GitHub workflow dispatch:
 2. `python3 -m py_compile` passed for the Conan recipe.
 3. The rendered kde-builder YAML and workflow parsed with PyYAML; the
    configuration has `include-dependencies: true`, `BUILD_SHARED_LIBS=OFF`,
-   `CMAKE_IGNORE_PREFIX_PATH=/usr;/lib;/lib64`, and a pinned Konsole revision.
+   an explicitly cleared `CMAKE_IGNORE_PREFIX_PATH` for host ABI discovery,
+   and a pinned Konsole revision.
 4. `tools/preflight-konsole.sh` passed its plan assertions, including the
    glibc target, shim, cache preservation, static Qt options, CMake hook,
    hygiene audit and graphical smoke command. It also verified that no Go

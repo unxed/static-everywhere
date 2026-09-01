@@ -28,7 +28,13 @@ global:
     -DCMAKE_FIND_PACKAGE_PREFER_CONFIG=ON
     -DCMAKE_FIND_USE_PACKAGE_REGISTRY=OFF
     -DCMAKE_FIND_USE_SYSTEM_PACKAGE_REGISTRY=OFF
-    -DCMAKE_IGNORE_PREFIX_PATH=/usr;/lib;/lib64
+    # X11, XCB and the OpenGL/EGL ABI are deliberately host-owned. KDE's
+    # KGuiAddons and KWindowSystem use CMake's FindX11/FindXCB MODULEs, so
+    # their development headers and libraries must remain discoverable in
+    # /usr. Conan prefixes are still first in CMAKE_PREFIX_PATH and the
+    # top-level hook rejects any host Qt/KF6 target that could be selected.
+    # Explicitly clear a value left in a reused CMake cache as well.
+    -DCMAKE_IGNORE_PREFIX_PATH=
     -DKDE_INSTALL_USE_QT_SYS_PATHS=OFF
     -DONEBIN_GLIBC_BASELINE=2.27
     -DBUILD_TESTING=OFF

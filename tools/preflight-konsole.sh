@@ -124,8 +124,11 @@ config = yaml.safe_load(pathlib.Path(sys.argv[1]).read_text())
 assert config["config-version"] == 2
 assert config["global"]["include-dependencies"] is True
 assert config["global"]["num-cores"] == "2"
-assert "BUILD_SHARED_LIBS=OFF" in config["global"]["cmake-options"]
-assert "CMAKE_IGNORE_PREFIX_PATH=/usr;/lib;/lib64" in config["global"]["cmake-options"]
+cmake_options = config["global"]["cmake-options"]
+assert "BUILD_SHARED_LIBS=OFF" in cmake_options
+assert "CMAKE_IGNORE_PREFIX_PATH=" in cmake_options
+assert "CMAKE_IGNORE_PREFIX_PATH=/usr" not in cmake_options
+assert "WITH_X11=ON" in cmake_options
 assert config["override konsole"]["revision"]
 workflow = yaml.safe_load(pathlib.Path(sys.argv[2]).read_text())
 assert set(workflow["jobs"]) == {"preflight", "build"}
