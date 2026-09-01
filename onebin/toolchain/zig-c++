@@ -152,6 +152,32 @@ done
 # x86_64-linux-gnu.2.27 -> x86_64-linux-gnu
 _onebin_triple="${_onebin_triple%%.*}"
 
+# On musl, pthread symbols are part of libc rather than a separate
+# libpthread archive.  GCC's `-pthread` still has a meaningful compile-time
+# effect there (it enables the thread-safe headers via `_REENTRANT`), but Zig
+# 0.13 turns the same driver option into a separate pthread link request.
+# That makes configure-time checks which append `-pthread` fail even though
+# the exact same source links with musl libc alone.  Preserve the portable
+# compile-time contract and remove the target-inappropriate link request for
+# every musl invocation, not just SDL's check.
+case "${_onebin_triple}" in
+    *musl*)
+        _onebin_rebuilt=""
+        _onebin_had_pthread=0
+        for _onebin_arg in "$@"; do
+            if [ "$_onebin_arg" = "-pthread" ]; then
+                _onebin_had_pthread=1
+            else
+                _onebin_rebuilt="$_onebin_rebuilt $(_onebin_shell_quote "$_onebin_arg")"
+            fi
+        done
+        if [ "$_onebin_had_pthread" = 1 ]; then
+            _onebin_rebuilt="$_onebin_rebuilt -D_REENTRANT"
+            eval "set --${_onebin_rebuilt}"
+        fi
+        ;;
+esac
+
 # CMake's Linux shared-library rule expands <LINK_FLAGS> before its
 # <CMAKE_SHARED_LIBRARY_CREATE_CXX_FLAGS> value, whose standard value is
 # -shared.  Profile U puts -static in the former, so a literal argv would be

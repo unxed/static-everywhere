@@ -26,7 +26,7 @@ printf '%s\n' \
 chmod +x "$PROBE/zig"
 
 PATH="$PROBE:$PATH" "$REPO_ROOT/onebin/toolchain/zig-c++" \
-    -target x86_64-linux-musl -fPIC -shared -o module.so module.o \
+    -target x86_64-linux-musl -fPIC -shared -pthread -o module.so module.o \
     -lc++ -lc++abi -lunwind >"$PROBE/out"
 
 assert_line() {
@@ -53,11 +53,24 @@ assert_line '<x86_64-linux-musl>'
 assert_line '<-nolibc>'
 assert_line '<-nostdlib>'
 assert_line '<-static>'
+assert_line '<-D_REENTRANT>'
 assert_line '</opt/zig/libc++abi.a>'
 assert_line '</opt/zig/libc++.a>'
 assert_line '</opt/zig/libunwind.a>'
 assert_absent '<-lc++>'
 assert_absent '<-lc++abi>'
 assert_absent '<-lunwind>'
+assert_absent '<-pthread>'
+
+PATH="$PROBE:$PATH" "$REPO_ROOT/onebin/toolchain/zig-cc" \
+    -target x86_64-linux-musl -pthread -c module.c -o module.o >"$PROBE/cc-out"
+grep -Fqx '<-D_REENTRANT>' "$PROBE/cc-out" \
+    || { printf 'zig-cc did not preserve the musl pthread compile contract\n' >&2
+         sed 's/^/  /' "$PROBE/cc-out" >&2
+         exit 1; }
+if grep -Fqx '<-pthread>' "$PROBE/cc-out"; then
+    printf 'zig-cc passed the target-inappropriate musl -pthread link request\n' >&2
+    exit 1
+fi
 
 printf 'musl C++ module flags: target archives carried, libc driver injection avoided\n'
