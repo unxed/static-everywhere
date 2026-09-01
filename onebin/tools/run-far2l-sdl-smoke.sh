@@ -15,6 +15,14 @@ OUT=$2
 mkdir -p "$OUT" "$OUT/config/far2l" "$OUT/runtime"
 chmod 700 "$OUT/runtime"
 
+# Keep the two-argument command contract stable while allowing each hosted
+# display setup to assert the renderer it is meant to exercise.  The
+# executable itself must not need these variables; they belong to the smoke
+# harness and are deliberately optional for callers that only need a window
+# liveness probe.
+expected_renderer=${FAR2L_SDL_EXPECT_RENDERER:-}
+expected_renderer_info=${FAR2L_SDL_EXPECT_RENDERER_INFO:-}
+
 # shellcheck disable=SC1007
 install_root=$(CDPATH= cd -- "$(dirname -- "$FAR2L")/.." && pwd)
 runtime_data="$install_root/share/far2l"
@@ -134,6 +142,34 @@ done
     cat "$OUT/far2l.log" >&2 || true
     exit 1
 }
+
+renderer_info_line=$(grep -F 'SDLConsoleRenderer: renderer_info name=' "$OUT/far2l.log" | head -n 1 || true)
+renderer_line=$(grep -F 'SDLConsoleRenderer: renderer=' "$OUT/far2l.log" | head -n 1 || true)
+{
+    printf 'renderer_info=%s\n' "$renderer_info_line"
+    printf 'renderer=%s\n' "$renderer_line"
+    if [ -n "$expected_renderer_info" ]; then
+        printf 'expected_renderer_info=%s\n' "$expected_renderer_info"
+    fi
+    if [ -n "$expected_renderer" ]; then
+        printf 'expected_renderer=%s\n' "$expected_renderer"
+    fi
+} >"$OUT/renderer-proof.txt"
+
+if [ -n "$expected_renderer_info" ] && ! grep -Fq \
+    "SDLConsoleRenderer: renderer_info name=$expected_renderer_info " "$OUT/far2l.log"; then
+    echo "run-far2l-sdl-smoke.sh: expected renderer info '$expected_renderer_info' was not selected" >&2
+    collect_failure_diagnostics
+    cat "$OUT/far2l.log" >&2 || true
+    exit 1
+fi
+if [ -n "$expected_renderer" ] && ! grep -Fq \
+    "SDLConsoleRenderer: renderer=$expected_renderer " "$OUT/far2l.log"; then
+    echo "run-far2l-sdl-smoke.sh: expected renderer '$expected_renderer' was not selected" >&2
+    collect_failure_diagnostics
+    cat "$OUT/far2l.log" >&2 || true
+    exit 1
+fi
 
 timeout --foreground --kill-after=1s 5s \
     xdotool getwindowname "$window_id" >"$OUT/window-title.txt"
