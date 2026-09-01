@@ -1,7 +1,8 @@
 # REFERENCE — GNOME Terminal, the static GTK reference application
 
 **Status: build recipe in progress.** The target is a real GNOME application
-whose GTK3 user-interface stack is linked statically into the executable.
+whose GTK3 user-interface stack is linked statically into the executable and
+delivered as a relocatable bundle.
 
 ## 1. Why GNOME Terminal
 
@@ -102,27 +103,31 @@ trees; this includes paths reached through installed headers and generated
 sources, not only the GNOME checkout. It keeps the dependency prefix ahead of
 system library directories. The dependency producer applies the captured GLib
 source patch before configuration; the consumer applies the captured GNOME
-Terminal source patch and links the shared glibc-baseline compatibility object
-into the final targets. Together the two source patches preserve GNOME
-Terminal's `pk-gtk-module` block when GLib is an archive without relying on an
-unsupported linker interposition flag, and cover the known class of
-newer-glibc syscall references exposed by the target headers.
+Terminal patches and links the shared glibc-baseline compatibility object into
+the final targets. The first GNOME patch preserves GNOME Terminal's
+`pk-gtk-module` block when GLib is an archive without relying on an unsupported
+linker interposition flag. The second is captured from the pinned GNOME
+checkout and redirects every GNOME-owned `TERM_*` install-path consumer below
+the runtime bundle when `GNOME_TERMINAL_PORTABLE_ROOT` is set. Together they
+cover both the known static-linking issue and the class of relocatable-resource
+path failures.
 
 The libhandy recipe also applies a captured source diff that makes its
 GResource generation manual-registerable and calls that registration from
 `hdy_init()`. This is required for any archive-linked library whose embedded
 resources are otherwise reachable only through a constructor in an object the
 static linker is free to discard. The smoke test therefore exercises the
-resource-backed libhandy theme during normal installed startup, not merely the
+resource-backed libhandy theme during normal portable startup, not merely the
 link and ELF checks.
 
 ## 5. Verification
 
-After installation the script copies `gnome-terminal-server` to the requested output
-path and runs:
+After the build, the script exports both the server and client ELF files and
+runs the static verifier on each:
 
 ```sh
 ./tools/verify-gnome-terminal-static.sh ./out/gnome-terminal/gnome-terminal-server
+./tools/verify-gnome-terminal-static.sh ./out/gnome-terminal/gnome-terminal-client
 ```
 
 The verifier requires a Profile H `PT_INTERP`, hardening, no RPATH/RUNPATH and
@@ -132,8 +137,33 @@ The strict audit also rejects embedded absolute CI staging paths; this is why
 the dependency producer separates logical `/usr` installation from physical
 `DESTDIR` storage instead of adding an audit waiver.
 
-The hosted smoke test copies the resulting `package/usr` tree into the
-disposable runner's real `/usr` prefix before starting D-Bus activation. It
-then clears relocation variables and invokes the installed `gnome-terminal`
-normally. Running directly from `DESTDIR` would test a non-installable layout:
-the service file intentionally names `/usr/libexec/gnome-terminal-server`.
+The final artifact is not an install image. It is an unpack-and-run bundle:
+
+```
+package/
+  gnome-terminal                       # supported entrypoint
+  usr/bin/gnome-terminal                # symlink to ../../gnome-terminal
+  usr/bin/gnome-terminal.bin            # actual client ELF
+  usr/libexec/gnome-terminal-server     # actual server ELF
+  usr/libexec/gnome-terminal-preferences
+  usr/lib/gnome-terminal/gschemas.compiled
+  usr/share/...
+```
+
+The logical `/usr` prefix is retained only while compiling and inside the
+bundle layout. The tracked `gnome-terminal` entrypoint derives its own bundle
+directory, sets the relocation root and bundled schema/data paths, clears host
+GTK/GIO module overrides, then starts the server directly. It passes both
+programs the bundle-only D-Bus application ID
+`org.gnome.Terminal.StaticEverywhere`. The standard service and systemd files
+are deliberately omitted from the bundle because their upstream absolute
+`/usr` commands cannot describe a relocatable tree.
+
+The hosted smoke test runs this entrypoint from the unpacked `package`
+directory under Xvfb and a session D-Bus. It never copies files into `/usr` and
+does not set the relocation variables itself. During the live run it reads the
+PID owning `org.gnome.Terminal.StaticEverywhere`, resolves `/proc/<PID>/exe`,
+and requires the exact path `package/usr/libexec/gnome-terminal-server`. This
+distinguishes the bundle server from the system `org.gnome.Terminal` service;
+matching version text alone is insufficient because the pinned build is also
+version 3.52.0.

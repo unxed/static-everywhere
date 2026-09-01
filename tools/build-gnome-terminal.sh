@@ -10,6 +10,9 @@ REPO_ROOT=$(CDPATH= cd -- "${SCRIPT_DIR}/.." && pwd)
 TOOLCHAIN="${REPO_ROOT}/onebin/toolchain"
 PKG_CONFIG_WRAPPER="${REPO_ROOT}/tools/pkg-config-hybrid-host.sh"
 GNOME_STATIC_PATCH="${REPO_ROOT}/contrib/gnome-terminal/patches/gnome-terminal-static-gmodule-override.patch"
+GNOME_PORTABLE_PATCH="${REPO_ROOT}/contrib/gnome-terminal/patches/gnome-terminal-portable-paths.patch"
+PORTABLE_LAUNCHER="${REPO_ROOT}/contrib/gnome-terminal/gnome-terminal-portable.sh"
+PORTABLE_APP_ID=org.gnome.Terminal.StaticEverywhere
 GLIBC_SHIM_SOURCE="${REPO_ROOT}/contrib/f4-qt/compat/glibc-shims.c"
 PKG_CONFIG_COMMAND=(bash "${PKG_CONFIG_WRAPPER}")
 PKG_CONFIG_ENV="bash $(printf '%q' "${PKG_CONFIG_WRAPPER}")"
@@ -69,6 +72,7 @@ INSTALL_PREFIX=/usr
 PACKAGE_ROOT="${OUT_ABS}/package"
 NATIVE_FILE="${OUT_ABS}/meson-static.ini"
 ARTIFACT="${OUT_ABS}/gnome-terminal-server"
+CLIENT_ARTIFACT="${OUT_ABS}/gnome-terminal-client"
 GLIBC_SHIM_OBJ="${OUT_ABS}/gnome-terminal-glibc-shims.o"
 TARGET="x86_64-linux-gnu.${BASELINE}"
 DEPS_RUNTIME_ROOT="${DEPS_ABS}${INSTALL_PREFIX}"
@@ -179,14 +183,18 @@ jobs: ${JOBS}
 # resolver entries such as libresolv.so.2.  The only non-C-runtime GUI host
 # boundary is X11/OpenGL/EGL; GTK, GLib, D-Bus and the rest of the UI stack
 # stay in the prefix's private static dependency closure.
-# The install prefix is /usr and DESTDIR creates a directly installable tree;
-# no runtime path or environment-variable relocation is required.
+# The build uses logical /usr paths in a DESTDIR, then turns that tree into a
+# relocatable bundle. The tracked launcher sets GNOME_TERMINAL_PORTABLE_ROOT,
+# starts the server under ${PORTABLE_APP_ID} and resolves the
+# source's own absolute install paths below the unpacked bundle.
 # source hygiene: remap SRC_ABS, DEPS_ABS and OUT_ABS with -ffile-prefix-map;
 # staged headers and generated sources must not leak their physical paths.
 # linker hardening: -Wl,-z,relro -Wl,-z,now -Wl,-z,noexecstack
 # captured GNOME source patch: ${GNOME_STATIC_PATCH}
 # glibc baseline compatibility source: ${GLIBC_SHIM_SOURCE}
 # glibc baseline compatibility object: ${GLIBC_SHIM_OBJ}
+# portable launcher: ${PORTABLE_LAUNCHER}
+# portable server application ID: ${PORTABLE_APP_ID}
 PLAN
 
 if [ "$PRINT_PLAN" -eq 1 ]; then
@@ -194,6 +202,7 @@ if [ "$PRINT_PLAN" -eq 1 ]; then
     echo "# default_library = static"
     echo "# c/c++ target = ${TARGET}"
     quote_cmd git -C "$SRC_ABS" apply --whitespace=nowarn "$GNOME_STATIC_PATCH"
+    quote_cmd git -C "$SRC_ABS" apply --whitespace=nowarn "$GNOME_PORTABLE_PATCH"
     quote_cmd "${TOOLCHAIN}/zig-cc" -target "$TARGET" -O2 -fPIC \
         -c "$GLIBC_SHIM_SOURCE" -o "$GLIBC_SHIM_OBJ"
     quote_cmd env "PKG_CONFIG_PATH=${PKG_CONFIG_PATH_VALUE}" \
@@ -206,10 +215,18 @@ if [ "$PRINT_PLAN" -eq 1 ]; then
         meson compile -C "$BUILD_DIR" -j "$JOBS"
     quote_cmd env "PKG_CONFIG_PATH=${PKG_CONFIG_PATH_VALUE}" \
         meson install -C "$BUILD_DIR" --destdir "$PACKAGE_ROOT"
+    quote_cmd mv "$PACKAGE_ROOT/usr/bin/gnome-terminal" "$PACKAGE_ROOT/usr/bin/gnome-terminal.bin"
+    quote_cmd install -D -m 755 "$PORTABLE_LAUNCHER" "$PACKAGE_ROOT/gnome-terminal"
+    quote_cmd ln -s ../../gnome-terminal "$PACKAGE_ROOT/usr/bin/gnome-terminal"
+    quote_cmd rm -f "$PACKAGE_ROOT/usr/share/dbus-1/services/org.gnome.Terminal.service" "$PACKAGE_ROOT/usr/lib/systemd/user/gnome-terminal-server.service"
     quote_cmd install -D "$PACKAGE_ROOT/usr/libexec/gnome-terminal-server" "$ARTIFACT"
+    quote_cmd install -D "$PACKAGE_ROOT/usr/bin/gnome-terminal.bin" "$CLIENT_ARTIFACT"
     quote_cmd "$REPO_ROOT/tools/verify-gnome-terminal-static.sh" "$ARTIFACT"
+    quote_cmd "$REPO_ROOT/tools/verify-gnome-terminal-static.sh" "$CLIENT_ARTIFACT"
     quote_cmd "$ONEBIN" audit --profile hybrid --glibc-max "$BASELINE" \
         --level 1 --strict "${GNOME_TERMINAL_HOST_CONTRACT[@]}" "$ARTIFACT"
+    quote_cmd "$ONEBIN" audit --profile hybrid --glibc-max "$BASELINE" \
+        --level 1 --strict "${GNOME_TERMINAL_HOST_CONTRACT[@]}" "$CLIENT_ARTIFACT"
     exit 0
 fi
 
@@ -238,6 +255,16 @@ done
         "$GNOME_STATIC_PATCH" >&2
     exit 1
 }
+[ -f "$GNOME_PORTABLE_PATCH" ] || {
+    printf 'build-gnome-terminal.sh: captured GNOME Terminal portable-path patch is missing: %s\n' \
+        "$GNOME_PORTABLE_PATCH" >&2
+    exit 1
+}
+[ -x "$PORTABLE_LAUNCHER" ] || {
+    printf 'build-gnome-terminal.sh: portable launcher is missing or not executable: %s\n' \
+        "$PORTABLE_LAUNCHER" >&2
+    exit 1
+}
 [ -f "$GLIBC_SHIM_SOURCE" ] || {
     printf 'build-gnome-terminal.sh: glibc baseline shim source is missing: %s\n' \
         "$GLIBC_SHIM_SOURCE" >&2
@@ -252,6 +279,7 @@ fi
 
 mkdir -p "$OUT_ABS"
 apply_source_patch "$SRC_ABS" "$GNOME_STATIC_PATCH"
+apply_source_patch "$SRC_ABS" "$GNOME_PORTABLE_PATCH"
 run "${TOOLCHAIN}/zig-cc" -target "$TARGET" -O2 -fPIC \
     -c "$GLIBC_SHIM_SOURCE" -o "$GLIBC_SHIM_OBJ"
 render_native_file
@@ -273,9 +301,22 @@ run meson setup --wipe "$BUILD_DIR" "$SRC_ABS" \
 run meson compile -C "$BUILD_DIR" -j "$JOBS"
 run rm -rf "$PACKAGE_ROOT"
 run meson install -C "$BUILD_DIR" --destdir "$PACKAGE_ROOT"
+run mv "$PACKAGE_ROOT/usr/bin/gnome-terminal" "$PACKAGE_ROOT/usr/bin/gnome-terminal.bin"
+run install -D -m 755 "$PORTABLE_LAUNCHER" "$PACKAGE_ROOT/gnome-terminal"
+run ln -s ../../gnome-terminal "$PACKAGE_ROOT/usr/bin/gnome-terminal"
+# The stock activation files contain absolute /usr paths. The portable
+# launcher starts the server itself under a bundle-only app ID, so retaining
+# those files would create a second, non-relocatable activation path.
+run rm -f "$PACKAGE_ROOT/usr/share/dbus-1/services/org.gnome.Terminal.service" \
+    "$PACKAGE_ROOT/usr/lib/systemd/user/gnome-terminal-server.service"
 run install -D "$PACKAGE_ROOT/usr/libexec/gnome-terminal-server" "$ARTIFACT"
+run install -D "$PACKAGE_ROOT/usr/bin/gnome-terminal.bin" "$CLIENT_ARTIFACT"
 run "$REPO_ROOT/tools/verify-gnome-terminal-static.sh" "$ARTIFACT"
+run "$REPO_ROOT/tools/verify-gnome-terminal-static.sh" "$CLIENT_ARTIFACT"
 run "$ONEBIN" audit --profile hybrid --glibc-max "$BASELINE" \
     --level 1 --strict "${GNOME_TERMINAL_HOST_CONTRACT[@]}" "$ARTIFACT" \
     2>&1 | tee "$OUT_ABS/gnome-terminal-onebin-audit.txt"
+run "$ONEBIN" audit --profile hybrid --glibc-max "$BASELINE" \
+    --level 1 --strict "${GNOME_TERMINAL_HOST_CONTRACT[@]}" "$CLIENT_ARTIFACT" \
+    2>&1 | tee "$OUT_ABS/gnome-terminal-client-onebin-audit.txt"
 printf 'GNOME Terminal static GTK build: %s\n' "$ARTIFACT"

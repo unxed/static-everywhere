@@ -175,25 +175,57 @@ jobs:
             --out "$PWD/out/gnome-terminal" \
             --jobs 4 2>&1 | tee "$RUNNER_TEMP/gnome-terminal-build.log"
 
-      - name: Smoke-test the installed GNOME Terminal on X11 and OpenGL
+      - name: Smoke-test the portable GNOME Terminal bundle on X11 and OpenGL
         run: |
           set -euo pipefail
-          package="$PWD/out/gnome-terminal/package"
-          test -x "$package/usr/bin/gnome-terminal"
-          test -x "$package/usr/libexec/gnome-terminal-server"
-          # The package is configured for the real /usr runtime prefix. Install
-          # it into this disposable runner before testing D-Bus activation;
-          # launching from DESTDIR with PATH/data overrides tests a different
-          # layout and cannot resolve the service's /usr/libexec executable.
-          sudo cp -a "$package/usr/." /usr/
-          hash -r
-          unset XDG_DATA_DIRS GSETTINGS_SCHEMA_DIR GTK_PATH GTK_MODULES
-          test "$(command -v gnome-terminal)" = /usr/bin/gnome-terminal
-          test -x /usr/libexec/gnome-terminal-server
-          test -f /usr/share/dbus-1/services/org.gnome.Terminal.service
+          bundle="$PWD/out/gnome-terminal/package"
+          test -x "$bundle/gnome-terminal"
+          test -x "$bundle/usr/bin/gnome-terminal.bin"
+          test -L "$bundle/usr/bin/gnome-terminal"
+          test -x "$bundle/usr/libexec/gnome-terminal-server"
+          test -f "$bundle/usr/lib/gnome-terminal/gschemas.compiled"
+          test ! -e "$bundle/usr/share/dbus-1/services/org.gnome.Terminal.service"
+          test ! -e "$bundle/usr/lib/systemd/user/gnome-terminal-server.service"
+
+          # Deliberately seed the runner environment with host module paths.
+          # The supported launcher must clear them and select only the bundle's
+          # own GTK/GIO data before starting its uniquely named server.
+          export GTK_MODULES=xapp-gtk3-module
+          export GTK_PATH=/host/gtk/modules
+          export GIO_EXTRA_MODULES=/host/gio/modules
+          export GDK_PIXBUF_MODULE_FILE=/host/gdk-pixbuf.loaders
+          export GSETTINGS_SCHEMA_DIR=/host/schemas
+
           xvfb-run -a -s "-screen 0 1280x800x24 +extension GLX" \
-            dbus-run-session -- \
-            gnome-terminal --wait -- bash -c 'exit 0'
+            dbus-run-session -- env BUNDLE="$bundle" bash -c '
+              set -euo pipefail
+              app_id=org.gnome.Terminal.StaticEverywhere
+              "$BUNDLE/gnome-terminal" --wait -- bash -c "sleep 3" &
+              client_pid=$!
+              owner_pid=
+              owner_exe=
+              for _ in $(seq 1 200); do
+                owner=$(busctl --user status "$app_id" 2>/dev/null || true)
+                pid=$(awk -F= "/^PID=/{print \$2; exit}" <<<"$owner")
+                if [ -n "$pid" ] && [ -e "/proc/$pid/exe" ]; then
+                  exe=$(readlink -f "/proc/$pid/exe")
+                  if [ "$exe" = "$BUNDLE/usr/libexec/gnome-terminal-server" ]; then
+                    owner_pid=$pid
+                    owner_exe=$exe
+                    break
+                  fi
+                fi
+                if ! kill -0 "$client_pid" 2>/dev/null; then
+                  wait "$client_pid" || true
+                  break
+                fi
+                sleep 0.05
+              done
+              test -n "$owner_pid"
+              test "$owner_exe" = "$BUNDLE/usr/libexec/gnome-terminal-server"
+              test "$owner_exe" != /usr/libexec/gnome-terminal-server
+              wait "$client_pid"
+            '
           xvfb-run -a -s "-screen 0 1280x800x24 +extension GLX" glxinfo -B
 
       - name: ccache statistics and disk usage
@@ -382,6 +414,7 @@ jobs:
           path: |
             out/gnome-terminal/package
             out/gnome-terminal/gnome-terminal-server
+            out/gnome-terminal/gnome-terminal-client
             out/gnome-terminal/gnome-terminal-onebin-audit.txt
             out/gnome-terminal/*.audit.txt
           if-no-files-found: warn

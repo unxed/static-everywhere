@@ -1,0 +1,134 @@
+diff --git a/src/terminal-client-utils.cc b/src/terminal-client-utils.cc
+index cea473e4..a52289ad 100644
+--- a/src/terminal-client-utils.cc
++++ b/src/terminal-client-utils.cc
+@@ -86,6 +86,30 @@ get_path_if_uninstalled(char const* exe_install_dir,
+ 
+ #endif /* ENABLE_DEBUG */
+ 
++static char*
++get_portable_install_dir(char const* install_dir)
++{
++  auto const root = g_getenv("GNOME_TERMINAL_PORTABLE_ROOT");
++  if (!root || !root[0] || !g_path_is_absolute(root) ||
++      !g_path_is_absolute(install_dir))
++    return nullptr;
++
++  while (*install_dir == '/')
++    ++install_dir;
++
++  return g_build_filename(root, install_dir, nullptr);
++}
++
++char*
++terminal_client_get_install_dir(char const* install_dir)
++{
++  gs_free auto path = get_portable_install_dir(install_dir);
++  if (path)
++    return g_steal_pointer(&path);
++
++  return g_strdup(install_dir);
++}
++
+ /**
+  * terminal_client_find_file_uninstalled:
+  * @exe_install_dir: the directory where the current exe is installed
+@@ -103,6 +127,10 @@ terminal_client_get_directory_uninstalled(char const* exe_install_dir,
+                                           char const* file_name,
+                                           GFileTest tests)
+ {
++  gs_free auto portable_path = get_portable_install_dir(file_install_dir);
++  if (portable_path)
++    return g_steal_pointer(&portable_path);
++
+ #ifdef ENABLE_DEBUG
+   auto path = get_path_if_uninstalled(exe_install_dir, file_name, tests);
+   if (path)
+@@ -129,6 +157,10 @@ terminal_client_get_file_uninstalled(char const* exe_install_dir,
+                                      char const* file_name,
+                                      GFileTest tests)
+ {
++  gs_free auto portable_path = get_portable_install_dir(file_install_dir);
++  if (portable_path)
++    return g_build_filename(portable_path, file_name, nullptr);
++
+ #ifdef ENABLE_DEBUG
+   gs_free auto path = get_path_if_uninstalled(exe_install_dir, file_name, tests);
+   if (path)
+diff --git a/src/terminal-client-utils.hh b/src/terminal-client-utils.hh
+index 4771acf9..f5706483 100644
+--- a/src/terminal-client-utils.hh
++++ b/src/terminal-client-utils.hh
+@@ -23,6 +23,8 @@
+ 
+ G_BEGIN_DECLS
+ 
++char* terminal_client_get_install_dir(char const* install_dir);
++
+ char* terminal_client_get_directory_uninstalled(char const* exe_install_dir,
+                                                 char const *file_install_dir,
+                                                 char const* file_name,
+diff --git a/src/terminal-i18n.cc b/src/terminal-i18n.cc
+index 162c49fe..2111afdd 100644
+--- a/src/terminal-i18n.cc
++++ b/src/terminal-i18n.cc
+@@ -17,13 +17,17 @@
+ 
+ #include "config.h"
+ #include "terminal-i18n.hh"
++#include "terminal-client-utils.hh"
++#include "terminal-defines.hh"
+ 
+ #include <libintl.h>
+ 
+ void
+ terminal_i18n_init (gboolean set_default)
+ {
+-  bindtextdomain (GETTEXT_PACKAGE, TERM_LOCALEDIR);
++  auto localedir = terminal_client_get_install_dir(TERM_LOCALEDIR);
++  bindtextdomain (GETTEXT_PACKAGE, localedir);
++  g_free (localedir);
+   bind_textdomain_codeset (GETTEXT_PACKAGE, "UTF-8");
+ 
+   if (set_default)
+diff --git a/src/terminal-util.cc b/src/terminal-util.cc
+index 07545166..a50f5971 100644
+--- a/src/terminal-util.cc
++++ b/src/terminal-util.cc
+@@ -1670,6 +1670,9 @@ static bool
+ xte_data_check(char const* name,
+                bool full)
+ {
++  gs_free auto prefix = terminal_client_get_install_dir(TERM_PREFIX);
++  gs_free auto datadir = terminal_client_get_install_dir(TERM_DATADIR);
++
+   gs_free auto user_path = g_build_filename(g_get_user_data_dir(),
+                                             XTE_CONFIG_DIRNAME,
+                                             name,
+@@ -1687,14 +1690,14 @@ xte_data_check(char const* name,
+   if (xte_data_check_one(flatpak_user_path, full))
+     return true;
+ 
+-  gs_free auto local_path = g_build_filename(TERM_PREFIX, "local", "share",
++  gs_free auto local_path = g_build_filename(prefix, "local", "share",
+                                              XTE_CONFIG_DIRNAME,
+                                              name,
+                                              nullptr);
+   if (xte_data_check_one(local_path, full))
+     return true;
+ 
+-  gs_free auto sys_path = g_build_filename(TERM_DATADIR,
++  gs_free auto sys_path = g_build_filename(datadir,
+                                            XTE_CONFIG_DIRNAME,
+                                            name,
+                                            nullptr);
+@@ -1734,7 +1737,8 @@ xte_data_ensure(void)
+   gs_free auto link_path = g_build_filename(user_dir,
+                                             TERMINAL_DESKTOP_FILENAME,
+                                             nullptr);
+-  gs_free auto target_path = g_build_filename(TERM_DATADIR,
++  gs_free auto datadir = terminal_client_get_install_dir(TERM_DATADIR);
++  gs_free auto target_path = g_build_filename(datadir,
+                                               "applications",
+                                               TERMINAL_DESKTOP_FILENAME,
+                                               nullptr);

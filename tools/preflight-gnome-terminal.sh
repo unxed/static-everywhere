@@ -7,6 +7,8 @@ REPO_ROOT=$(CDPATH= cd -- "${SCRIPT_DIR}/.." && pwd)
 BUILD_SCRIPT="${REPO_ROOT}/tools/build-gnome-terminal.sh"
 DEPS_SCRIPT="${REPO_ROOT}/tools/build-gnome-terminal-deps.sh"
 VERIFY_SCRIPT="${REPO_ROOT}/tools/verify-gnome-terminal-static.sh"
+PORTABLE_LAUNCHER="${REPO_ROOT}/contrib/gnome-terminal/gnome-terminal-portable.sh"
+PORTABLE_PATCH="${REPO_ROOT}/contrib/gnome-terminal/patches/gnome-terminal-portable-paths.patch"
 LOCK="${REPO_ROOT}/contrib/gnome-terminal/deps.lock"
 WORKFLOW="${REPO_ROOT}/.github/workflows/gnome-terminal-hybrid-static-gtk.yml"
 ARTIFACT="${REPO_ROOT}/out/gnome-terminal/gnome-terminal-server"
@@ -18,6 +20,7 @@ skip() { printf '  --   %s (skipped: %s)\n' "$1" "$2"; }
 
 echo '== recipe scripts and toolchain probes =='
 if bash -n "$BUILD_SCRIPT" "$DEPS_SCRIPT" "$VERIFY_SCRIPT" "$0" \
+    "$PORTABLE_LAUNCHER" \
     "$REPO_ROOT/tools/pkg-config-hybrid-host.sh" \
     "$REPO_ROOT/tools/test-meson-zig-linker.sh" \
     "$REPO_ROOT/tools/test-no-embedded-rpath.sh"; then
@@ -67,6 +70,13 @@ for required in \
     '-Dnautilus_extension=false' \
     '-Dsearch_provider=false' \
     'gnome-terminal-server' \
+    'gnome-terminal-client' \
+    'gnome-terminal.bin' \
+    'relocatable bundle' \
+    'GNOME_TERMINAL_PORTABLE_ROOT' \
+    'gnome-terminal-portable-paths.patch' \
+    'gnome-terminal-portable.sh' \
+    'org.gnome.Terminal.StaticEverywhere' \
     'package root (install with DESTDIR)' \
     'static dependency logical prefix: /usr' \
     'static dependency staging root:' \
@@ -105,15 +115,22 @@ else
     fail 'workflow is missing a source-audited GNOME Terminal build-time/data input'
 fi
 
-if grep -Fq -- 'sudo cp -a "$package/usr/." /usr/' "$WORKFLOW" \
-    && grep -Fq -- 'unset XDG_DATA_DIRS GSETTINGS_SCHEMA_DIR GTK_PATH GTK_MODULES' "$WORKFLOW" \
-    && grep -Fq -- 'test -f /usr/share/dbus-1/services/org.gnome.Terminal.service' "$WORKFLOW" \
-    && ! grep -Fq -- 'export PATH="$package/usr/bin:$PATH"' "$WORKFLOW" \
-    && ! grep -Fq -- 'export XDG_DATA_DIRS="$package/usr/share:/usr/share"' "$WORKFLOW" \
-    && ! grep -Fq -- 'export GSETTINGS_SCHEMA_DIR="$package/usr/share/glib-2.0/schemas"' "$WORKFLOW"; then
-    pass 'smoke test installs the real /usr package layout without relocation variables'
+if grep -Fq -- 'Smoke-test the portable GNOME Terminal bundle' "$WORKFLOW" \
+    && grep -Fq -- 'test ! -e "$bundle/usr/share/dbus-1/services/org.gnome.Terminal.service"' "$WORKFLOW" \
+    && grep -Fq -- 'busctl --user status "$app_id"' "$WORKFLOW" \
+    && grep -Fq -- 'test "$owner_exe" = "$BUNDLE/usr/libexec/gnome-terminal-server"' "$WORKFLOW" \
+    && ! grep -Fq -- 'sudo cp -a "$package/usr/." /usr/' "$WORKFLOW"; then
+    pass 'smoke test runs the unpacked portable bundle without /usr installation'
 else
-    fail 'smoke test relies on staged paths or relocation variables'
+    fail 'smoke test does not prove the unpacked portable bundle and server owner'
+fi
+
+if [ -x "$PORTABLE_LAUNCHER" ] \
+    && grep -Fq -- 'PORTABLE_APP_ID=org.gnome.Terminal.StaticEverywhere' "$PORTABLE_LAUNCHER" \
+    && grep -Fq -- 'org.gnome.Terminal.StaticEverywhere' "$BUILD_SCRIPT"; then
+    pass 'portable launcher and build plan use the same private D-Bus application ID'
+else
+    fail 'portable launcher and build plan disagree about the private D-Bus application ID'
 fi
 
 for required in \
@@ -301,6 +318,25 @@ if git apply --numstat "$GNOME_PATCH" >/dev/null 2>&1; then
 else
     fail 'captured GNOME Terminal patch is not a valid Git patch'
 fi
+
+if git apply --numstat "$PORTABLE_PATCH" >/dev/null 2>&1; then
+    pass 'captured GNOME Terminal portable-path patch is a valid Git diff'
+else
+    fail 'captured GNOME Terminal portable-path patch is malformed'
+fi
+
+for required in \
+    'diff --git a/src/terminal-client-utils.cc b/src/terminal-client-utils.cc' \
+    'GNOME_TERMINAL_PORTABLE_ROOT' \
+    'terminal_client_get_install_dir' \
+    'diff --git a/src/terminal-i18n.cc b/src/terminal-i18n.cc' \
+    'diff --git a/src/terminal-util.cc b/src/terminal-util.cc'; do
+    if grep -Fq -- "$required" "$PORTABLE_PATCH"; then
+        pass "captured portable-path patch contains ${required}"
+    else
+        fail "captured portable-path patch is missing ${required}"
+    fi
+done
 
 for required in \
     'diff --git a/src/server.cc b/src/server.cc' \
