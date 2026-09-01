@@ -203,13 +203,14 @@ fi
 find "${PREFIX}/zlib/lib" -maxdepth 1 \
     \( -name 'libz.so' -o -name 'libz.so.*' \) -delete
 mkdir -p "${PREFIX}/zlib/lib/pkgconfig"
-# Keep pkg-config variables literal. The format is single-quoted, so an
-# extra backslash would become part of the .pc file and pkg-config would
-# pass paths such as -I\/home/... to compilers.
-printf 'prefix=%s\nexec_prefix=${prefix}\nlibdir=${prefix}/lib\nincludedir=${prefix}/include\n\nName: zlib\nDescription: zlib\nVersion: 1.3.2\nLibs: -L${libdir} -lz\nCflags: -I${includedir}\n' \
+# Keep pkg-config variables literal. The format is double-quoted, so each
+# dollar sign is escaped for the shell; an extra backslash would become part
+# of the .pc file and pkg-config would pass paths such as -I\/home/... to
+# compilers.
+printf "prefix=%s\nexec_prefix=\${prefix}\nlibdir=\${prefix}/lib\nincludedir=\${prefix}/include\n\nName: zlib\nDescription: zlib\nVersion: 1.3.2\nLibs: -L\${libdir} -lz\nCflags: -I\${includedir}\n" \
     "${PREFIX}/zlib" > "${PREFIX}/zlib/lib/pkgconfig/zlib.pc"
 if [ ! -f "${PREFIX}/zlib/lib/pkgconfig/zlib.pc" ] || \
-   grep -Fq '\${' "${PREFIX}/zlib/lib/pkgconfig/zlib.pc"; then
+   grep -Fq "\\\${" "${PREFIX}/zlib/lib/pkgconfig/zlib.pc"; then
     echo 'build-far2l-deps.sh: zlib.pc contains escaped or missing pkg-config variables' >&2
     exit 1
 fi
