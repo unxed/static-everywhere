@@ -163,7 +163,7 @@ conan_args=(
     --build='expat/*' --build='fontconfig/*' --build='freetype/*'
     --build='harfbuzz/*' --build='icu/*' --build='libffi/*'
     --build='libiconv/*' --build='libpng/*' --build='md4c/*'
-    --build='pcre2/*' --build='qt/*' --build='xkbcommon/*'
+    --build='libmount/*' --build='pcre2/*' --build='qt/*' --build='xkbcommon/*'
     --build='xz_utils/*' --build='zlib/*'
     -s:h build_type=Release -s:h compiler.cppstd=gnu20
     -s:b build_type=Release -s:b compiler.cppstd=gnu20

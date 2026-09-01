@@ -59,8 +59,14 @@ that are not safe with a Widgets-only, no-QtWayland target:
   `OFF` where the source provides them.
 - KGuiAddons and KWindowSystem default to Wayland on Linux; their Wayland
   switches are set to `OFF` while QtWayland remains outside this X11 scope.
-- KArchive defaults BZip2, LZMA, OpenSSL and Zstd to required. The Conan graph
-  supplies BZip2/LZMA and the recipe disables the unused OpenSSL/Zstd paths.
+- KArchive defaults BZip2, LZMA, OpenSSL and Zstd to required. BZip2, LZMA and
+  Zlib are direct Conan requirements because KArchive compiles sources that
+  include their headers; the recipe disables the unused OpenSSL/Zstd paths.
+- KCoreAddons, Solid and KIO directly include or link LibMount. It is also a
+  direct Conan requirement, with a CMake target alias for the upstream
+  `LibMount::LibMount` spelling. This avoids Conan's `headers=False` treatment
+  of a dependency reached only through Qt, which otherwise leaves a target
+  visible while dropping the include directory.
 - Solid requires Flex, Bison and LibMount; its optional UDev backend is
   disabled for this target. KNotifications' Linux build also requires the
   QtDBus CMake package and Canberra development files even with application

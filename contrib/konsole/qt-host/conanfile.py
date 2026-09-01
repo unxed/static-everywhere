@@ -55,10 +55,20 @@ class KonsoleQtHostConan(ConanFile):
         "xkbcommon/*:with_wayland": False,
     }
 
-    # Konsole's CMakeLists.txt asks for ICU directly, not only through Qt.
-    # Keeping it a direct requirement makes CMakeDeps publish ICU::uc and
-    # ICU::i18n and prevents a host ICU installation from satisfying it.
-    requires = ("qt/6.11.1", "icu/78.1")
+    # Konsole's and the KDE frameworks' CMakeLists.txt files consume these
+    # packages directly. Keep them direct requirements rather than relying on
+    # Qt's transitive graph: Conan marks transitive requirements as
+    # headers=False, which can publish a usable link target without its
+    # include directories. That turns a missing header into a late,
+    # framework-specific failure (for example lzma.h in KArchive).
+    requires = (
+        "qt/6.11.1",
+        "icu/78.1",
+        "bzip2/1.0.8",
+        "xz_utils/5.8.3",
+        "zlib/1.3.2",
+        "libmount/2.39.2",
+    )
 
     def generate(self):
         cmake_deps = CMakeDeps(self)

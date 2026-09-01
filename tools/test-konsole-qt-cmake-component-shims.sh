@@ -8,6 +8,17 @@ REPO_ROOT=$(cd -- "$SCRIPT_DIR/.." && pwd)
 PROBE=$(mktemp -d /tmp/static-everywhere-konsole-qt-components.XXXXXX)
 trap 'rm -rf "$PROBE"' EXIT
 
+for requirement in \
+    '"bzip2/1.0.8"' \
+    '"xz_utils/5.8.3"' \
+    '"zlib/1.3.2"' \
+    '"libmount/2.39.2"'; do
+    grep -Fq "$requirement" "$REPO_ROOT/contrib/konsole/qt-host/conanfile.py" || {
+        printf 'missing direct Conan requirement: %s\n' "$requirement" >&2
+        exit 1
+    }
+done
+
 mkdir -p "$PROBE/generators" "$PROBE/source"
 cat >"$PROBE/generators/Qt6Config.cmake" <<'CMAKE'
 set(Qt6_FOUND TRUE)
