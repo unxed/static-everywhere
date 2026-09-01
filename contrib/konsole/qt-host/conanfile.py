@@ -67,6 +67,11 @@ class KonsoleQtHostConan(ConanFile):
         "bzip2/1.0.8",
         "xz_utils/5.8.3",
         "zlib/1.3.2",
+        # KDocTools' src/CMakeLists.txt consumes LIBXML2_INCLUDE_DIR and its
+        # tools include libxml headers directly. Qt brings libxml2
+        # transitively, but Conan marks that edge headers=False, so keep the
+        # public header dependency visible to CMakeDeps.
+        "libxml2/2.15.3",
         "libmount/2.39.2",
     )
 

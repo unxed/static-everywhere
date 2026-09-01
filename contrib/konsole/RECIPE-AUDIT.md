@@ -78,6 +78,12 @@ that are not safe with a Widgets-only, no-QtWayland target:
 - KArchive defaults BZip2, LZMA, OpenSSL and Zstd to required. BZip2, LZMA and
   Zlib are direct Conan requirements because KArchive compiles sources that
   include their headers; the recipe disables the unused OpenSSL/Zstd paths.
+- KDocTools' `src/CMakeLists.txt` adds `${LIBXML2_INCLUDE_DIR}` and builds
+  `meinproc6` from sources that include libxml2 headers. Libxml2 is therefore
+  a direct Conan requirement even though Qt already brings it transitively;
+  otherwise Conan's `headers=False` edge leaves the static library linkable
+  but drops the include directory and the failure appears only while building
+  KDocTools.
 - KCoreAddons, Solid and KIO directly include or link LibMount. It is also a
   direct Conan requirement, with a CMake target alias for the upstream
   `LibMount::LibMount` spelling. This avoids Conan's `headers=False` treatment

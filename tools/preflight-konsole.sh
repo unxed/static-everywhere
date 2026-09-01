@@ -211,6 +211,7 @@ for needle in \
     '"bzip2/1.0.8"' \
     '"xz_utils/5.8.3"' \
     '"zlib/1.3.2"' \
+    '"libxml2/2.15.3"' \
     '"libmount/2.39.2"' \
     'cmake_deps.set_property' \
     '"libmount::libmount"' \
