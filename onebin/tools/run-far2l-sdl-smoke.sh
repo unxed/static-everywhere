@@ -44,6 +44,15 @@ export SDL_VIDEODRIVER=x11
 export FAR2L_SDL_DEBUG_REDRAW=1
 export FAR2L_STD="$OUT/far2l.log"
 
+root_window_hex=$(timeout --foreground --kill-after=1s 5s \
+    xwininfo -root 2>/dev/null \
+        | awk '$2 == "Window" && $3 == "id:" { print $4; exit }' || true)
+if [ -z "$root_window_hex" ]; then
+    echo 'run-far2l-sdl-smoke.sh: unable to identify the X11 root window' >&2
+    exit 2
+fi
+root_window_id=$((root_window_hex))
+
 # The SDL backend opens its font picker on a first run when sdl_font is
 # absent. A headless smoke test cannot answer that interactive dialog, so
 # provide the same kind of ordinary host-font preference a first interactive
@@ -119,9 +128,22 @@ while [ "${attempts}" -lt 90 ]; do
     # Match the visible top-level window rather than its title: far2l changes
     # the SDL bootstrap title asynchronously, and the title property exposed
     # by xdotool is not stable across the initial and final titles.
-    window_id=$(timeout --foreground --kill-after=1s 2s \
-        xdotool search --onlyvisible --name '.*' 2>/dev/null \
-        | head -n 1 || true)
+    window_candidates=$(timeout --foreground --kill-after=1s 2s \
+        xdotool search --onlyvisible --name '.*' 2>/dev/null || true)
+    window_id=
+    while IFS= read -r candidate; do
+        case "$candidate" in
+            ''|*[!0-9]*) continue ;;
+        esac
+        # xdotool includes the X11 root window in a name wildcard search.
+        # It is visible even when far2l crashed before creating a window, so
+        # accepting the first result turns a failed startup into a false pass.
+        if [ "$candidate" -eq "$root_window_id" ]; then
+            continue
+        fi
+        window_id=$candidate
+        break
+    done <<<"$window_candidates"
     if [ -n "$window_id" ]; then
         break
     fi
