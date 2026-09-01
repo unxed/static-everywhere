@@ -8,11 +8,14 @@
 # without building a product or depending on a local Zig installation.
 set -euo pipefail
 
+# shellcheck disable=SC1007
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+# shellcheck disable=SC1007
 REPO_ROOT=$(CDPATH= cd -- "${SCRIPT_DIR}/.." && pwd)
 PROBE=$(mktemp -d)
 trap 'rm -rf "$PROBE"' EXIT
 
+# shellcheck disable=SC2016
 printf '%s\n' \
     '#!/bin/sh' \
     'if [ "${1-}" = cc ] && [ "${2-}" = -### ]; then' \
