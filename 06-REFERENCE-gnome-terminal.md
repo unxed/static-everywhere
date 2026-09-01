@@ -123,3 +123,9 @@ multi-hour build; only a passing artifact check proves the link boundary.
 The strict audit also rejects embedded absolute CI staging paths; this is why
 the dependency producer separates logical `/usr` installation from physical
 `DESTDIR` storage instead of adding an audit waiver.
+
+The hosted smoke test copies the resulting `package/usr` tree into the
+disposable runner's real `/usr` prefix before starting D-Bus activation. It
+then clears relocation variables and invokes the installed `gnome-terminal`
+normally. Running directly from `DESTDIR` would test a non-installable layout:
+the service file intentionally names `/usr/libexec/gnome-terminal-server`.

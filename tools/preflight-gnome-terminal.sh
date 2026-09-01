@@ -105,6 +105,17 @@ else
     fail 'workflow is missing a source-audited GNOME Terminal build-time/data input'
 fi
 
+if grep -Fq -- 'sudo cp -a "$package/usr/." /usr/' "$WORKFLOW" \
+    && grep -Fq -- 'unset XDG_DATA_DIRS GSETTINGS_SCHEMA_DIR GTK_PATH GTK_MODULES' "$WORKFLOW" \
+    && grep -Fq -- 'test -f /usr/share/dbus-1/services/org.gnome.Terminal.service' "$WORKFLOW" \
+    && ! grep -Fq -- 'export PATH="$package/usr/bin:$PATH"' "$WORKFLOW" \
+    && ! grep -Fq -- 'export XDG_DATA_DIRS="$package/usr/share:/usr/share"' "$WORKFLOW" \
+    && ! grep -Fq -- 'export GSETTINGS_SCHEMA_DIR="$package/usr/share/glib-2.0/schemas"' "$WORKFLOW"; then
+    pass 'smoke test installs the real /usr package layout without relocation variables'
+else
+    fail 'smoke test relies on staged paths or relocation variables'
+fi
+
 for required in \
     'commit verified' \
     'logical runtime prefix: /usr' \

@@ -181,9 +181,16 @@ jobs:
           package="$PWD/out/gnome-terminal/package"
           test -x "$package/usr/bin/gnome-terminal"
           test -x "$package/usr/libexec/gnome-terminal-server"
-          export PATH="$package/usr/bin:$PATH"
-          export XDG_DATA_DIRS="$package/usr/share:/usr/share"
-          export GSETTINGS_SCHEMA_DIR="$package/usr/share/glib-2.0/schemas"
+          # The package is configured for the real /usr runtime prefix. Install
+          # it into this disposable runner before testing D-Bus activation;
+          # launching from DESTDIR with PATH/data overrides tests a different
+          # layout and cannot resolve the service's /usr/libexec executable.
+          sudo cp -a "$package/usr/." /usr/
+          hash -r
+          unset XDG_DATA_DIRS GSETTINGS_SCHEMA_DIR GTK_PATH GTK_MODULES
+          test "$(command -v gnome-terminal)" = /usr/bin/gnome-terminal
+          test -x /usr/libexec/gnome-terminal-server
+          test -f /usr/share/dbus-1/services/org.gnome.Terminal.service
           xvfb-run -a -s "-screen 0 1280x800x24 +extension GLX" \
             dbus-run-session -- \
             gnome-terminal --wait -- bash -c 'exit 0'
