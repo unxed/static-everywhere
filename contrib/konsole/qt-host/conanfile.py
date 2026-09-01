@@ -61,7 +61,24 @@ class KonsoleQtHostConan(ConanFile):
     requires = ("qt/6.11.1", "icu/78.1")
 
     def generate(self):
-        CMakeDeps(self).generate()
+        cmake_deps = CMakeDeps(self)
+
+        # Some KDE Frameworks use the upstream CMake target spelling while
+        # Conan Center recipes expose the package-name spelling. Keep these
+        # bridges in CMakeDeps metadata so both spellings resolve to the same
+        # imported target instead of discovering one missing alias per
+        # framework during the hosted build.
+        cmake_deps.set_property(
+            "libmount",
+            "cmake_file_name",
+            "LibMount",
+        )
+        cmake_deps.set_property(
+            "libmount::libmount",
+            "cmake_target_aliases",
+            ["LibMount::LibMount"],
+        )
+        cmake_deps.generate()
 
         # Conan Center's Qt recipe intentionally removes the upstream
         # Qt6<Module>Config.cmake files and exports one component-aware

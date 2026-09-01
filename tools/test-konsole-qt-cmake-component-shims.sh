@@ -15,6 +15,19 @@ set(Qt6_VERSION_STRING "6.11.1")
 add_library(Qt6::Core INTERFACE IMPORTED)
 add_library(Qt6::Widgets INTERFACE IMPORTED)
 CMAKE
+cat >"$PROBE/generators/LibMountConfig.cmake" <<'CMAKE'
+add_library(libmount::libmount INTERFACE IMPORTED)
+if(NOT TARGET LibMount::LibMount)
+    add_library(LibMount::LibMount INTERFACE IMPORTED)
+    set_property(TARGET LibMount::LibMount PROPERTY
+                 INTERFACE_LINK_LIBRARIES libmount::libmount)
+endif()
+set(LibMount_FOUND TRUE)
+CMAKE
+cat >"$PROBE/generators/LibMountConfigVersion.cmake" <<'CMAKE'
+set(PACKAGE_VERSION "2.41.0")
+set(PACKAGE_VERSION_COMPATIBLE TRUE)
+CMAKE
 cat >"$PROBE/generators/Qt6ConfigVersion.cmake" <<'CMAKE'
 set(PACKAGE_VERSION "6.11.1")
 if(PACKAGE_FIND_VERSION VERSION_LESS_EQUAL PACKAGE_VERSION)
@@ -47,8 +60,12 @@ cmake_minimum_required(VERSION 3.21)
 project(konsole_qt_component_probe CXX)
 find_package(Qt6Core 6.11.1 CONFIG REQUIRED)
 find_package(Qt6Widgets CONFIG REQUIRED)
+find_package(LibMount 2.41.0 CONFIG REQUIRED)
 if(NOT TARGET Qt6::Core OR NOT TARGET Qt6::Widgets)
     message(FATAL_ERROR "Qt6 component adapters did not expose aggregate targets")
+endif()
+if(NOT TARGET LibMount::LibMount)
+    message(FATAL_ERROR "Conan target alias did not preserve the upstream LibMount spelling")
 endif()
 if(NOT Qt6Core_VERSION VERSION_EQUAL "6.11.1")
     message(FATAL_ERROR "Qt6Core version was not propagated")

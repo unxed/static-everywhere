@@ -168,11 +168,15 @@ for needle in \
     'exports = "qt_cmake_components.py"' \
     'self.dependencies["qt"].cpp_info.components' \
     'component_config(module)' \
-    'component_version_config()'; do
+    'component_version_config()' \
+    'cmake_deps.set_property' \
+    '"libmount::libmount"' \
+    '"cmake_target_aliases"' \
+    '"LibMount::LibMount"'; do
     grep -Fq "$needle" "$REPO_ROOT/contrib/konsole/qt-host/conanfile.py" || \
-        fail "Conan recipe is missing Qt component adapter: $needle"
+        fail "Conan recipe is missing CMake dependency compatibility metadata: $needle"
 done
-pass 'Conan recipe derives component adapters from the dependency metadata'
+pass 'Conan recipe carries component and target compatibility metadata'
 
 python3 -m py_compile "$REPO_ROOT/contrib/konsole/qt-host/conanfile.py" \
     "$REPO_ROOT/contrib/konsole/qt-host/qt_cmake_components.py"
