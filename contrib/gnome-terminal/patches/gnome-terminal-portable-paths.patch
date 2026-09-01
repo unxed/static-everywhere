@@ -1,5 +1,5 @@
 diff --git a/src/terminal-client-utils.cc b/src/terminal-client-utils.cc
-index cea473e4..a52289ad 100644
+index cea473e4..afba1bdf 100644
 --- a/src/terminal-client-utils.cc
 +++ b/src/terminal-client-utils.cc
 @@ -86,6 +86,30 @@ get_path_if_uninstalled(char const* exe_install_dir,
@@ -25,7 +25,7 @@ index cea473e4..a52289ad 100644
 +{
 +  gs_free auto path = get_portable_install_dir(install_dir);
 +  if (path)
-+    return g_steal_pointer(&path);
++    return reinterpret_cast<char*>(g_steal_pointer(&path));
 +
 +  return g_strdup(install_dir);
 +}
@@ -39,7 +39,7 @@ index cea473e4..a52289ad 100644
  {
 +  gs_free auto portable_path = get_portable_install_dir(file_install_dir);
 +  if (portable_path)
-+    return g_steal_pointer(&portable_path);
++    return reinterpret_cast<char*>(g_steal_pointer(&portable_path));
 +
  #ifdef ENABLE_DEBUG
    auto path = get_path_if_uninstalled(exe_install_dir, file_name, tests);
