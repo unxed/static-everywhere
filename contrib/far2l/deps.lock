@@ -225,12 +225,16 @@ fontconfig 2.18.3 9ae01e1d53acdef56010c5451cd34aa41d325b2faccd8606448d8fa01b2496
 
 # SDL2: the graphics group's last library -- "the point of the exercise"
 # per the top-level README. Built via CMake (SDL2 has its own upstream
-# CMakeLists.txt, not Meson), onebin-linux-hybrid.cmake,
-# -DSDL_STATIC=ON -DSDL_SHARED=OFF -DCMAKE_POSITION_INDEPENDENT_CODE=ON
+# CMakeLists.txt, not Meson), onebin-linux-universal-deps.cmake,
+# -DSDL_STATIC=ON -DSDL_SHARED=OFF -DSDL_X11=ON -DSDL_X11_SHARED=ON
+# -DSDL_OPENGL=ON -DSDL_OPENGLES=ON -DCMAKE_POSITION_INDEPENDENT_CODE=ON
 # (needed because far2l_sdl.so is a dlopen'd module -- 04-REFERENCE-far2l.md
-# §3.2 -- so the static SDL2 archive linked into it must be PIC). Every
-# windowing/GPU/audio backend left at its upstream default: SDL_X11=ON
-# SDL_X11_SHARED=ON, SDL_WAYLAND=ON SDL_WAYLAND_SHARED=ON,
+# §3.2 -- so the static SDL2 archive linked into it must be PIC). The X11
+# host libraries are discovered with shared-first suffixes, while SDL itself
+# remains a static archive; this prevents the universal toolchain's global
+# static-only search policy from dropping the X11 driver or recording a .a
+# filename as its runtime soname. Other windowing/GPU/audio backends retain
+# their upstream defaults: SDL_WAYLAND=ON SDL_WAYLAND_SHARED=ON,
 # SDL_ALSA/SDL_PULSEAUDIO=ON (both dlopen'd), SDL_LIBUDEV=ON,
 # SDL_DBUS=ON, SDL_IBUS=ON -- SDL dlopens every one of these itself, by
 # design, matching this project's own Profile H doctrine exactly (Layer

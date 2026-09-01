@@ -26,8 +26,16 @@ set(CMAKE_AR      "${_onebin_toolchain_dir}/zig-ar"      CACHE FILEPATH "" FORCE
 set(CMAKE_RANLIB   "${_onebin_toolchain_dir}/zig-ranlib" CACHE FILEPATH "" FORCE)
 
 # Prefer .a over .so when CMake resolves find_library()/find_package() —
-# nothing should get linked in dynamically by accident.
-set(CMAKE_FIND_LIBRARY_SUFFIXES ".a")
+# nothing should get linked in dynamically by accident. A dependency recipe
+# may opt into shared-first discovery for a host library that the final
+# artifact deliberately dlopens (for example SDL's X11 boundary); keep that
+# override explicit and separate from CMake's own variable so this toolchain
+# assignment cannot silently erase a command-line recipe setting.
+if(DEFINED ONEBIN_FIND_LIBRARY_SUFFIXES)
+    set(CMAKE_FIND_LIBRARY_SUFFIXES "${ONEBIN_FIND_LIBRARY_SUFFIXES}")
+else()
+    set(CMAKE_FIND_LIBRARY_SUFFIXES ".a")
+endif()
 set(BUILD_SHARED_LIBS OFF)
 
 # DESIGN-onebin.md §8 / 04-REFERENCE-far2l.md §7.1: --exclude-libs,ALL is a

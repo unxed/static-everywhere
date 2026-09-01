@@ -318,12 +318,37 @@ if ! built fontconfig; then
 fi
 
 sdl2_src=$(source_tree sdl2)
+# The dependency toolchain prefers static archives globally. SDL's X11
+# backend is intentionally a runtime-loaded host boundary, so its discovery
+# must select the host shared objects and derive libX11.so.6 (rather than
+# accidentally encoding libX11.a or disabling the driver).
 cmake_dep sdl2 sdl2 "${sdl2_src}" sdl2 \
     -DSDL_STATIC=ON \
     -DSDL_SHARED=OFF \
+    -DSDL_X11=ON \
+    -DSDL_X11_SHARED=ON \
+    -DSDL_OPENGL=ON \
+    -DSDL_OPENGLES=ON \
     -DSDL_TEST=OFF \
     -DSDL_TESTS=OFF \
+    "-DONEBIN_FIND_LIBRARY_SUFFIXES=.so;.a" \
     -DCMAKE_POSITION_INDEPENDENT_CODE=ON
+
+sdl2_archive="${PREFIX}/sdl2/lib/libSDL2.a"
+if [ ! -f "${sdl2_archive}" ]; then
+    echo "build-far2l-deps.sh: SDL2 archive was not installed: ${sdl2_archive}" >&2
+    exit 1
+fi
+if ! ar t "${sdl2_archive}" | grep -Eq '(^|/)SDL_x11video\.c\.o$'; then
+    echo 'build-far2l-deps.sh: SDL2 archive has no X11 video backend object' >&2
+    exit 1
+fi
+for soname in libX11.so.6 libXext.so.6; do
+    if ! strings -a "${sdl2_archive}" | grep -Fq "${soname}"; then
+        echo "build-far2l-deps.sh: SDL2 X11 backend has no ${soname} runtime soname" >&2
+        exit 1
+    fi
+done
 
 libssh_src=$(source_tree libssh)
 cmake_dep libssh libssh "${libssh_src}" libssh \

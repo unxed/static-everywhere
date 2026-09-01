@@ -118,9 +118,11 @@ jobs:
           path: |
             out/far2l/deps-prefix
             out/far2l/deps-work
-          key: far2l-sdl-profile-u-deps-${{ hashFiles('contrib/far2l/deps.lock', 'onebin/tools/build-far2l-deps.sh', 'onebin/toolchain/**') }}
-          restore-keys: |
-            far2l-sdl-profile-u-deps-
+          # A dependency prefix contains per-project marker files. Restoring
+          # an older prefix under a new recipe key can therefore skip every
+          # rebuild and silently carry old feature detection into a new
+          # profile. Only an exact recipe/toolchain key is safe here.
+          key: far2l-sdl-profile-u-deps-v2-${{ hashFiles('contrib/far2l/deps.lock', 'onebin/tools/build-far2l-deps.sh', 'onebin/toolchain/**') }}
 
       - name: Mark the start of this build for diagnostics
         run: touch /tmp/job-start-marker
