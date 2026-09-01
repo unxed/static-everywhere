@@ -1,0 +1,32 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Static Everywhere <noreply@example.invalid>
+Date: Tue, 1 Sep 2026 14:30:00 +0200
+Subject: [PATCH] SDL: explicitly show the window after backend initialization
+
+SDL normally maps a window unless SDL_WINDOW_HIDDEN is requested, but some
+X11 implementations defer the initial map while the renderer/context is being
+constructed.  Publish the window explicitly after backend initialization so
+the visible startup contract does not depend on that timing detail.
+
+---
+ WinPort/src/Backend/SDL/SDLMain.cpp | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/WinPort/src/Backend/SDL/SDLMain.cpp b/WinPort/src/Backend/SDL/SDLMain.cpp
+index efcdfadf..98be5704 100644
+--- a/WinPort/src/Backend/SDL/SDLMain.cpp
++++ b/WinPort/src/Backend/SDL/SDLMain.cpp
+@@ -2552,6 +2552,11 @@ bool SDLConsoleApp::Initialize()
+ 	}
+ 
+ 	_backend->Attach();
++	// SDL_CreateWindow normally maps a window unless SDL_WINDOW_HIDDEN is
++	// requested.  Publish it explicitly after backend initialization as well:
++	// this keeps startup deterministic on X11 implementations that defer the
++	// initial map while the renderer/context is being constructed.
++	SDL_ShowWindow(_window);
+ 
+ 	if (win_state.valid) {
+ 		if (win_state.fullscreen) {
+-- 
+2.43.0
