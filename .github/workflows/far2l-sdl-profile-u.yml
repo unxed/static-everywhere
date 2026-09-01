@@ -145,6 +145,11 @@ jobs:
           test "$(git -C solo-src rev-parse HEAD)" = "$solo_ref"
           git -C solo-src cat-file -e "$solo_ref:lib/dlfcn.h"
           test -f solo-src/lib/dlfcn.h
+          for patch in "$PWD"/contrib/far2l/solo-patches/*.patch; do
+            [ -e "$patch" ] || continue
+            git -C solo-src apply --check --whitespace=error "$patch"
+            git -C solo-src apply --whitespace=error "$patch"
+          done
           solo_archive="$PWD/solo-src/libdlfcn.a"
           test ! -e "$solo_archive"
           solo_container=
@@ -391,7 +396,7 @@ jobs:
           mkdir -p out/far2l/xvfb
           timeout --foreground --kill-after=10s 240s \
             xvfb-run -a -s '-screen 0 1280x900x24 +extension GLX +render -noreset' \
-            env LD_DEBUG=libs,dlfcn \
+            env \
               FAR2L_SDL_EXPECT_RENDERER_INFO=opengl \
               FAR2L_SDL_EXPECT_RENDERER=accelerated+vsync \
             onebin/tools/run-far2l-sdl-smoke.sh \
@@ -403,7 +408,7 @@ jobs:
           mkdir -p out/far2l/xvfb-software
           timeout --foreground --kill-after=10s 240s \
             xvfb-run -a -s '-screen 0 1280x900x24 -extension GLX +render -noreset' \
-            env LD_DEBUG=libs,dlfcn \
+            env \
               SDL_RENDER_DRIVER=software \
               FAR2L_SDL_EXPECT_RENDERER_INFO=software \
               FAR2L_SDL_EXPECT_RENDERER=software \

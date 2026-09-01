@@ -1,0 +1,103 @@
+diff --git a/lib/elf_loader.cpp b/lib/elf_loader.cpp
+index c67e99d..0732b41 100644
+--- a/lib/elf_loader.cpp
++++ b/lib/elf_loader.cpp
+@@ -374,2 +374,3 @@ namespace {
+         void* lookup(LinkMap& image, std::string_view name, std::string_view version);
++        void initializeHostExecutable();
+         void* lookupGlobal(std::string_view name);
+@@ -435,2 +436,9 @@ namespace {
+         std::vector<LinkMap*> globalImages_;
++        // The process that linked SoLo in as a carried loader is not one of
++        // SoLo's loaded ELF images.  Profile U nevertheless gives it a real
++        // dynamic symbol table so its modules can resolve the host
++        // executable's ABI, just as the kernel loader would expose it through
++        // RTLD_DEFAULT.
++        std::unique_ptr<LinkMap> hostExecutable_;
++        bool hostExecutableInitialized_ = false;
+         // The images behind the numbered dlopen caller thunks; write-once
+@@ -608,2 +616,8 @@ LinkMap* Loader::load(const std::string_view& requestedPath, int flags, LinkMap*
+ 
++    // In a carried-loader process the kernel-mapped executable is outside
++    // images_: SoLo only owns ELFs loaded through its own mmap path.  Make
++    // the host's exported ABI part of the global scope before any module or
++    // dependency relocation asks for it.
++    initializeHostExecutable();
++
+     // The flag names only the outermost load; the dependencies this load
+@@ -1075,2 +1089,70 @@ void Loader::makeGlobal(LinkMap& image) {
+ 
++void Loader::initializeHostExecutable() {
++    if (hostExecutableInitialized_) {
++        return;
++    }
++    hostExecutableInitialized_ = true;
++
++    auto program = elfMainProgram();
++
++    // When SoLo is the kernel's PT_INTERP, elfMainProgram() describes the
++    // guest executable, which is already represented by an adopted LinkMap.
++    // There is no separate host ABI to add in that mode.
++    if (program.adopted || !program.headers || !program.count) {
++        return;
++    }
++
++    auto imageOwner = std::make_unique<LinkMap>();
++    auto& image = *imageOwner;
++
++    image.path = "/proc/self/exe";
++    image.base = program.base;
++    image.programHeaders.assign(program.headers, program.headers + program.count);
++
++    auto pageSize = sysconf(_SC_PAGESIZE);
++    if (pageSize <= 0) {
++        return;
++    }
++
++    uintptr_t minimumAddress = UINTPTR_MAX;
++    uintptr_t maximumAddress = 0;
++    bool hasSymbolTable = false;
++    bool hasStringTable = false;
++    bool hasHashTable = false;
++
++    for (const auto& header : image.programHeaders) {
++        if (header.p_type == PT_LOAD) {
++            minimumAddress = std::min(minimumAddress, alignDown(header.p_vaddr, pageSize));
++            maximumAddress = std::max(maximumAddress, alignUp(header.p_vaddr + header.p_memsz, pageSize));
++        } else if (header.p_type == PT_DYNAMIC) {
++            image.dynamic = reinterpret_cast<Elf64_Dyn*>(image.base + header.p_vaddr);
++            for (auto* entry = image.dynamic; entry->d_tag != DT_NULL; ++entry) {
++                hasSymbolTable |= entry->d_tag == DT_SYMTAB;
++                hasStringTable |= entry->d_tag == DT_STRTAB;
++                hasHashTable |= entry->d_tag == DT_HASH || entry->d_tag == DT_GNU_HASH;
++            }
++        }
++    }
++
++    // A statically linked executable without --export-dynamic can have no
++    // usable dynamic symbol table.  That is a valid host image; it simply
++    // contributes no symbols to SoLo's global lookup.
++    if (!image.dynamic || minimumAddress == UINTPTR_MAX || maximumAddress <= minimumAddress || !hasSymbolTable || !hasStringTable || !hasHashTable) {
++        return;
++    }
++
++    image.mapStart = image.base + minimumAddress;
++    image.mapSize = maximumAddress - minimumAddress;
++    image.executable = true;
++    image.state = LinkMap::State::Ready;
++    image.parseDynamic();
++
++    hostExecutable_ = std::move(imageOwner);
++    // The host executable is the first global scope image, exactly as it is
++    // for the kernel's dynamic loader.  Its symbols therefore satisfy both
++    // direct module relocations and RTLD_DEFAULT lookups.
++    globalImages_.insert(globalImages_.begin(), hostExecutable_.get());
++    imagesByAddress_.emplace(hostExecutable_->mapStart, hostExecutable_.get());
++}
++
+ void* Loader::lookupGlobal(std::string_view name) {
+@@ -1078,2 +1160,4 @@ void* Loader::lookupGlobal(std::string_view name) {
+ 
++    initializeHostExecutable();
++
+     for (auto* image : globalImages_) {

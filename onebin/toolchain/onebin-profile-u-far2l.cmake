@@ -116,8 +116,9 @@ function(_onebin_profile_u_attach_far2l)
 
     # CMake emits the correct --whole-archive / --no-whole-archive pair
     # around this one imported archive, and only for far2l.  The executable's
-    # ENABLE_EXPORTS property (set upstream) exposes the bridge to the
-    # dlopen'd SDL module.
+    # ENABLE_EXPORTS property (set upstream) puts its ABI in .dynsym; the
+    # carried SoLo loader consumes that host table for the dlopen'd SDL
+    # module and plugins.
     target_link_libraries(
         far2l PRIVATE
         "$<LINK_LIBRARY:WHOLE_ARCHIVE,onebin_profile_u_solo_dlfcn>")
