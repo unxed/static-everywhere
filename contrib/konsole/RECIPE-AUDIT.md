@@ -102,6 +102,11 @@ that are not safe with a Widgets-only, no-QtWayland target:
   `host-docbook-tools.txt` and checked in both workflow jobs before the KDE
   graph starts. This closes the class of missing external documentation
   tool/data failures instead of discovering each one at a later configure.
+  Because the recipe deliberately enables CONFIG-mode lookup for Conan's
+  static packages, a Conan `LibXml2Config.cmake` can supply the library while
+  omitting CMake's companion `xmllint` variable. The common CMake hook seeds
+  host tool variables before package lookup, and a regression test covers
+  this CONFIG/MODULE mismatch as a class of failures.
 - Designer plugins and text-to-speech are optional framework features and are
   disabled to keep the built graph aligned with Konsole's actual application
   targets.
@@ -149,6 +154,11 @@ install blocks. Hosted preflight imports every declared Python module with
 `/usr/bin/python3` and probes every declared DocBook tool/data path before the
 KDE graph starts; a dependency therefore cannot silently be present only in
 the Conan virtual environment or absent from the runner.
+
+After hosted run 33532968168 exposed the CONFIG/MODULE mismatch, a miniature
+CMake project with a fake CONFIG-only LibXml2 package verified that the host
+`xmllint` variables survive a package lookup that omits them. The regression
+is now part of `tools/preflight-konsole.sh`.
 
 The reverse check also found and fixed three preflight issues before this
 record was finalized: the missing `zig-c++` plan variable, a false host-path

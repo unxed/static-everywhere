@@ -28,6 +28,36 @@ function(_se_promote_conan_package_prefixes)
     endif()
 endfunction()
 
+# Some Conan packages publish a CONFIG-mode replacement for a CMake package
+# that upstream frameworks normally find through a MODULE.  The replacement
+# can provide the library target while omitting companion host tools that the
+# upstream Find module exposes (for example LibXml2::xmllint).  Seed those
+# tools from the host before any package CONFIG/MODULE lookup.  Keep the
+# lookup generic so another host tool can be added here without changing every
+# framework recipe that consumes it.
+function(_se_seed_host_tool variable)
+    string(MAKE_C_IDENTIFIER "${variable}" _cache_suffix)
+    set(_cache_variable "_SE_HOST_TOOL_${_cache_suffix}")
+    find_program(${_cache_variable} NAMES ${ARGN}
+                 PATHS /usr/bin /bin
+                 NO_DEFAULT_PATH)
+    if(DEFINED ${_cache_variable} AND
+       NOT "${${_cache_variable}}" STREQUAL "${_cache_variable}-NOTFOUND")
+        set(${variable} "${${_cache_variable}}" PARENT_SCOPE)
+    endif()
+endfunction()
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    # LibXml2/LibXslt are host-side inputs to kdoctools' DocBook generators.
+    # Their CMake CONFIG packages do not consistently carry the executable
+    # variables supplied by CMake's FindLibXml2/FindLibXslt modules.
+    _se_seed_host_tool(LIBXML2_XMLLINT_EXECUTABLE xmllint)
+    if(DEFINED LIBXML2_XMLLINT_EXECUTABLE)
+        set(XMLLINT_EXECUTABLE "${LIBXML2_XMLLINT_EXECUTABLE}")
+    endif()
+    _se_seed_host_tool(LIBXSLT_XSLTPROC_EXECUTABLE xsltproc)
+endif()
+
 # zig-cc identifies itself to CMake as Clang, but its compatibility target
 # flags make CMake's compiler ABI probe fail. CMake then overwrites the
 # target metadata that the Conan toolchain supplied with empty values in
