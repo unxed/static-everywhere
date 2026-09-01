@@ -1,0 +1,7 @@
+# apt package       probe type  probe
+libxml2-dev         pkg-config  libxml-2.0
+libxslt1-dev        pkg-config  libxslt
+libxml2-utils       command     xmllint
+xsltproc            command     xsltproc
+docbook-xml         file        /usr/share/xml/docbook/schema/dtd/4.5/docbookx.dtd
+docbook-xsl         file        /usr/share/xml/docbook/stylesheet/docbook-xsl/lib/lib.xsl

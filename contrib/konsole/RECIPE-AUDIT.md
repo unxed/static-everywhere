@@ -94,6 +94,14 @@ that are not safe with a Widgets-only, no-QtWayland target:
   recorded in `host-python-modules.txt`, installed in both workflow jobs and
   imported by an early gate. This makes missing system Python modules a
   fail-fast, auditable class of host build-tool errors.
+- KDocTools requires `LibXslt`, `LibXml2`, `xmllint`, DocBook XML 4.5 and
+  DocBook XSL. Its pinned `CMakeLists.txt` makes those inputs required for
+  DocBook processing, and the package's `FindDocBookXML4.cmake`/
+  `FindDocBookXSL.cmake` modules use the standard `/usr/share/xml` paths.
+  The complete apt-package/probe mapping is recorded in
+  `host-docbook-tools.txt` and checked in both workflow jobs before the KDE
+  graph starts. This closes the class of missing external documentation
+  tool/data failures instead of discovering each one at a later configure.
 - Designer plugins and text-to-speech are optional framework features and are
   disabled to keep the built graph aligned with Konsole's actual application
   targets.
@@ -136,10 +144,11 @@ GitHub workflow dispatch:
 10. The f4 reference itself was not modified. No hosted build was dispatched
    during either pass.
 
-The host Python module manifest is checked against both workflow apt install
-blocks, and the hosted preflight imports every declared module with
-`/usr/bin/python3`; therefore a newly declared KDE generator dependency cannot
-silently be present only in the Conan virtual environment.
+The host Python and DocBook manifests are checked against both workflow apt
+install blocks. Hosted preflight imports every declared Python module with
+`/usr/bin/python3` and probes every declared DocBook tool/data path before the
+KDE graph starts; a dependency therefore cannot silently be present only in
+the Conan virtual environment or absent from the runner.
 
 The reverse check also found and fixed three preflight issues before this
 record was finalized: the missing `zig-c++` plan variable, a false host-path

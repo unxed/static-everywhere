@@ -15,7 +15,8 @@ bash -n "$REPO_ROOT/tools/build-konsole.sh" "$REPO_ROOT/tools/preflight-konsole.
     "$REPO_ROOT/contrib/konsole/qt-package-root.sh" "$REPO_ROOT/tools/test-konsole-qt-package-root.sh" \
     "$REPO_ROOT/tools/test-konsole-qt-cmake-component-shims.sh" \
     "$REPO_ROOT/tools/test-konsole-host-cmake-discovery.sh" \
-    "$REPO_ROOT/tools/test-konsole-host-python-modules.sh"
+    "$REPO_ROOT/tools/test-konsole-host-python-modules.sh" \
+    "$REPO_ROOT/tools/test-konsole-host-docbook-tools.sh"
 pass 'Konsole shell scripts parse'
 
 bash "$REPO_ROOT/tools/test-konsole-cmake-package-prefixes-regression.sh"
@@ -164,6 +165,13 @@ for needle in \
     'libcanberra-dev' \
     'libdbus-1-dev' \
     'python3-lxml' \
+    'libxml2-dev' \
+    'libxml2-utils' \
+    'libxslt1-dev' \
+    'xsltproc' \
+    'docbook-xml' \
+    'docbook-xsl' \
+    'test-konsole-host-docbook-tools.sh' \
     'run-konsole-smoke.sh' \
     'Scan Konsole sources for newer glibc symbols'; do
     grep -Fq "$needle" "$workflow" || fail "workflow is missing: $needle"
@@ -172,6 +180,15 @@ if grep -Eiq 'setup-go|go build|go test' "$workflow"; then
     fail 'workflow unexpectedly contains a Go step'
 fi
 pass 'workflow preserves f4 CI gates and has no Go setup'
+
+while read -r apt_package probe_type probe extra; do
+    [[ -z "${apt_package:-}" || "$apt_package" == \#* ]] && continue
+    [[ -n "${probe_type:-}" && -n "${probe:-}" && -z "${extra:-}" ]] || \
+        fail 'DocBook host-tool manifest has a malformed entry'
+    grep -Fq "$apt_package" "$workflow" || \
+        fail "workflow does not install DocBook host package: $apt_package"
+done < "$REPO_ROOT/contrib/konsole/host-docbook-tools.txt"
+pass 'workflow installs declared DocBook host build tools'
 
 while read -r apt_package python_module extra; do
     [[ -z "${apt_package:-}" || "$apt_package" == \#* ]] && continue
