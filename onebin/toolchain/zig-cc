@@ -254,6 +254,13 @@ case "${_onebin_triple}" in
                         # whose libc symbols must stay unresolved.
                         continue
                         ;;
+                    -lm|-lpthread|-lrt|-lcrypt)
+                        # musl folds these compatibility libraries into libc.
+                        # A bare -lm makes Zig 0.13 select its cached libc.so
+                        # even under -nolibc; leave the symbols unresolved so
+                        # the exported U executable supplies them.
+                        continue
+                        ;;
                 esac
                 _onebin_rebuilt="$_onebin_rebuilt $(_onebin_shell_quote "$_onebin_arg")"
             done

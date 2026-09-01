@@ -5,10 +5,11 @@
 # even when the recipe requests static libraries.  Profile S's executable
 # flags (-static -pie) are correct for final executables.  U modules retain
 # ET_DYN while the zig wrappers suppress Zig's implicit libc/startup set
-# (-nolibc/-nostdlib), use the C driver for C++ object-only module links, and
-# put the final static driver mode after CMake's -shared create flag.  That
-# keeps libc and C++ runtime references bindable from the exported U executable
-# without creating DT_NEEDED.
+# (-nolibc/-nostdlib), remove musl's libc-folded compatibility -l flags, use
+# the C driver for C++ object-only module links, and put the final static
+# driver mode after CMake's -shared create flag.  That keeps libc and C++
+# runtime references bindable from the exported U executable without creating
+# DT_NEEDED.
 # This file supplies the policy and shared-object hardening.
 cmake_minimum_required(VERSION 3.16)
 
