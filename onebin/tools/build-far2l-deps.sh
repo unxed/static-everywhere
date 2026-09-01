@@ -6,6 +6,8 @@
 # for that prefix. The host is used only for X11/OpenGL headers and libraries
 # which SDL loads at runtime; the graphics and NetRocks libraries come from
 # contrib/far2l/deps.lock. Host libc headers are never part of this contract.
+# Profile U additionally accepts --solo-root so dynamic-loading dependencies
+# can compile against the carried dlfcn ABI.
 
 set -euo pipefail
 
@@ -24,6 +26,8 @@ WORK="${REPO_ROOT}/out/far2l/deps-work"
 JOBS=4
 PRINT_PLAN=0
 PROFILE=hybrid
+SOLO_ROOT=
+SDL_DLOPEN_CMAKE_ARGS=()
 
 usage() {
     sed -n '2,11p' "$0"
@@ -35,6 +39,7 @@ while [ "$#" -gt 0 ]; do
         --prefix) PREFIX=${2:?--prefix needs a directory}; shift 2 ;;
         --work)   WORK=${2:?--work needs a directory}; shift 2 ;;
         --jobs)   JOBS=${2:?--jobs needs a number}; shift 2 ;;
+        --solo-root) SOLO_ROOT=${2:-}; shift 2 ;;
         --print-plan) PRINT_PLAN=1; shift ;;
         -h|--help) usage; exit 0 ;;
         *) echo "build-far2l-deps.sh: unknown argument: $1" >&2; exit 2 ;;
@@ -70,12 +75,29 @@ PREFIX=${PREFIX}
 WORK=${WORK}
 source archives: contrib/far2l/deps.lock (sha256 verified)
 toolchain: ${CMAKE_TOOLCHAIN}
+SoLo root: ${SOLO_ROOT:-none}
 Meson: >= 1.11.0 (fontconfig 2.18.3 requirement)
 order: zlib -> mbedtls -> openssl -> expat -> freetype(pass 1) -> harfbuzz -> freetype(pass 2) -> fontconfig -> sdl2 -> libssh -> libnfs -> neon
 fontconfig install: copy static archive, generated pc and headers; never run meson install
 host link inputs: X11/OpenGL only; no host SDL/Qt/KDE/FreeType/HarfBuzz/Fontconfig
 PLAN
     exit 0
+fi
+
+if [ "${PROFILE}" = universal ]; then
+    if [ -z "${SOLO_ROOT}" ]; then
+        echo 'build-far2l-deps.sh: --solo-root is required for --profile universal' >&2
+        exit 2
+    fi
+    if [ ! -f "${SOLO_ROOT}/libdlfcn.a" ] ||
+       [ ! -f "${SOLO_ROOT}/lib/dlfcn.h" ]; then
+        echo "build-far2l-deps.sh: incomplete SoLo handoff root: ${SOLO_ROOT}" >&2
+        exit 2
+    fi
+    SDL_DLOPEN_CMAKE_ARGS=(
+        "-DONEBIN_PROFILE_U_DLOPEN_HEADER=${SOLO_ROOT}/lib/dlfcn.h"
+        '-DHAVE_DLOPEN_IN_LIBC=ON'
+    )
 fi
 
 MESON_MIN_VERSION=1.11.0
@@ -375,6 +397,7 @@ cmake_dep sdl2 sdl2 "${sdl2_src}" sdl2 \
     -DSDL_TESTS=OFF \
     -DONEBIN_HOST_GRAPHICS=ON \
     "-DONEBIN_FIND_LIBRARY_SUFFIXES=.so;.a" \
+    "${SDL_DLOPEN_CMAKE_ARGS[@]}" \
     -DCMAKE_POSITION_INDEPENDENT_CODE=ON
 
 sdl2_archive="${PREFIX}/sdl2/lib/libSDL2.a"
@@ -392,6 +415,17 @@ for soname in libX11.so.6 libXext.so.6; do
         exit 1
     fi
 done
+# The final U loader can provide native-looking names as a compatibility
+# fallback, but that does not repair the native caller's RTLD_* constants.
+# Keep this producer boundary honest: all SDL2 objects that use dl* must have
+# been compiled through SoLo's dlfcn interface.
+if nm -u "${sdl2_archive}" | grep -Eq \
+    '(^|[[:space:]])(dlopen|dlsym|dlclose|dlerror|dladdr)(@[^[:space:]]+)?$'; then
+    echo 'build-far2l-deps.sh: SDL2 archive still imports native dlfcn symbols' >&2
+    nm -u "${sdl2_archive}" | grep -E \
+        '(^|[[:space:]])(dlopen|dlsym|dlclose|dlerror|dladdr)(@[^[:space:]]+)?$' >&2
+    exit 1
+fi
 
 libssh_src=$(source_tree libssh)
 cmake_dep libssh libssh "${libssh_src}" libssh \

@@ -345,6 +345,7 @@ jobs:
             --profile universal \
             --prefix "$PWD/out/far2l/deps-prefix" \
             --work "$PWD/out/far2l/deps-work" \
+            --solo-root "$PWD/solo-src" \
             --jobs 4 2>&1 | tee /tmp/far2l-u-deps-build.log
 
       - name: Build far2l SDL Profile U

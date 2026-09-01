@@ -17,6 +17,35 @@ cmake_minimum_required(VERSION 3.16)
 
 include("${CMAKE_CURRENT_LIST_DIR}/onebin-linux-static.cmake")
 
+# Some dependency sources use the host dlfcn ABI directly instead of going
+# through their own loadso abstraction. In Profile U those calls must use the
+# carried loader's interface, including its RTLD_* values; resolving a native
+# dlopen symbol later through a static fallback cannot translate the flags
+# that the already-compiled caller passes. This opt-in is applied by the
+# dependency recipe only to such a producer (currently SDL2), and leaves the
+# ordinary CMake compiler/link probes unchanged unless the producer also
+# supplies the corresponding cached feature result.
+set(ONEBIN_PROFILE_U_DLOPEN_HEADER "" CACHE FILEPATH
+    "SoLo dlfcn.h to force-include in a Profile U dynamic-loading dependency")
+if(ONEBIN_PROFILE_U_DLOPEN_HEADER AND
+   NOT _ONEBIN_PROFILE_U_DLOPEN_FLAGS_ADDED)
+    if(NOT EXISTS "${ONEBIN_PROFILE_U_DLOPEN_HEADER}")
+        message(FATAL_ERROR
+            "onebin Profile U: missing dependency dlfcn header: "
+            "${ONEBIN_PROFILE_U_DLOPEN_HEADER}")
+    endif()
+    set(_onebin_profile_u_dlfcn_flags
+        "-include dlfcn.h"
+        "-include \"${ONEBIN_PROFILE_U_DLOPEN_HEADER}\"")
+    string(JOIN " " _onebin_profile_u_dlfcn_flags_str
+           ${_onebin_profile_u_dlfcn_flags})
+    set(CMAKE_C_FLAGS_INIT
+        "${CMAKE_C_FLAGS_INIT} ${_onebin_profile_u_dlfcn_flags_str}")
+    set(CMAKE_CXX_FLAGS_INIT
+        "${CMAKE_CXX_FLAGS_INIT} ${_onebin_profile_u_dlfcn_flags_str}")
+    set(_ONEBIN_PROFILE_U_DLOPEN_FLAGS_ADDED TRUE)
+endif()
+
 set(_onebin_shared_link_flags
     # Keep the U module boundary hardened.  Static-mode and libc suppression
     # are normalized by zig-cc/zig-c++ after CMake has emitted its complete
