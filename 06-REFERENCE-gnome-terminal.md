@@ -108,6 +108,14 @@ Terminal's `pk-gtk-module` block when GLib is an archive without relying on an
 unsupported linker interposition flag, and cover the known class of
 newer-glibc syscall references exposed by the target headers.
 
+The libhandy recipe also applies a captured source diff that makes its
+GResource generation manual-registerable and calls that registration from
+`hdy_init()`. This is required for any archive-linked library whose embedded
+resources are otherwise reachable only through a constructor in an object the
+static linker is free to discard. The smoke test therefore exercises the
+resource-backed libhandy theme during normal installed startup, not merely the
+link and ELF checks.
+
 ## 5. Verification
 
 After installation the script copies `gnome-terminal-server` to the requested output

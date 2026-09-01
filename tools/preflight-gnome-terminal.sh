@@ -140,6 +140,7 @@ for required in \
     'vte-static-library.patch' \
     'libhandy-static-library.patch' \
     'dependency patch contract: every patch is a valid Git diff captured from its pinned checkout' \
+    'static resource contract: archive-linked GResources use explicit registration from their library init path' \
     'VTE linker feature contract: _b_symbolic_functions=false for Zig 0.13 (unsupported -Bsymbolic-functions)' \
     'VTE static application policy: build-app=false; GNOME consumes the VTE library, not its demo application' \
     'synthetic intl.pc' \
@@ -160,6 +161,14 @@ for required in \
         fail "dependency plan is missing ${required}"
     fi
 done
+
+LIBHANDY_PATCH="${PATCH_DIR}/libhandy-static-library.patch"
+if grep -Fq -- '--manual-register' "${LIBHANDY_PATCH}" \
+    && grep -Fq -- 'hdy_register_resource' "${LIBHANDY_PATCH}"; then
+    pass 'libhandy GResources are explicitly retained and registered for static archives'
+else
+    fail 'libhandy static-resource registration is missing from the captured source diff'
+fi
 
 if grep -Fq -- '-ffile-prefix-map=${SRC_ABS}=.' "${BUILD_SCRIPT}" \
     && grep -Fq -- '-ffile-prefix-map=${DEPS_ABS}=.' "${BUILD_SCRIPT}" \

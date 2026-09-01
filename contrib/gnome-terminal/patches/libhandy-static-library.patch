@@ -1,8 +1,42 @@
+diff --git a/src/hdy-main-private.h b/src/hdy-main-private.h
+index 6d8a4d0..8d28882 100644
+--- a/src/hdy-main-private.h
++++ b/src/hdy-main-private.h
+@@ -21,4 +21,9 @@ G_BEGIN_DECLS
+  */
+ void hdy_init_public_types (void);
+ 
++/* The generated resource must be registered explicitly when libhandy is
++ * linked from a static archive; an unreferenced constructor object is
++ * otherwise discarded by the linker. */
++void hdy_register_resource (void);
++
+ G_END_DECLS
+diff --git a/src/hdy-main.c b/src/hdy-main.c
+index f1c1631..fcdeefd 100644
+--- a/src/hdy-main.c
++++ b/src/hdy-main.c
+@@ -186,6 +186,7 @@ hdy_init (void)
+ 
+   bind_textdomain_codeset (GETTEXT_PACKAGE, "UTF-8");
+   bindtextdomain (GETTEXT_PACKAGE, LOCALEDIR);
++  hdy_register_resource ();
+   hdy_init_public_types ();
+ 
+   hdy_style_init ();
 diff --git a/src/meson.build b/src/meson.build
-index 6a4c6a3..dba81ba 100644
+index 6a4c6a3..47cd556 100644
 --- a/src/meson.build
 +++ b/src/meson.build
-@@ -269,7 +269,7 @@ else
+@@ -5,6 +5,7 @@ libhandy_resources = gnome.compile_resources(
+    'handy.gresources.xml',
+ 
+    c_name: 'hdy',
++   extra_args: ['--manual-register'],
+ )
+ 
+ hdy_public_enum_headers = [
+@@ -269,7 +270,7 @@ else
    handy_libdir = libdir
  endif
  

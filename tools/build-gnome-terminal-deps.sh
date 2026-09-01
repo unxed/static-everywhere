@@ -126,6 +126,7 @@ cairo XRender function checks: HAVE_XRENDERCREATESOLIDFILL HAVE_XRENDERCREATELIN
 cmake contract: ${CMAKE_COMMON_ARGS[*]}
 source patches: util-linux-libuuid-only.patch gdk-pixbuf-static-loader-deps.patch gtk-no-host-atk-bridge.patch glib-static-gmodule-override.patch vte-static-library.patch libhandy-static-library.patch
 dependency patch contract: every patch is a valid Git diff captured from its pinned checkout
+static resource contract: archive-linked GResources use explicit registration from their library init path
 VTE linker feature contract: _b_symbolic_functions=false for Zig 0.13 (unsupported -Bsymbolic-functions)
 VTE static application policy: build-app=false; GNOME consumes the VTE library, not its demo application
 subproject policy: materialize pinned gvdb; provide libc gettext through a prefix-local synthetic intl.pc; no Meson downloads
