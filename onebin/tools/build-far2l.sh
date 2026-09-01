@@ -134,6 +134,7 @@ fi
 # where the repository is checked out.
 TOOLCHAIN_DIR="${ONEBIN_ROOT}/toolchain"
 ONEBIN_BIN="${ONEBIN_ROOT}/build/onebin"
+FAR2L_PATCH_DIR="${ONEBIN_ROOT}/../contrib/far2l/patches"
 
 # Third-party dependencies each configuration actually needs, per
 # contrib/far2l/deps.lock's own header comment (which explains the "why"
@@ -329,6 +330,21 @@ resolve_source() {
     fi
 }
 
+apply_far2l_patches() {
+    if [ "${PRINT_PLAN}" -eq 1 ]; then
+        return 0
+    fi
+
+    for patch in "${FAR2L_PATCH_DIR}"/*.patch; do
+        [ -e "${patch}" ] || continue
+        # Check first and apply second so a changed pinned checkout fails
+        # loudly. git apply's default context matching is exact here: no
+        # three-way merge, fuzz, or silently accepted stale hunk.
+        git -C "${SRC}" apply --check --whitespace=error "${patch}"
+        git -C "${SRC}" apply --whitespace=error "${patch}"
+    done
+}
+
 verify_deps() {
     deps_for_config "${CONFIG}" > /tmp/onebin-far2l-deps.$$ 2>/dev/null || true
     if [ ! -s /tmp/onebin-far2l-deps.$$ ]; then
@@ -441,6 +457,7 @@ if [ "${AUDIT_ONLY}" -eq 1 ]; then
 fi
 
 resolve_source
+apply_far2l_patches
 verify_deps
 configure_deps_env
 configure_build_install

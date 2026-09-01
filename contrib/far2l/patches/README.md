@@ -1,13 +1,15 @@
-# Why this directory is empty
+# Carried far2l patches
 
-This is the correct state, not an oversight. This project's policy is to
-never carry patches against far2l: every change that would improve the
-result is written up as a proposal in
-[`../UPSTREAM.md`](../UPSTREAM.md) instead, for far2l's own maintainers
-to consider and apply on their own terms. Carrying local patches would
-mean silently forking the source we claim to be auditing unmodified —
-the whole point of `04-REFERENCE-far2l.md` is that far2l is read and
-built as-is, findings and all.
+The default is still an unmodified pinned far2l checkout. This directory is
+non-empty only when a small, upstreamable fix is required for a supported
+Static Everywhere profile and the pinned source cannot run without it.
 
-If this directory ever stops being empty, that's a sign something went
-wrong upstream of this decision, not a milestone.
+`tools/build-far2l.sh` checks and applies patches in lexical order, without a
+three-way merge or fuzz. A changed pinned source therefore fails before its
+build starts instead of silently producing a different recipe.
+
+The current patch makes both optional path-translation hooks safe when
+`dlsym(RTLD_DEFAULT, ...)` cannot see the main executable in a static carried
+loader. It is generated from the exact far2l commit in `deps.lock` and is
+also suitable for proposing upstream; the full failure analysis remains in
+[`../UPSTREAM.md`](../UPSTREAM.md).

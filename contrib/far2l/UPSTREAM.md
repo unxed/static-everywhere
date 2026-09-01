@@ -5,7 +5,7 @@ below is traceable to findings already written up in
 [`04-REFERENCE-far2l.md`](../../04-REFERENCE-far2l.md) — this file adds
 no new claim about far2l's source.
 
-## 1. NULL-check the `dlsym(RTLD_DEFAULT, ...)` calls in `InstallPath.cpp`
+## 1. Make the `InstallPath.cpp` hooks safe when `dlsym` cannot see the main executable
 
 `utils/src/InstallPath.cpp`'s `TranslateInstallPath` (both the
 `std::wstring`/`GetPathTranslationPrefix` and the
@@ -17,9 +17,15 @@ statement calls through it — during startup path resolution, so the
 process segfaults before any UI appears. Full detail, reproduction, and
 a suggested minimal fix: `04-REFERENCE-far2l.md §2.5`.
 
-This is the one change that would matter most: it's the sole reason a
-fully static (Profile S) far2l build cannot even start, as opposed to
-merely being architecturally out of scope for one.
+This is the one change that matters most: it is the reason a fully static
+or carried-loader far2l build cannot start, as opposed to merely being
+architecturally out of scope for one. Static Everywhere carries the small,
+upstreamable fix as
+[`patches/0001-fix-utils-tolerate-unavailable-path-translation-hooks.patch`](patches/0001-fix-utils-tolerate-unavailable-path-translation-hooks.patch):
+both hooks first use a weak direct reference, then safely check the optional
+`dlsym` result before calling it. The patch is applied only after the exact
+pinned checkout has been verified, so a source change cannot be hidden by
+the recipe.
 
 ## 2. Static registration of plugins, so Profile S can have them
 

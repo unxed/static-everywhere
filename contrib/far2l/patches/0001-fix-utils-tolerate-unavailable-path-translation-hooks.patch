@@ -1,0 +1,68 @@
+From f6b953e6e8e4575d933adcf701c6a17014521716 Mon Sep 17 00:00:00 2001
+From: Static Everywhere <noreply@static-everywhere.invalid>
+Date: Tue, 1 Sep 2026 06:14:06 +0200
+Subject: [PATCH] fix(utils): tolerate unavailable path translation hooks
+
+---
+ utils/src/InstallPath.cpp | 35 +++++++++++++++++++++++++++++++----
+ 1 file changed, 31 insertions(+), 4 deletions(-)
+
+diff --git a/utils/src/InstallPath.cpp b/utils/src/InstallPath.cpp
+index 4e00f235..35e09c2f 100644
+--- a/utils/src/InstallPath.cpp
++++ b/utils/src/InstallPath.cpp
+@@ -41,20 +41,47 @@ template <class C>
+ typedef const char *(*tGetPathTranslationPrefixA)();
+ typedef const wchar_t *(*tGetPathTranslationPrefix)();
+ 
+-static bool TranslateInstallPath(std::wstring &path, const wchar_t *dir_from, const wchar_t *dir_to)
++// Keep path translation usable in static and carried-loader builds.  In those
++// builds RTLD_DEFAULT is a provider handle rather than the kernel's main
++// executable, so dlsym may legitimately return NULL even though the main
++// executable defines these optional hooks.  A weak direct reference lets the
++// normal linker/loader resolve the hook when it is present and leaves it NULL
++// when this utility is used without the far2l WinPort implementation.
++extern "C" const wchar_t *GetPathTranslationPrefix() __attribute__((weak));
++extern "C" const char *GetPathTranslationPrefixA() __attribute__((weak));
++
++static const wchar_t *PathTranslationPrefix()
+ {
++	if (GetPathTranslationPrefix) {
++		return GetPathTranslationPrefix();
++	}
++
+ 	static tGetPathTranslationPrefix pGetPathTranslationPrefix =
+ 		(tGetPathTranslationPrefix)dlsym(RTLD_DEFAULT, "GetPathTranslationPrefix");
+ 
+-	return TranslateInstallPathT(path, dir_from, dir_to, pGetPathTranslationPrefix());
++	return pGetPathTranslationPrefix ? pGetPathTranslationPrefix() : nullptr;
+ }
+ 
+-static bool TranslateInstallPath(std::string &path, const char *dir_from, const char *dir_to)
++static const char *PathTranslationPrefixA()
+ {
++	if (GetPathTranslationPrefixA) {
++		return GetPathTranslationPrefixA();
++	}
++
+ 	static tGetPathTranslationPrefixA pGetPathTranslationPrefixA =
+ 		(tGetPathTranslationPrefixA)dlsym(RTLD_DEFAULT, "GetPathTranslationPrefixA");
+ 
+-	return TranslateInstallPathT(path, dir_from, dir_to, pGetPathTranslationPrefixA());
++	return pGetPathTranslationPrefixA ? pGetPathTranslationPrefixA() : nullptr;
++}
++
++static bool TranslateInstallPath(std::wstring &path, const wchar_t *dir_from, const wchar_t *dir_to)
++{
++	return TranslateInstallPathT(path, dir_from, dir_to, PathTranslationPrefix());
++}
++
++static bool TranslateInstallPath(std::string &path, const char *dir_from, const char *dir_to)
++{
++	return TranslateInstallPathT(path, dir_from, dir_to, PathTranslationPrefixA());
+ }
+ 
+ bool TranslateInstallPath_Bin2Share(std::wstring &path)
+-- 
+2.43.0
+
