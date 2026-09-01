@@ -162,10 +162,14 @@ _onebin_triple="${_onebin_triple%%.*}"
 # MODULE.  For every musl shared link, canonicalise the whole class here:
 # remove any earlier -static, suppress Zig's implicit libc plus startup
 # objects, and append the final driver mode after all -shared/create flags.
-# The module's libc and C++ runtime symbols remain undefined so the exported U
-# executable supplies the one process-wide runtime.  `zig c++` still adds its
-# cached libc.so for a C++ link even with `-nolibc`; use the C driver for the
-# object-only shared link, since it does not add a second C++/libc runtime.
+# The module's libc symbols remain undefined so the exported U executable
+# supplies the one process-wide musl runtime.  C++ runtime symbols cannot use
+# that route reliably: Zig's libc++ archives mark parts of the ABI hidden in a
+# static PIE, so `--export-dynamic` does not make those definitions visible to
+# a later dlopen.  Link the C++ runtime archives into the module itself while
+# keeping libc suppressed.  `zig c++` still adds its cached libc.so for a C++
+# link even with `-nolibc`; use the C driver for the object-only shared link so
+# the final runtime set is explicit and static.
 # Compile-only invocations continue to use the C++ driver below.
 # This is deliberately driver-wide rather than a far2l target hack; every
 # CMake SHARED/MODULE target using the musl wrapper gets the same rule.
@@ -200,7 +204,12 @@ case "${_onebin_triple}" in
                 esac
                 _onebin_rebuilt="$_onebin_rebuilt $(_onebin_shell_quote "$_onebin_arg")"
             done
-            _onebin_rebuilt="$_onebin_rebuilt -nolibc -nostdlib -static"
+            # A U module must be self-contained for C++ ABI support.  These
+            # archives are supplied by the same Zig target runtime as the
+            # final executable; -static makes the choice independent of any
+            # host libc++ installation.  libc itself is intentionally absent
+            # and is resolved by SoLo against the executable's musl image.
+            _onebin_rebuilt="$_onebin_rebuilt -nolibc -nostdlib -static -lc++ -lc++abi -lunwind"
             eval "set --${_onebin_rebuilt}"
             _onebin_use_c_driver=1
         fi

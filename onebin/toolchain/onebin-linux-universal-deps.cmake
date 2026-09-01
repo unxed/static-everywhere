@@ -7,9 +7,11 @@
 # ET_DYN while the zig wrappers suppress Zig's implicit libc/startup set
 # (-nolibc/-nostdlib), remove musl's libc-folded compatibility -l flags, use
 # the C driver for C++ object-only module links, and put the final static
-# driver mode after CMake's -shared create flag.  That keeps libc and C++
-# runtime references bindable from the exported U executable without creating
-# DT_NEEDED.
+# driver mode after CMake's -shared create flag.  C++ modules carry their
+# libc++/libc++abi/libunwind archives; only libc remains process-wide and is
+# bound by SoLo from the exported U executable.  This avoids relying on
+# hidden static-PIC C++ ABI definitions becoming dynamic exports, while still
+# producing no DT_NEEDED.
 # This file supplies the policy and shared-object hardening.
 cmake_minimum_required(VERSION 3.16)
 
@@ -19,7 +21,9 @@ set(_onebin_shared_link_flags
     # Keep the U module boundary hardened.  Static-mode and libc suppression
     # are normalized by zig-cc/zig-c++ after CMake has emitted its complete
     # argv; keeping the hardening here makes the policy visible to all
-    # CMake toolchain consumers.
+    # CMake toolchain consumers.  The wrappers also add the target C++
+    # runtime archives for every musl C++ module, so this applies to the
+    # whole Profile U module family rather than only far2l SDL.
     "-Wl,-z,relro"
     "-Wl,-z,now"
     "-Wl,-z,noexecstack"
