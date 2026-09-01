@@ -35,3 +35,16 @@ set(CMAKE_MODULE_LINKER_FLAGS_INIT
     "${_onebin_shared_link_flags_str}")
 
 set(CMAKE_SKIP_RPATH ON)
+
+# The universal dependency graph is otherwise host-independent. A recipe may
+# opt in to the narrow graphics host contract when a package performs CMake
+# find_library() discovery for runtime-loaded X11/GL objects. This is kept
+# separate from the compiler wrapper's libc-header isolation and from the
+# final artifact's linker flags.
+option(ONEBIN_HOST_GRAPHICS
+       "Allow CMake discovery of host X11/OpenGL libraries" OFF)
+if(ONEBIN_HOST_GRAPHICS)
+    list(APPEND CMAKE_LIBRARY_PATH
+         "/usr/lib/${CMAKE_HOST_SYSTEM_PROCESSOR}-linux-gnu"
+         "/usr/lib" "/lib/${CMAKE_HOST_SYSTEM_PROCESSOR}-linux-gnu")
+endif()

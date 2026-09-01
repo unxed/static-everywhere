@@ -374,6 +374,7 @@ cmake_dep sdl2 sdl2 "${sdl2_src}" sdl2 \
     -DSDL_OPENGLES=ON \
     -DSDL_TEST=OFF \
     -DSDL_TESTS=OFF \
+    -DONEBIN_HOST_GRAPHICS=ON \
     "-DONEBIN_FIND_LIBRARY_SUFFIXES=.so;.a" \
     -DCMAKE_POSITION_INDEPENDENT_CODE=ON
 
