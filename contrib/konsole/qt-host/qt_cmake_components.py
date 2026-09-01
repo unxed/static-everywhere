@@ -21,6 +21,15 @@ if(DEFINED Qt6_VERSION_STRING)
     set(Qt6{module}_VERSION_STRING "${{Qt6_VERSION_STRING}}")
     set(Qt6{module}_VERSION "${{Qt6_VERSION_STRING}}")
 endif()
+
+if("{module}" STREQUAL "Gui" AND
+   (TARGET Qt6::QXcbIntegrationPlugin OR TARGET Qt6::XcbQpaPrivate))
+    # Conan's aggregate Qt config carries the XCB targets but does not carry
+    # Qt's upstream QT_FEATURE_xcb variable. KDE's KGuiAddons checks that
+    # variable before compiling its X11 backend; derive it from the concrete
+    # QPA targets so the adapter remains correct when X11 is disabled too.
+    set(QT_FEATURE_xcb ON)
+endif()
 '''
 
 

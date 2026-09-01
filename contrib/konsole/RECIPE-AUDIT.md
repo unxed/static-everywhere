@@ -70,8 +70,11 @@ that are not safe with a Widgets-only, no-QtWayland target:
   host-ABI discovery rule, not a one-library workaround. Because Zig's CMake
   ABI probe leaves multiarch metadata empty, the common hook restores the
   pointer size, architecture and implicit include contract before these
-  finders run. Static Qt/KF6 selection remains protected by Conan prefix
-  ordering and the final graph assertion.
+  finders run. KGuiAddons also checks Qt's `QT_FEATURE_xcb` variable; Conan's
+  aggregate Qt config publishes the concrete XCB QPA targets but omits that
+  upstream feature variable, so the generated `Qt6GuiConfig.cmake` adapter
+  derives it from those targets. Static Qt/KF6 selection remains protected by
+  Conan prefix ordering and the final graph assertion.
 - KArchive defaults BZip2, LZMA, OpenSSL and Zstd to required. BZip2, LZMA and
   Zlib are direct Conan requirements because KArchive compiles sources that
   include their headers; the recipe disables the unused OpenSSL/Zstd paths.
@@ -113,14 +116,17 @@ GitHub workflow dispatch:
 5. A host CMake discovery regression with intentionally erased Zig ABI
    metadata found the real X11 library through `FindX11` in the multiarch
    directory.
-6. A miniature CMake project with fake static qxcb/GL plugin archives
+6. A miniature CMake project with a fake aggregate Qt config verified that
+   the component adapter preserves Qt's XCB feature metadata when the
+   concrete QPA targets are present.
+7. A miniature CMake project with fake static qxcb/GL plugin archives
    configured and built successfully. It exercised the Itanium symbol parser,
    `.prl` closure, executable-only `INTERFACE_SOURCES`, optional-GL CXX
    compilation and static-graph assertion.
-7. `./tools/test-optional-gl-cxx-only.sh` passed.
-8. `make -C onebin test` passed: 273 tests passed and 3 were skipped by their
+8. `./tools/test-optional-gl-cxx-only.sh` passed.
+9. `make -C onebin test` passed: 273 tests passed and 3 were skipped by their
    existing fixture/locale guards.
-8. The f4 reference itself was not modified. No hosted build was dispatched
+10. The f4 reference itself was not modified. No hosted build was dispatched
    during either pass.
 
 The reverse check also found and fixed three preflight issues before this

@@ -51,3 +51,17 @@ QML still gets it, and still needs the QML dependencies.
 
 **Suggested fix:** gate on the option, or on
 `BUILD_WITH_QML AND TARGET Qt6::Qml`, so the option means what it says.
+
+## 3. Conan's aggregate Qt config omits `QT_FEATURE_xcb`
+
+The pinned KGuiAddons source checks `QT_FEATURE_xcb` before compiling its
+X11 backend. The Conan `qt/6.11.1` package is built with `with_x11=True` and
+does ship the concrete `Qt6::QXcbIntegrationPlugin` and
+`Qt6::XcbQpaPrivate` targets, but its aggregate `Qt6Config.cmake` does not
+export the upstream feature variable. A consumer can therefore find both
+host X11/XCB and still fail KGuiAddons' configure-time feature check.
+
+**Suggested fix:** export Qt feature variables alongside the aggregate
+component targets, or derive them in the generated component adapter. This
+recipe derives `QT_FEATURE_xcb` only when one of the concrete XCB QPA targets
+exists, so disabling X11 cannot accidentally claim that feature is enabled.
