@@ -122,6 +122,12 @@ that are not safe with a Widgets-only, no-QtWayland target:
   explicit recipe input and the component-adapter regression exercises
   `find_package(Qt6Svg)`; this prevents a framework-only Qt module from being
   discovered one CI failure too late.
+- Several KDE Frameworks in the same graph request private Qt modules with
+  standalone lookups such as `find_package(Qt6GuiPrivate)`, while Conan's
+  aggregate Qt config exposes the target only through `Qt6Config.cmake`.
+  The recipe now emits compatibility adapters for the private-component
+  family and the regression exercises `Qt6GuiPrivate`, so this package-form
+  mismatch is handled as a class.
 
 Wayland is intentionally not part of this acceptance pass. There is no
 architectural blocker to adding it later: the recipe will need QtWayland,

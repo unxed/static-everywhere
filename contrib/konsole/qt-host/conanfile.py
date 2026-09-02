@@ -111,6 +111,35 @@ class KonsoleQtHostConan(ConanFile):
             and component_name.startswith("qt")
             and component_name != "qtPlatform"
         )
+        # Conan's aggregate Qt config can define private targets without
+        # publishing a standalone Qt6<Module>PrivateConfig.cmake. KDE
+        # Frameworks use both forms (for example Qt6GuiPrivate), so cover the
+        # complete private-component family instead of discovering one missing
+        # adapter at a time in the hosted graph.
+        qt_components = sorted(
+            set(qt_components)
+            | {
+                "ConcurrentPrivate",
+                "CorePrivate",
+                "DBusPrivate",
+                "GuiPrivate",
+                "MultimediaPrivate",
+                "MultimediaWidgetsPrivate",
+                "NetworkPrivate",
+                "OpenGLPrivate",
+                "OpenGLWidgetsPrivate",
+                "PrintSupportPrivate",
+                "QmlPrivate",
+                "QuickPrivate",
+                "ShaderToolsPrivate",
+                "SqlPrivate",
+                "SvgPrivate",
+                "SvgWidgetsPrivate",
+                "TestPrivate",
+                "WidgetsPrivate",
+                "XmlPrivate",
+            }
+        )
         for module in qt_components:
             save(self, f"Qt6{module}Config.cmake", component_config(module))
             save(self, f"Qt6{module}ConfigVersion.cmake", component_version_config())

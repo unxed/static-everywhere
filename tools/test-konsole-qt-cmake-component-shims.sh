@@ -25,6 +25,7 @@ set(Qt6_FOUND TRUE)
 set(Qt6_VERSION_STRING "6.11.1")
 add_library(Qt6::Core INTERFACE IMPORTED)
 add_library(Qt6::Gui INTERFACE IMPORTED)
+add_library(Qt6::GuiPrivate INTERFACE IMPORTED)
 add_library(Qt6::Svg INTERFACE IMPORTED)
 add_library(Qt6::Widgets INTERFACE IMPORTED)
 add_library(Qt6::QXcbIntegrationPlugin INTERFACE IMPORTED)
@@ -60,7 +61,7 @@ import sys
 from qt_cmake_components import component_config, component_version_config
 
 destination = pathlib.Path(sys.argv[1])
-for module in ("Core", "Gui", "Svg", "Widgets"):
+for module in ("Core", "Gui", "GuiPrivate", "Svg", "Widgets"):
     (destination / f"Qt6{module}Config.cmake").write_text(
         component_config(module), encoding="utf-8"
     )
@@ -74,10 +75,12 @@ cmake_minimum_required(VERSION 3.21)
 project(konsole_qt_component_probe CXX)
 find_package(Qt6Core 6.11.1 CONFIG REQUIRED)
 find_package(Qt6Gui 6.11.1 CONFIG REQUIRED)
+find_package(Qt6GuiPrivate 6.11.1 CONFIG REQUIRED)
 find_package(Qt6Svg 6.11.1 CONFIG REQUIRED)
 find_package(Qt6Widgets CONFIG REQUIRED)
 find_package(LibMount 2.41.0 CONFIG REQUIRED)
-if(NOT TARGET Qt6::Core OR NOT TARGET Qt6::Svg OR NOT TARGET Qt6::Widgets)
+if(NOT TARGET Qt6::Core OR NOT TARGET Qt6::GuiPrivate OR
+   NOT TARGET Qt6::Svg OR NOT TARGET Qt6::Widgets)
     message(FATAL_ERROR "Qt6 component adapters did not expose aggregate targets")
 endif()
 if(NOT QT_FEATURE_xcb)

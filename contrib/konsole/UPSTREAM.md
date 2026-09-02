@@ -65,3 +65,12 @@ host X11/XCB and still fail KGuiAddons' configure-time feature check.
 component targets, or derive them in the generated component adapter. This
 recipe derives `QT_FEATURE_xcb` only when one of the concrete XCB QPA targets
 exists, so disabling X11 cannot accidentally claim that feature is enabled.
+
+## 4. Conan's aggregate Qt config omits standalone private-module adapters
+
+Several KDE Frameworks in the pinned dependency graph call
+`find_package(Qt6GuiPrivate)` while Conan's Qt package exposes the corresponding
+`Qt6::GuiPrivate` target only from its aggregate `Qt6Config.cmake`. CMake's
+CONFIG lookup therefore fails before it can use the target. The recipe emits
+adapters for the Qt private-component family and verifies the
+`Qt6GuiPrivate` form in its component regression test.

@@ -210,6 +210,7 @@ pass 'workflow installs declared host Python build modules'
 for needle in \
     'exports = "qt_cmake_components.py"' \
     'self.dependencies["qt"].cpp_info.components' \
+    '"GuiPrivate"' \
     'component_config(module)' \
     'component_version_config()' \
     '"qt/*:qtsvg": True' \
@@ -226,6 +227,10 @@ for needle in \
         fail "Conan recipe is missing CMake dependency compatibility metadata: $needle"
 done
 pass 'Conan recipe carries component and target compatibility metadata'
+
+grep -Fq 'Qt6GuiPrivate' "$REPO_ROOT/tools/test-konsole-qt-cmake-component-shims.sh" || \
+    fail 'Qt private-component adapter regression is missing'
+pass 'Conan recipe covers standalone Qt private-component lookups'
 
 grep -Fq -- "-o:h 'qt/*:qtsvg=True'" "$REPO_ROOT/tools/build-konsole.sh" || \
     fail 'build-konsole.sh does not enable QtSvg required by KDE Frameworks'
