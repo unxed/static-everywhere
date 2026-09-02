@@ -116,9 +116,10 @@ that are not safe with a Widgets-only, no-QtWayland target:
 - Conan's CMakeDeps can also generate CONFIG files for packages that KDE
   intentionally consumes through an upstream `Find<Package>.cmake` MODULE.
   CONFIG-first lookup can then expose a target while dropping the finder's
-  legacy include/library variables. The common hook enforces MODULE-first
-  lookup for the whole graph, with Conan CONFIG files retained as fallback;
-  the regression test uses both forms to protect this precedence rule.
+  legacy include/library variables. A reusable legacy CONFIG-adapter
+  generator bridges the imported target, include directories, libraries and
+  version variables while preserving CONFIG-first lookup for KDE targets;
+  the regression test exercises this class with both forms.
 - Designer plugins and text-to-speech are optional framework features and are
   disabled to keep the built graph aligned with Konsole's actual application
   targets.

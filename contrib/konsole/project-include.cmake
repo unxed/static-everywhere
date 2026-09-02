@@ -88,21 +88,6 @@ endif()
 
 _se_promote_conan_package_prefixes()
 
-# Conan's CMakeDeps can generate a CONFIG package for a dependency whose
-# upstream project deliberately consumes a MODULE finder. CONFIG lookup then
-# wins when this recipe's global preference is ON: the generated target may
-# be usable while the legacy variables exported by the upstream Find module
-# remain unset. Keep the normal CMake order for every project in the KDE
-# graph. CONFIG packages are still the fallback, and Conan prefixes remain
-# first, so this changes only the resolution order for dependencies that have
-# both forms. This is a graph-wide compatibility rule, not a Hunspell
-# workaround.
-if(CMAKE_FIND_PACKAGE_PREFER_CONFIG)
-    set(CMAKE_FIND_PACKAGE_PREFER_CONFIG OFF)
-    message(STATUS
-            "static-everywhere: prefer upstream MODULE finders; use Conan CONFIG packages as fallback")
-endif()
-
 if(NOT PROJECT_IS_TOP_LEVEL)
     return()
 endif()

@@ -26,7 +26,7 @@ bash "$REPO_ROOT/tools/test-konsole-cmake-package-prefixes-regression.sh"
 pass 'Conan CMake package prefixes are available to CONFIG-mode find_package'
 
 bash "$REPO_ROOT/tools/test-konsole-cmake-find-mode.sh"
-pass 'upstream MODULE finders retain precedence over incomplete Conan CONFIG packages'
+pass 'legacy-variable consumers receive complete Conan CONFIG adapters'
 
 bash "$REPO_ROOT/tools/test-konsole-host-cmake-discovery.sh"
 pass 'host CMake module discovery survives Zig ABI-probe metadata loss'
@@ -217,6 +217,7 @@ for needle in \
     '"GuiPrivate"' \
     'component_config(module)' \
     'component_version_config()' \
+    'legacy_package_config' \
     '"qt/*:qt5compat": True' \
     '"qt/*:qtsvg": True' \
     '"hunspell/1.7.2"' \
@@ -232,6 +233,8 @@ for needle in \
     grep -Fq "$needle" "$REPO_ROOT/contrib/konsole/qt-host/conanfile.py" || \
         fail "Conan recipe is missing CMake dependency compatibility metadata: $needle"
 done
+grep -Fq '"HUNSPELLConfig.cmake"' "$REPO_ROOT/contrib/konsole/qt-host/conanfile.py" || \
+    fail 'legacy Hunspell CONFIG adapter is missing'
 pass 'Conan recipe carries component and target compatibility metadata'
 
 grep -Fq 'konsole_conan_package_roots' "$REPO_ROOT/tools/build-konsole.sh" || \

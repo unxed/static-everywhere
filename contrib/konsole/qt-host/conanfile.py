@@ -2,7 +2,11 @@ from conan import ConanFile
 from conan.tools.cmake import CMakeDeps, CMakeToolchain
 from conan.tools.files import save
 
-from qt_cmake_components import component_config, component_version_config
+from qt_cmake_components import (
+    component_config,
+    component_version_config,
+    legacy_package_config,
+)
 
 
 class KonsoleQtHostConan(ConanFile):
@@ -151,6 +155,24 @@ class KonsoleQtHostConan(ConanFile):
         for module in qt_components:
             save(self, f"Qt6{module}Config.cmake", component_config(module))
             save(self, f"Qt6{module}ConfigVersion.cmake", component_version_config())
+
+        # Conan's generated CONFIG file exposes hunspell::hunspell, while
+        # Sonnet's upstream FindHUNSPELL.cmake consumes legacy variables and
+        # the PKG_HUNSPELL_VERSION probe. Generate the same compatibility
+        # adapter shape for this and future variable-based consumers instead
+        # of relying on a global MODULE/CONFIG preference that can break KDE
+        # packages such as LibMount.
+        save(
+            self,
+            "HUNSPELLConfig.cmake",
+            legacy_package_config(
+                package="hunspell",
+                target="hunspell::hunspell",
+                variable_prefix="HUNSPELL",
+                version="1.7.2",
+            ),
+        )
+        self.output.info("Generated legacy-variable adapter: HUNSPELLConfig.cmake")
         self.output.info(
             "Generated Qt6 component CMake compatibility adapters: "
             + ", ".join(f"Qt6{module}" for module in qt_components)
@@ -165,11 +187,10 @@ class KonsoleQtHostConan(ConanFile):
         tc.variables["CMAKE_C_IMPLICIT_INCLUDE_DIRECTORIES"] = "/usr/include"
         tc.variables["CMAKE_CXX_IMPLICIT_INCLUDE_DIRECTORIES"] = "/usr/include"
         tc.variables["CMAKE_SKIP_RPATH"] = True
-        # Upstream KDE Find modules must run before Conan's generated CONFIG
-        # packages. CONFIG remains the fallback, while MODULE-first lookup
-        # preserves legacy companion variables such as *_INCLUDE_DIRS and
-        # *_LIBRARIES that generated targets do not always publish.
-        tc.variables["CMAKE_FIND_PACKAGE_PREFER_CONFIG"] = False
+        # Conan's static CONFIG packages remain preferred so KDE's own
+        # dependency targets and aliases are selected. Legacy variable-based
+        # consumers are adapted in the generated package config above.
+        tc.variables["CMAKE_FIND_PACKAGE_PREFER_CONFIG"] = True
         tc.variables["CMAKE_FIND_USE_PACKAGE_REGISTRY"] = False
         tc.variables["CMAKE_FIND_USE_SYSTEM_PACKAGE_REGISTRY"] = False
         tc.generate()

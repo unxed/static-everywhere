@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Regression test for Conan CONFIG packages shadowing upstream MODULE finders.
+# Regression test for Conan CONFIG adapters serving legacy variable-based
+# upstream consumers.
 set -euo pipefail
 
 
@@ -9,34 +10,48 @@ PROBE=$(mktemp -d /tmp/static-everywhere-konsole-find-mode.XXXXXX)
 trap 'rm -rf "$PROBE"' EXIT
 
 
-mkdir -p "$PROBE/source" "$PROBE/module" "$PROBE/config"
+mkdir -p "$PROBE/source" "$PROBE/config"
 cat >"$PROBE/source/CMakeLists.txt" <<'CMAKE'
 cmake_minimum_required(VERSION 3.25)
 project(find_mode_probe LANGUAGES NONE)
 
 find_package(LEGACY_PROBE REQUIRED)
-if(NOT LEGACY_PROBE_FROM_MODULE)
-    message(FATAL_ERROR "the Conan CONFIG package shadowed the upstream MODULE finder")
+if(NOT LEGACY_PROBE_FOUND)
+    message(FATAL_ERROR "the generated CONFIG adapter did not find the target")
 endif()
-if(NOT LEGACY_PROBE_INCLUDE_DIRS STREQUAL "module-include")
-    message(FATAL_ERROR "the MODULE finder did not publish its legacy variables")
+if(NOT LEGACY_PROBE_INCLUDE_DIRS STREQUAL "probe-include")
+    message(FATAL_ERROR "the CONFIG adapter did not publish include variables")
+endif()
+if(NOT LEGACY_PROBE_LIBRARIES STREQUAL "legacy::legacy")
+    message(FATAL_ERROR "the CONFIG adapter did not publish the target")
+endif()
+if(NOT PKG_LEGACY_PROBE_VERSION STREQUAL "9.1")
+    message(FATAL_ERROR "the CONFIG adapter did not publish the package version")
 endif()
 CMAKE
-cat >"$PROBE/module/FindLEGACY_PROBE.cmake" <<'CMAKE'
-set(LEGACY_PROBE_FOUND TRUE)
-set(LEGACY_PROBE_FROM_MODULE TRUE)
-set(LEGACY_PROBE_INCLUDE_DIRS module-include)
-CMAKE
-cat >"$PROBE/config/LEGACY_PROBEConfig.cmake" <<'CMAKE'
-set(LEGACY_PROBE_FOUND TRUE)
-set(LEGACY_PROBE_FROM_CONFIG TRUE)
+cat >"$PROBE/config/legacy_probe-config.cmake" <<'CMAKE'
+add_library(legacy::legacy INTERFACE IMPORTED)
+set_property(TARGET legacy::legacy PROPERTY INTERFACE_INCLUDE_DIRECTORIES probe-include)
+set(legacy_probe_FOUND TRUE)
 CMAKE
 
-# Simulate the recipe's global Conan preference. The project hook must retain
-# MODULE-first lookup so an upstream finder can publish its companion vars.
+python3 - "$REPO_ROOT/contrib/konsole/qt-host" "$PROBE/config/LEGACY_PROBEConfig.cmake" <<'PY'
+import pathlib
+import sys
+
+sys.path.insert(0, sys.argv[1])
+from qt_cmake_components import legacy_package_config
+
+pathlib.Path(sys.argv[2]).write_text(
+    legacy_package_config("legacy_probe", "legacy::legacy", "LEGACY_PROBE", "9.1"),
+    encoding="utf-8",
+)
+PY
+
+# Simulate the recipe's global Conan preference. The generated CONFIG adapter
+# must bridge the target to the variables an upstream Find module expects.
 cmake -S "$PROBE/source" -B "$PROBE/build" -G Ninja \
     -DCMAKE_PROJECT_INCLUDE="$REPO_ROOT/contrib/konsole/project-include.cmake" \
-    -DCMAKE_MODULE_PATH="$PROBE/module" \
     -DCMAKE_PREFIX_PATH="$PROBE/config" \
     -DCMAKE_FIND_PACKAGE_PREFER_CONFIG=ON
-printf 'Konsole CMake MODULE/CONFIG precedence regression: PASS\n'
+printf 'Konsole CMake legacy CONFIG adapter regression: PASS\n'

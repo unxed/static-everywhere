@@ -36,3 +36,29 @@ endif()
 def component_version_config() -> str:
     """Return a version-file adapter matching the aggregate Qt package."""
     return 'include("${CMAKE_CURRENT_LIST_DIR}/Qt6ConfigVersion.cmake")\n'
+
+
+def legacy_package_config(
+    package: str, target: str, variable_prefix: str, version: str
+) -> str:
+    """Return a CONFIG adapter for a legacy variable-based CMake consumer."""
+    return f'''# Conan's CMakeDeps package config exports the imported target
+# but the upstream Find module also expects legacy variables.
+include("${{CMAKE_CURRENT_LIST_DIR}}/{package}-config.cmake")
+
+if(TARGET {target})
+    get_target_property(_static_everywhere_includes
+                        {target} INTERFACE_INCLUDE_DIRECTORIES)
+    if(_static_everywhere_includes AND
+       NOT "${{_static_everywhere_includes}}" MATCHES "-NOTFOUND$")
+        set({variable_prefix}_INCLUDE_DIRS "${{_static_everywhere_includes}}")
+    endif()
+    set({variable_prefix}_LIBRARIES {target})
+    set({variable_prefix}_FOUND TRUE)
+    set({variable_prefix}_VERSION "{version}")
+    set({variable_prefix}_VERSION_STRING "{version}")
+    set(PKG_{variable_prefix}_VERSION "{version}")
+else()
+    set({variable_prefix}_FOUND FALSE)
+endif()
+'''
