@@ -85,4 +85,44 @@ if len(literals) > 2:
              f'({literals[:4]}...); derive them instead')
 PY
 
+# 6. No other check may demand the literal list back.
+#
+# The preflight used to require the string "GuiPrivate" in the recipe --
+# pinning in place the very habit this derivation removed. Two guards
+# then disagreed, and CI failed on the contradiction rather than on any
+# real defect. A guard that asserts the old shape is as much a
+# regression as code that reintroduces it.
+python3 - "$REPO_ROOT" <<'CONTRADICTION'
+import pathlib, re, sys
+
+root = pathlib.Path(sys.argv[1])
+lines = (root / 'tools/preflight-konsole.sh').read_text().splitlines()
+
+# Only the needles applied to the recipe matter. A private component
+# named elsewhere is usually legitimate -- the shim test calls
+# find_package(Qt6GuiPrivate) to prove a private adapter works, which is
+# behaviour, not a list.
+offenders, in_needles = [], False
+for line in lines:
+    stripped = line.strip()
+    if stripped.startswith('for needle in'):
+        in_needles = True
+        continue
+    if in_needles:
+        if stripped.startswith('done') or 'grep -Fq "$needle"' in stripped:
+            in_needles = False
+            continue
+        if stripped.startswith('#'):
+            continue
+        if re.search(r'\w+Private', stripped):
+            offenders.append(stripped)
+
+if offenders:
+    print('the konsole preflight requires the recipe to name private Qt')
+    print('components literally, which is the habit the derivation removed:')
+    for line in offenders[:3]:
+        print('  ' + line)
+    sys.exit(1)
+CONTRADICTION
+
 printf 'qt component shims: derived from the package, private family complete\n'

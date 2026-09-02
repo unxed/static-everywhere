@@ -7,6 +7,37 @@ Everything below this section is a reverse-chronological log (newest
 first). Read *this* section first; consult the log below only for the
 detail behind a specific claim.
 
+### The preflight demanded exactly what the new guard forbids
+
+The derivation commit turned the preflight red, and on nothing real:
+
+```
+FAIL: Conan recipe is missing CMake dependency compatibility metadata: "GuiPrivate"
+```
+
+An older check required the recipe to contain the literal string
+`"GuiPrivate"` — pinning in place the hand written list the derivation
+had just replaced. Two guards asserting opposite things, and CI failing
+on the contradiction rather than on any defect. My omission: I removed
+the habit and left a check that required it.
+
+The needle is now `component_shim_names(`, which asserts the derivation
+rather than its output.
+
+And since one contradiction of this shape means the next is possible,
+`test-konsole-qt-component-derivation.sh` now inspects the preflight's
+own recipe-needle list and fails if it names a private component
+literally. A guard that asserts the superseded shape is as much a
+regression as code that reintroduces it.
+
+**That check immediately found a second literal I would have missed** —
+`grep -Fq 'Qt6GuiPrivate'` — and it is legitimate: it requires the shim
+test to actually call `find_package(Qt6GuiPrivate)`, which is behaviour,
+not a list. So the guard is scoped to the needles applied to
+`conanfile.py` and leaves that one alone. Worth recording, because the
+first version of the guard flagged it and the honest fix was to narrow
+the rule rather than to delete the inconvenient check.
+
 ### Reading the history back: which fixes were the class, and which were one name
 
 Asked to look for earlier fixes that could have been closed as a class

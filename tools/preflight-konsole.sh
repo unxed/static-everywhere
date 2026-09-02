@@ -236,7 +236,7 @@ pass 'workflow installs declared host Perl build modules'
 for needle in \
     'exports = "qt_cmake_components.py"' \
     'self.dependencies["qt"].cpp_info.components' \
-    '"GuiPrivate"' \
+    'component_shim_names(' \
     'component_config(module)' \
     'component_version_config()' \
     'legacy_package_config' \
@@ -257,6 +257,13 @@ for needle in \
 done
 grep -Fq '"HUNSPELLConfig.cmake"' "$REPO_ROOT/contrib/konsole/qt-host/conanfile.py" || \
     fail 'legacy Hunspell CONFIG adapter is missing'
+# The needle above used to be the literal '"GuiPrivate"', which pinned the
+# hand written private-component list in place: the recipe was required to
+# name the components it happened to need. That is the habit the
+# derivation replaced, so the check now requires the derivation instead.
+# Keeping the old needle would have demanded exactly what
+# test-konsole-qt-component-derivation.sh forbids -- and it did, until
+# this run failed on the contradiction.
 pass 'Conan recipe carries component and target compatibility metadata'
 
 grep -Fq 'konsole_conan_package_roots' "$REPO_ROOT/tools/build-konsole.sh" || \
