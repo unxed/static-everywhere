@@ -7,6 +7,47 @@ Everything below this section is a reverse-chronological log (newest
 first). Read *this* section first; consult the log below only for the
 detail behind a specific claim.
 
+### Reading the history back: which fixes were the class, and which were one name
+
+Asked to look for earlier fixes that could have been closed as a class
+rather than one at a time, the konsole series answers plainly. Several of
+those commits are the same move repeated:
+
+- `c5387cc` bridge private Qt component configs
+- `e2baf53` include Qt modules required by KDE frameworks
+
+Both add names to the same hand written set of `*Private` components. A
+KDE framework asks for `Qt6GuiPrivate`, the build fails two hours in, the
+name is appended, the next framework asks for the next one. Each commit
+fixed a real bug; none fixed the shape that kept producing them. The set
+had reached twenty entries.
+
+That list is now **derived**: every public component the Conan package
+reports gets a private counterpart. What makes this safe is a property
+the adapter already had — `component_config` emits `if(TARGET Qt6::X)
+FOUND TRUE else FALSE`, so an adapter for a component this Qt does not
+have reports NOT FOUND, which is exactly what a real Qt installation
+reports. Generating the whole family therefore costs nothing and cannot
+be incomplete, while a list can only ever be correct about the past.
+
+Checked, not assumed: the derivation reproduces all nineteen names the
+old set carried, adds a counterpart for a component invented in the test
+to stand for whatever Qt ships next, and does not produce
+`XPrivatePrivate` when fed a private name back.
+
+Three negative controls: stop deriving the private family, make the
+adapter report FOUND unconditionally (which is what would make generating
+the family a lie), and reintroduce a literal list in the recipe. The last
+one is checked by parsing `conanfile.py` for private-component string
+literals, so the old habit fails the preflight rather than a build.
+
+**The others in that series were genuinely singular** and are already
+guarded: `7f656fd` (transitive libxml2 headers), `83e5453` (host tools
+across package lookup) and `fd52b2b` (unsupported zig linker policy) each
+added their own preflight check when they landed. `fd52b2b` in particular
+extended `test-linker-arg-compat.sh` rather than filtering one more flag
+in silence, which is the same instinct.
+
 ### Preventing the class, not just the instance
 
 The sonnet failure had a shape worth naming: **we synthesize CMake

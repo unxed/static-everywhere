@@ -7,6 +7,7 @@ from conan.tools.files import save
 
 from qt_cmake_components import (
     component_config,
+    component_shim_names,
     component_version_config,
     legacy_package_config,
 )
@@ -149,35 +150,19 @@ class KonsoleQtHostConan(ConanFile):
             and component_name.startswith("qt")
             and component_name != "qtPlatform"
         )
-        # Conan's aggregate Qt config can define private targets without
-        # publishing a standalone Qt6<Module>PrivateConfig.cmake. KDE
-        # Frameworks use both forms (for example Qt6GuiPrivate), so cover the
-        # complete private-component family instead of discovering one missing
-        # adapter at a time in the hosted graph.
-        qt_components = sorted(
-            set(qt_components)
-            | {
-                "ConcurrentPrivate",
-                "CorePrivate",
-                "DBusPrivate",
-                "GuiPrivate",
-                "MultimediaPrivate",
-                "MultimediaWidgetsPrivate",
-                "NetworkPrivate",
-                "OpenGLPrivate",
-                "OpenGLWidgetsPrivate",
-                "PrintSupportPrivate",
-                "QmlPrivate",
-                "QuickPrivate",
-                "ShaderToolsPrivate",
-                "SqlPrivate",
-                "SvgPrivate",
-                "SvgWidgetsPrivate",
-                "TestPrivate",
-                "WidgetsPrivate",
-                "XmlPrivate",
-            }
-        )
+        # The private family is derived, not listed.
+        #
+        # It used to be a hand written set of twenty names, grown one CI
+        # round at a time: a KDE framework asked for Qt6GuiPrivate, the
+        # build failed two hours in, the name was appended, repeat. Such
+        # a list is only ever correct about the past.
+        #
+        # component_config emits `if(TARGET Qt6::X) FOUND TRUE else FALSE`,
+        # so an adapter for a component this Qt does not have reports NOT
+        # FOUND -- exactly what a real Qt installation reports. Generating
+        # the whole family therefore costs nothing and cannot be
+        # incomplete, while a list can.
+        qt_components = component_shim_names(qt_components)
         for module in qt_components:
             save(self, f"Qt6{module}Config.cmake", component_config(module))
             save(self, f"Qt6{module}ConfigVersion.cmake", component_version_config())

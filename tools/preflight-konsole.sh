@@ -346,4 +346,12 @@ pass 'every template placeholder has a substitution'
 "$REPO_ROOT/tools/test-legacy-finder-header-dir.sh" \
     || { printf 'FAIL: legacy finder adapter regression\n' >&2; exit 1; }
 
+# Qt6 component adapters must be derived from the package rather than
+# listed. The private family was grown one CI round at a time -- a
+# framework asks for Qt6GuiPrivate, the build fails two hours in, the
+# name gets appended -- and a list maintained that way is only ever
+# correct about the past.
+"$REPO_ROOT/tools/test-konsole-qt-component-derivation.sh" \
+    || { printf 'FAIL: Qt component derivation regression\n' >&2; exit 1; }
+
 printf 'Konsole preflight: PASS\n'

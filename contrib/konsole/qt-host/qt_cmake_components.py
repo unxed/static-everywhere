@@ -1,6 +1,25 @@
 """Generate compatibility files for Qt component-style CMake packages."""
 
 
+def component_shim_names(public_components):
+    """Return every Qt6 component adapter to generate, private ones included.
+
+    Derived rather than listed. The private family used to be a hand
+    written set of twenty names, grown one CI round at a time: a KDE
+    framework asked for Qt6GuiPrivate, the build failed two hours in, the
+    name was appended, repeat. A list maintained that way is only ever
+    correct about the past.
+
+    Every public component can have a private counterpart, and the
+    adapter is conditional -- it reports NOT FOUND when the target does
+    not exist, which is what a real Qt installation does too. So
+    generating the whole family costs nothing and cannot be incomplete,
+    while a list can.
+    """
+    public = {name for name in public_components if not name.endswith("Private")}
+    return sorted(public | {f"{name}Private" for name in public})
+
+
 def component_config(module: str) -> str:
     """Return a Qt6<module>Config.cmake compatibility adapter."""
     return f'''# Conan's Qt package exports one Qt6Config.cmake aggregate.
