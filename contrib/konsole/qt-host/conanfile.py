@@ -165,7 +165,11 @@ class KonsoleQtHostConan(ConanFile):
         tc.variables["CMAKE_C_IMPLICIT_INCLUDE_DIRECTORIES"] = "/usr/include"
         tc.variables["CMAKE_CXX_IMPLICIT_INCLUDE_DIRECTORIES"] = "/usr/include"
         tc.variables["CMAKE_SKIP_RPATH"] = True
-        tc.variables["CMAKE_FIND_PACKAGE_PREFER_CONFIG"] = True
+        # Upstream KDE Find modules must run before Conan's generated CONFIG
+        # packages. CONFIG remains the fallback, while MODULE-first lookup
+        # preserves legacy companion variables such as *_INCLUDE_DIRS and
+        # *_LIBRARIES that generated targets do not always publish.
+        tc.variables["CMAKE_FIND_PACKAGE_PREFER_CONFIG"] = False
         tc.variables["CMAKE_FIND_USE_PACKAGE_REGISTRY"] = False
         tc.variables["CMAKE_FIND_USE_SYSTEM_PACKAGE_REGISTRY"] = False
         tc.generate()

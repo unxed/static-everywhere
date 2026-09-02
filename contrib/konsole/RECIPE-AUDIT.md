@@ -108,11 +108,17 @@ that are not safe with a Widgets-only, no-QtWayland target:
   `host-docbook-tools.txt` and checked in both workflow jobs before the KDE
   graph starts. This closes the class of missing external documentation
   tool/data failures instead of discovering each one at a later configure.
-  Because the recipe deliberately enables CONFIG-mode lookup for Conan's
-  static packages, a Conan `LibXml2Config.cmake` can supply the library while
-  omitting CMake's companion `xmllint` variable. The common CMake hook seeds
-  host tool variables before package lookup, and a regression test covers
-  this CONFIG/MODULE mismatch as a class of failures.
+  Because the recipe supplies Conan's static packages through CMakeDeps, a
+  Conan `LibXml2Config.cmake` can supply the library while omitting CMake's
+  companion `xmllint` variable. The common CMake hook seeds host tool
+  variables before package lookup, and a regression test covers this
+  CONFIG/MODULE mismatch as a class of failures.
+- Conan's CMakeDeps can also generate CONFIG files for packages that KDE
+  intentionally consumes through an upstream `Find<Package>.cmake` MODULE.
+  CONFIG-first lookup can then expose a target while dropping the finder's
+  legacy include/library variables. The common hook enforces MODULE-first
+  lookup for the whole graph, with Conan CONFIG files retained as fallback;
+  the regression test uses both forms to protect this precedence rule.
 - Designer plugins and text-to-speech are optional framework features and are
   disabled to keep the built graph aligned with Konsole's actual application
   targets.
