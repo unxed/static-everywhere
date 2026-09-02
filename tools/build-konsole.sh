@@ -168,7 +168,7 @@ conan_args=(
     --build='expat/*' --build='fontconfig/*' --build='freetype/*'
     --build='harfbuzz/*' --build='icu/*' --build='libffi/*'
     --build='libiconv/*' --build='libpng/*' --build='md4c/*'
-    --build='pcre2/*' --build='qt/*' --build='xkbcommon/*'
+    --build='pcre2/*' --build='hunspell/*' --build='qt/*' --build='xkbcommon/*'
     --build='xz_utils/*' --build='zlib/*'
     -s:h build_type=Release -s:h compiler.cppstd=gnu20
     -s:b build_type=Release -s:b compiler.cppstd=gnu20
@@ -226,12 +226,16 @@ fi
 # file as qt_PACKAGE_FOLDER_RELEASE, which is the same variable
 # contrib/f4-qt/import-qt-static-plugins.cmake already relies on. Do not
 # reconstruct it from a cache layout that is not ours to predict.
-# CMakeDeps writes the Qt package root into the generated data file. Add
-# that root to CMAKE_PREFIX_PATH as well as the generator directory: the
-# Qt Conan package owns Qt6Core/Qt6Gui/... configs outside $QT_OUT.
+# CMakeDeps writes every package root into generated data files. Add all of
+# them to CMAKE_PREFIX_PATH as well as the generator directory: CONFIG-mode
+# consumers use the generated files, while MODULE-mode finders (for example
+# Sonnet's FindHUNSPELL) need the actual headers and libraries below each
+# package root. Reading the data variables also keeps this independent of
+# Conan's cache layout and package hash names.
 if [[ $PRINT_PLAN -eq 0 ]]; then
     QT_PACKAGE_ROOT=$(konsole_qt_package_root "$QT_OUT")
-    CMAKE_PREFIX_PATH="$QT_OUT;$QT_PACKAGE_ROOT;$KDE_INSTALL_DIR"
+    CONAN_PACKAGE_ROOTS=$(konsole_conan_package_roots "$QT_OUT" | paste -sd';' -)
+    CMAKE_PREFIX_PATH="$QT_OUT${CONAN_PACKAGE_ROOTS:+;$CONAN_PACKAGE_ROOTS};$KDE_INSTALL_DIR"
 fi
 
 render_config() {

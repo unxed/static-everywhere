@@ -4,6 +4,7 @@
 konsole 264ecd0808f752a10204f954dfc1f87f7aba9ea8 - https://github.com/KDE/konsole.git
 qt 6.11.1 - -
 icu 78.1 - -
+hunspell 1.7.2 - -
 bzip2 1.0.8 - -
 xz_utils 5.8.3 - -
 zlib 1.3.2 - -

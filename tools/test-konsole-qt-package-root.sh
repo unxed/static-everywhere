@@ -12,7 +12,7 @@ trap 'rm -rf "$PROBE"' EXIT
 
 mkdir -p "$PROBE/standard/qt-generators" "$PROBE/spaced/qt-generators"
 printf 'set(qt_PACKAGE_FOLDER_RELEASE "%s")\n' "$PROBE/qt-package" >"$PROBE/standard/qt-generators/Qt6-release-x86_64-data.cmake"
-printf 'set(other_PACKAGE_FOLDER_RELEASE "%s")\n' "$PROBE/other" >"$PROBE/standard/qt-generators/other-release-x86_64-data.cmake"
+printf 'set(hunspell_PACKAGE_FOLDER_RELEASE "%s")\n' "$PROBE/hunspell-package" >"$PROBE/standard/qt-generators/hunspell-release-x86_64-data.cmake"
 printf 'set ( qt_PACKAGE_FOLDER_RELEASE   "%s" )\n' "$PROBE/qt-package-spaced" >"$PROBE/spaced/qt-generators/Qt6-release-spaced-data.cmake"
 
 # The real Conan output is Qt6-release-x86_64-data.cmake, not
@@ -30,5 +30,10 @@ if [[ "$root" != "$PROBE/qt-package-spaced" ]]; then
     printf 'FAIL: spaced CMake syntax returned %s\n' "$root" >&2
     exit 1
 fi
+expected=$(printf '%s\n' "$PROBE/hunspell-package" "$PROBE/qt-package" | sort)
+actual=$(konsole_conan_package_roots "$PROBE/standard/qt-generators")
+if [[ "$actual" != "$expected" ]]; then
+    printf 'FAIL: expected Conan package roots:\n%s\ngot:\n%s\n' "$expected" "$actual" >&2
+    exit 1
+fi
 printf 'Konsole Qt package-root regression: PASS\n'
-

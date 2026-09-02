@@ -82,3 +82,15 @@ otherwise requires Qt5. Its Qt6 branch instead requires Qt6 Core, Test and
 Core5Compat. The kde-builder recipe selects that branch and disables qca's
 unneeded test/tool targets; the Conan recipe enables the corresponding
 `qt5compat` module.
+
+## 6. Sonnet requires at least one spellchecker backend
+
+Sonnet's `src/plugins/CMakeLists.txt` makes Aspell, Hspell, Hunspell and
+Voikko optional independently, but then raises a fatal error when no backend
+sets `SONNET_BACKEND_FOUND`. The framework therefore cannot be configured as
+part of a minimal KDE graph with no host spellchecker packages.
+
+This recipe supplies Hunspell 1.7.2 from ConanCenter directly. Its recipe
+installs the `include/hunspell` headers and `hunspell` library expected by
+Sonnet's `FindHUNSPELL.cmake`, and the build script forces that package through
+the Zig target compiler instead of accepting a prebuilt host-ABI package.

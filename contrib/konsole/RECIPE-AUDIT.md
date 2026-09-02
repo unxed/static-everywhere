@@ -133,6 +133,14 @@ that are not safe with a Widgets-only, no-QtWayland target:
   project-specific kde-builder override selects Qt6 and disables qca-only
   tests/tools; `qt/*:qt5compat=True` makes that source-level requirement
   available in Conan before qca configures.
+- Sonnet's `src/plugins/CMakeLists.txt` treats Aspell, Hspell, Hunspell and
+  Voikko as optional individually, but has a fatal invariant when none of
+  them is available. The ConanCenter Hunspell 1.7.2 recipe installs the
+  `include/hunspell/hunspell.hxx` header and static `hunspell` library that
+  Sonnet's `FindHUNSPELL.cmake` discovers. Hunspell is therefore a direct
+  Conan requirement and is explicitly rebuilt with Zig; this closes the
+  whole "optional backend set is empty" class without depending on a host
+  spellchecker installation.
 
 Wayland is intentionally not part of this acceptance pass. There is no
 architectural blocker to adding it later: the recipe will need QtWayland,

@@ -69,6 +69,12 @@ class KonsoleQtHostConan(ConanFile):
     requires = (
         "qt/6.11.1",
         "icu/78.1",
+        # Sonnet's src/plugins/CMakeLists.txt makes the individual spell
+        # backends optional but fails the whole framework when none is
+        # available. Keep one backend in the target graph; the ConanCenter
+        # recipe installs the headers and static library that Sonnet's
+        # FindHUNSPELL.cmake searches for.
+        "hunspell/1.7.2",
         "bzip2/1.0.8",
         "xz_utils/5.8.3",
         "zlib/1.3.2",

@@ -2,6 +2,19 @@
 # The CMakeDeps data-file name contains the Conan package name and host
 # architecture, so callers must discover the file by the variable it defines.
 
+konsole_conan_package_roots() {
+    local conan_out="$1"
+    local data_file root
+
+    while IFS= read -r data_file; do
+        root=$(sed -n -E \
+            's|^[[:space:]]*set[[:space:]]*\([[:space:]]*[A-Za-z0-9_]+_PACKAGE_FOLDER_RELEASE[[:space:]]+"([^"]+)".*$|\1|p' \
+            "$data_file" | head -n 1)
+        [[ -n $root ]] && printf '%s\n' "$root"
+    done < <(find "$conan_out" -maxdepth 1 -type f \
+        -name '*-release*-data.cmake' -print | sort) | sort -u
+}
+
 konsole_qt_package_root() {
     local qt_out="$1"
     local data_file root

@@ -215,6 +215,7 @@ for needle in \
     'component_version_config()' \
     '"qt/*:qt5compat": True' \
     '"qt/*:qtsvg": True' \
+    '"hunspell/1.7.2"' \
     '"bzip2/1.0.8"' \
     '"xz_utils/5.8.3"' \
     '"zlib/1.3.2"' \
@@ -228,6 +229,14 @@ for needle in \
         fail "Conan recipe is missing CMake dependency compatibility metadata: $needle"
 done
 pass 'Conan recipe carries component and target compatibility metadata'
+
+grep -Fq 'konsole_conan_package_roots' "$REPO_ROOT/tools/build-konsole.sh" || \
+    fail 'CMake MODULE finders cannot see Conan package roots'
+grep -Fq -- "--build='hunspell/*'" "$REPO_ROOT/tools/build-konsole.sh" || \
+    fail 'Sonnet spellchecker backend is not forced through the target compiler'
+grep -Fq 'hunspell 1.7.2 - -' "$REPO_ROOT/contrib/konsole/deps.lock" || \
+    fail 'Sonnet spellchecker backend is missing from the dependency lock'
+pass 'Sonnet always has a source-built Hunspell backend'
 
 grep -Fq 'Qt6GuiPrivate' "$REPO_ROOT/tools/test-konsole-qt-cmake-component-shims.sh" || \
     fail 'Qt private-component adapter regression is missing'
