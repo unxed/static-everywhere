@@ -1,4 +1,7 @@
+import os
+
 from conan import ConanFile
+from conan.errors import ConanInvalidConfiguration
 from conan.tools.cmake import CMakeDeps, CMakeToolchain
 from conan.tools.files import save
 
@@ -90,6 +93,29 @@ class KonsoleQtHostConan(ConanFile):
         "libmount/2.39.2",
     )
 
+    def _require_header_in_package(self, package: str, header: str) -> None:
+        """Fail now if the header an adapter promises is not in the package.
+
+        Cheap insurance against the whole shape of failure: we synthesize
+        CMake metadata, and until this check nothing confirmed the
+        metadata described reality. A wrong or stale entry surfaced only
+        when some consumer's compile could not find the file, with no
+        mention of which package had promised it.
+        """
+        root = self.dependencies[package].package_folder
+        for base, _dirs, files in os.walk(os.path.join(root, "include")):
+            if header in files:
+                self.output.info(
+                    f"Adapter check: {header} found in {base}"
+                )
+                return
+        raise ConanInvalidConfiguration(
+            f"{package} does not contain {header} anywhere under include/. "
+            f"The generated adapter would report the package as found and "
+            f"hand over an include directory that does not resolve it, and "
+            f"the failure would appear later inside a consumer's compile."
+        )
+
     def generate(self):
         cmake_deps = CMakeDeps(self)
 
@@ -162,6 +188,15 @@ class KonsoleQtHostConan(ConanFile):
         # adapter shape for this and future variable-based consumers instead
         # of relying on a global MODULE/CONFIG preference that can break KDE
         # packages such as LibMount.
+        # Verify the claim before writing it down.
+        #
+        # An adapter asserts "this package is found, and here is where its
+        # header lives". Nothing checked that until a consumer tried to
+        # compile, which for sonnet meant the failure arrived two hours
+        # into the run as a bare "'hunspell.hxx' file not found" that
+        # never mentioned hunspell's package at all. The check is a
+        # filesystem lookup and costs nothing.
+        self._require_header_in_package("hunspell", "hunspell.hxx")
         save(
             self,
             "HUNSPELLConfig.cmake",

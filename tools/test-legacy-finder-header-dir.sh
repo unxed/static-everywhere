@@ -88,9 +88,9 @@ fi
 rm -f "$PROBE/pkg/include/hunspell/hunspell.hxx"
 mkdir -p "$PROBE/elsewhere/hunspell"
 printf '#pragma once\n' >"$PROBE/elsewhere/hunspell/hunspell.hxx"
-strayed=$(CMAKE_PREFIX_PATH="$PROBE/elsewhere" \
-          cmake -S "$PROBE/proj" -B "$PROBE/build2" 2>&1 \
-          | sed -n 's/^-- RESOLVED=//p')
+stray_out=$(CMAKE_PREFIX_PATH="$PROBE/elsewhere" \
+            cmake -S "$PROBE/proj" -B "$PROBE/build2" 2>&1 || true)
+strayed=$(printf '%s' "$stray_out" | sed -n 's/^-- RESOLVED=//p')
 case "$strayed" in
     "$PROBE/elsewhere"*)
         printf 'the adapter resolved outside the package, to %s\n' "$strayed" >&2
@@ -99,5 +99,65 @@ case "$strayed" in
         exit 1
         ;;
 esac
+
+# With the header genuinely absent from the package, the adapter must
+# say so rather than report the package found with nothing usable. That
+# is the difference between failing here and failing inside some
+# consumer's compile with a bare "file not found".
+printf '%s' "$stray_out" | grep -q 'FATAL_ERROR\|is not under the' \
+    || { printf 'the adapter stayed quiet when the header was missing:\n' >&2
+         printf '%s\n' "$stray_out" | tail -5 | sed 's/^/  /' >&2
+         exit 1; }
+
+# Prevention, not just repair: properties that make the next adapter of
+# this shape impossible rather than merely unlikely.
+python3 - "$REPO_ROOT" <<'INVARIANTS'
+import ast, pathlib, sys
+
+root = pathlib.Path(sys.argv[1])
+sys.path.insert(0, str(root / 'contrib/konsole/qt-host'))
+from qt_cmake_components import legacy_package_config
+
+# 1. An adapter cannot be written without saying which header its
+#    consumers include. Forgetting that is what let the include directory
+#    default to the package root.
+try:
+    legacy_package_config(package='p', target='p::p',
+                          variable_prefix='P', version='1')
+except TypeError:
+    pass
+else:
+    sys.exit('an adapter was generated with no header declared')
+
+# 2. Nor with an empty one, the same mistake spelled differently.
+try:
+    legacy_package_config(package='p', target='p::p',
+                          variable_prefix='P', version='1', header='')
+except ValueError:
+    pass
+else:
+    sys.exit('an adapter was generated with an empty header')
+
+# 3. Every call site actually passes one, so a future adapter added
+#    without it fails here rather than in some consumer's compile.
+source = (root / 'contrib/konsole/qt-host/conanfile.py').read_text()
+calls = [n for n in ast.walk(ast.parse(source))
+         if isinstance(n, ast.Call)
+         and getattr(n.func, 'id', '') == 'legacy_package_config']
+if not calls:
+    sys.exit('no legacy_package_config call sites found; renamed?')
+for call in calls:
+    if 'header' not in {kw.arg for kw in call.keywords}:
+        sys.exit('a legacy_package_config call at line %d declares no header'
+                 % call.lineno)
+
+# 4. The generated adapter must fail loudly when the header does not
+#    resolve, instead of reporting the package found with no usable
+#    include directory.
+generated = legacy_package_config(
+    package='p', target='p::p', variable_prefix='P', version='1', header='p.h')
+if 'FATAL_ERROR' not in generated:
+    sys.exit('the adapter no longer fails when the header does not resolve')
+INVARIANTS
 
 printf 'legacy finder adapter: resolves to the header directory, stays in package\n'

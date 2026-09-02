@@ -43,7 +43,7 @@ def legacy_package_config(
     target: str,
     variable_prefix: str,
     version: str,
-    header: str = "",
+    header: str,
     path_suffixes: str = "",
 ) -> str:
     """Return a CONFIG adapter for a legacy variable-based CMake consumer.
@@ -58,6 +58,15 @@ def legacy_package_config(
     with find_path and PATH_SUFFIXES; so does this adapter when told which
     header to look for.
     """
+    if not header:
+        raise ValueError(
+            f"legacy_package_config({package!r}) needs the header its "
+            "consumers include. Without it the adapter hands over the "
+            "imported target's include directory, which is the package "
+            "root and often one level above the header -- the sonnet "
+            "'hunspell.hxx' file not found failure. State the header and "
+            "the adapter resolves to the directory that holds it."
+        )
     header_probe = ""
     if header:
         # NO_DEFAULT_PATH on purpose: resolve inside the package or not at
@@ -74,6 +83,16 @@ def legacy_package_config(
     if(_static_everywhere_{variable_prefix}_header_dir)
         set({variable_prefix}_INCLUDE_DIRS
             "${{_static_everywhere_{variable_prefix}_header_dir}}")
+    else()
+        # Loudly, not silently. An adapter that reports the package as
+        # found while handing over no usable include directory pushes the
+        # failure into some consumer's compile, hours later, as a bare
+        # "file not found" with no mention of this package.
+        message(FATAL_ERROR
+            "{variable_prefix}: {header} is not under the {package} package. "
+            "The adapter would report the package as found with no usable "
+            "include directory, and the failure would surface later as a "
+            "missing header in whatever consumes it.")
     endif()'''
 
     return f'''# Conan's CMakeDeps package config exports the imported target

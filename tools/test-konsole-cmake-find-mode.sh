@@ -10,7 +10,10 @@ PROBE=$(mktemp -d /tmp/static-everywhere-konsole-find-mode.XXXXXX)
 trap 'rm -rf "$PROBE"' EXIT
 
 
-mkdir -p "$PROBE/source" "$PROBE/config"
+mkdir -p "$PROBE/source" "$PROBE/config" "$PROBE/probe-include"
+# The adapter now resolves the header itself, so the fixture has to
+# be a directory that actually contains one.
+printf '#pragma once\n' >"$PROBE/probe-include/probe.h"
 cat >"$PROBE/source/CMakeLists.txt" <<'CMAKE'
 cmake_minimum_required(VERSION 3.25)
 project(find_mode_probe LANGUAGES NONE)
@@ -19,8 +22,10 @@ find_package(LEGACY_PROBE REQUIRED)
 if(NOT LEGACY_PROBE_FOUND)
     message(FATAL_ERROR "the generated CONFIG adapter did not find the target")
 endif()
-if(NOT LEGACY_PROBE_INCLUDE_DIRS STREQUAL "probe-include")
-    message(FATAL_ERROR "the CONFIG adapter did not publish include variables")
+if(NOT EXISTS "${LEGACY_PROBE_INCLUDE_DIRS}/probe.h")
+    message(FATAL_ERROR
+        "the CONFIG adapter published ${LEGACY_PROBE_INCLUDE_DIRS}, which does "
+        "not contain the header a consumer would include")
 endif()
 if(NOT LEGACY_PROBE_LIBRARIES STREQUAL "legacy::legacy")
     message(FATAL_ERROR "the CONFIG adapter did not publish the target")
@@ -31,9 +36,11 @@ endif()
 CMAKE
 cat >"$PROBE/config/legacy_probe-config.cmake" <<'CMAKE'
 add_library(legacy::legacy INTERFACE IMPORTED)
-set_property(TARGET legacy::legacy PROPERTY INTERFACE_INCLUDE_DIRECTORIES probe-include)
+set_property(TARGET legacy::legacy PROPERTY INTERFACE_INCLUDE_DIRECTORIES "@PROBE_INCLUDE@")
 set(legacy_probe_FOUND TRUE)
 CMAKE
+sed -i "s|@PROBE_INCLUDE@|$PROBE/probe-include|" \
+    "$PROBE/config/legacy_probe-config.cmake"
 
 python3 - "$REPO_ROOT/contrib/konsole/qt-host" "$PROBE/config/LEGACY_PROBEConfig.cmake" <<'PY'
 import pathlib
@@ -43,7 +50,8 @@ sys.path.insert(0, sys.argv[1])
 from qt_cmake_components import legacy_package_config
 
 pathlib.Path(sys.argv[2]).write_text(
-    legacy_package_config("legacy_probe", "legacy::legacy", "LEGACY_PROBE", "9.1"),
+    legacy_package_config("legacy_probe", "legacy::legacy", "LEGACY_PROBE",
+                          "9.1", header="probe.h"),
     encoding="utf-8",
 )
 PY

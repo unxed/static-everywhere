@@ -7,6 +7,51 @@ Everything below this section is a reverse-chronological log (newest
 first). Read *this* section first; consult the log below only for the
 detail behind a specific claim.
 
+### Preventing the class, not just the instance
+
+The sonnet failure had a shape worth naming: **we synthesize CMake
+package metadata, and nothing checked that the metadata described
+reality.** The adapter asserted "hunspell is found, its headers are
+here", the second half was wrong, and the assertion went unexamined until
+a consumer's compile failed two hours later with a message that never
+mentioned hunspell.
+
+Four changes, in decreasing order of how much they rely on anyone
+remembering something.
+
+**The dangerous shape is now unrepresentable.** `header` is a required
+parameter. An adapter cannot be written without stating which header its
+consumers include, so the include directory can no longer default to the
+package root by omission. An empty string is rejected too, since that is
+the same mistake spelled differently.
+
+**The adapter fails loudly instead of quietly.** If the header does not
+resolve inside the package, it raises `FATAL_ERROR` naming the package
+and the header, rather than reporting the package found with nothing
+usable. A wrong answer that stops the build beats a wrong answer that
+travels.
+
+**The claim is verified where it is made.** The recipe now walks the
+dependency's `include/` and confirms the header exists before writing the
+adapter. A filesystem lookup, instant, at the host-build stage — minutes
+in rather than hours.
+
+**And a future adapter cannot slip through.** The test parses
+`conanfile.py` and requires every `legacy_package_config` call site to
+pass a header. Adding an adapter without one fails the preflight rather
+than a build.
+
+Four negative controls, one per property: restore the default, accept an
+empty header, downgrade the fatal error to a status message, drop the
+argument at the call site. All four fail the test.
+
+The neighbouring `test-konsole-cmake-find-mode.sh` broke on the new
+requirement, which is the mechanism working: its fixture pointed the
+imported target at a directory that did not exist and asserted the
+variable came back verbatim. It now builds a real directory containing a
+real header and asserts the resolved path **contains** it — a stronger
+property than the one it checked before.
+
 ### sonnet: the package was found, and its headers still were not
 
 ```
