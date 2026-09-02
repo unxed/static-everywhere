@@ -24,7 +24,7 @@ The load-bearing decisions were classified before adapting them:
 | manual trigger and a separate fast preflight | carried into `konsole-zig-build.yml` |
 | runner disk cleanup, 300-minute build timeout | carried |
 | Zig 0.13.0 and onebin hybrid toolchain | carried; glibc baseline is 2.27 |
-| host X11/xcb/ICE/SM contract | carried; no host Qt or KDE package is allowed |
+| host X11/xcb/ICE/SM/Canberra contract | carried; no host Qt or KDE package is allowed |
 | host OpenGL | carried through the existing optional-GL forwarder; `libGL` is not DT_NEEDED |
 | CMake ABI workarounds for Zig | carried: pointer size, multiarch, implicit includes and RPATH |
 | compile glibc compatibility shim before Conan | carried, with global shared/executable link flags |
@@ -40,8 +40,12 @@ The load-bearing decisions were classified before adapting them:
 | f4 Go setup, Go tests, embedded packaging and QML-specific hooks | intentionally omitted for the Konsole application; framework QML is retained only where upstream requires it |
 | f4 QWindowKit and f4 application-specific tests | intentionally omitted |
 
-The host boundary is therefore: X11/xcb and the OpenGL ABI are host-owned;
-Qt, KF6 and the application are built in the CI source graph. CMake's global
+The application runtime host boundary is therefore: X11/xcb, Canberra and
+the OpenGL ABI are host-owned; Qt, KF6 and the application are built in the CI
+source graph. Build-only host tools and data (gettext, Flex/Bison, DocBook,
+XML/XSLT and Perl) are checked separately and are not part of the application
+runtime contract.
+CMake's global
 prefix exclusion is explicitly cleared because KGuiAddons and KWindowSystem
 use the `FindX11`/`FindXCB` MODULEs to discover those host headers and
 libraries. The common CMake hook restores the fixed x86_64 multiarch metadata
@@ -50,6 +54,13 @@ multiarch directory. Conan config prefixes remain first, while the top-level
 static graph assertion rejects a host Qt/KF6 target if one is ever selected.
 `qt-install-dir` is deliberately absent from kde-builder configuration, so
 kde-builder does not select a host or separately managed Qt tree.
+
+Konsole's own Linux sources optionally enable `xkbcommon` through
+`pkg_check_modules` and link its legacy `${XKBCOMMON_LIBRARIES}` variables.
+The build forces Conan's xkbcommon package through Zig, puts its generated
+`.pc` directory before `/usr`, and checks that the module is discoverable;
+this prevents the optional input-mode feature from silently selecting the
+host xkbcommon ABI.
 
 ## Source-graph audit before the hosted build
 
@@ -89,6 +100,21 @@ that are not safe with a Widgets-only, no-QtWayland target:
   `LibMount::LibMount` spelling. This avoids Conan's `headers=False` treatment
   of a dependency reached only through Qt, which otherwise leaves a target
   visible while dropping the include directory.
+- KWallet's default Linux build also enables three runtime targets that are
+  not used by Konsole: `ksecretd`, `kwalletd6` and `kwallet-query`. The first
+  two make the source graph require `LibGcrypt` and `libsecret-1`; the latter
+  dependency brings GLib and its own Meson/toolchain graph. The recipe keeps
+  the `KF6::Wallet` API available for optional KIO integration but explicitly
+  disables those unused runtime targets. This is a source-derived feature
+  selection, not a workaround for a missing package, and prevents a whole
+  class of service-only dependencies from entering the static application
+  build.
+- The same rule applies to optional integrations in the remaining graph:
+  Kirigami's OpenMP palette accelerator, KPty's UTEMPTER support, and
+  KCoreAddons/KIO's UDev and ACL probes are disabled with the generic CMake
+  `CMAKE_DISABLE_FIND_PACKAGE_<name>` switches. They are not required by
+  Konsole, and disabling the whole optional family prevents an installed
+  runner library from silently becoming a host-linked target.
 - Solid requires Flex, Bison and LibMount; its optional UDev backend is
   disabled for this target. KNotifications' Linux build also requires the
   QtDBus CMake package and Canberra development files even with application
@@ -100,8 +126,9 @@ that are not safe with a Widgets-only, no-QtWayland target:
   recorded in `host-python-modules.txt`, installed in both workflow jobs and
   imported by an early gate. This makes missing system Python modules a
   fail-fast, auditable class of host build-tool errors.
-- KDocTools requires `LibXslt`, `LibXml2`, `xmllint`, DocBook XML 4.5 and
-  DocBook XSL. Its pinned `CMakeLists.txt` makes those inputs required for
+- KDocTools requires `LibXslt`, `LibXml2`, `xmllint`, DocBook XML 4.5, DocBook
+  XSL, Perl and the `URI::Escape` Perl module. Its pinned `CMakeLists.txt`
+  makes those inputs required for
   DocBook processing, and the package's `FindDocBookXML4.cmake`/
   `FindDocBookXSL.cmake` modules use the standard `/usr/share/xml` paths.
   The complete apt-package/probe mapping is recorded in
@@ -120,6 +147,18 @@ that are not safe with a Widgets-only, no-QtWayland target:
   generator bridges the imported target, include directories, libraries and
   version variables while preserving CONFIG-first lookup for KDE targets;
   the regression test exercises this class with both forms.
+- KNotifications has no feature switch around its Linux audio support: its
+  source unconditionally calls `find_package(Canberra REQUIRED)`, and both
+  KNotifications and KNotifyConfig link `Canberra::Canberra` when found.
+  `libcanberra-dev` is consequently a declared host input and
+  `libcanberra.so.0` is the only additional host runtime allowance. This is
+  recorded explicitly so a later audit cannot mistake it for an accidental
+  host fallback.
+- QCA's source defaults `BUILD_PLUGINS=auto`; on the runner this selected its
+  system OpenSSL plugin even though the current Konsole graph does not use
+  QCA once the KWallet services are disabled. The qca override selects Qt6,
+  disables its tests/tools, and sets `BUILD_PLUGINS=none`, closing the class
+  of auto-detected crypto/plugin host dependencies.
 - Designer plugins and text-to-speech are optional framework features and are
   disabled to keep the built graph aligned with Konsole's actual application
   targets.
@@ -187,11 +226,12 @@ GitHub workflow dispatch:
 10. The f4 reference itself was not modified. No hosted build was dispatched
    during either pass.
 
-The host Python and DocBook manifests are checked against both workflow apt
-install blocks. Hosted preflight imports every declared Python module with
-`/usr/bin/python3` and probes every declared DocBook tool/data path before the
-KDE graph starts; a dependency therefore cannot silently be present only in
-the Conan virtual environment or absent from the runner.
+The host Python, Perl and DocBook manifests are checked against both workflow
+apt install blocks. Hosted preflight imports every declared Python module with
+`/usr/bin/python3`, loads every declared Perl module, and probes every
+declared DocBook tool/data path before the KDE graph starts; a dependency
+therefore cannot silently be present only in the Conan virtual environment or
+absent from the runner.
 
 After hosted run 33532968168 exposed the CONFIG/MODULE mismatch, a miniature
 CMake project with a fake CONFIG-only LibXml2 package verified that the host

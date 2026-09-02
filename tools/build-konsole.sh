@@ -98,7 +98,7 @@ run_env() {
 printf '# Konsole showcase plan\n'
 printf 'konsole_ref=%s\nkde_builder_ref=%s\nglibc_baseline=%s\n' \
     "$KONSOLE_REF" "$KDE_BUILDER_REF" "$GLIBC_BASELINE"
-printf 'host contract: X11/xcb/ICE/SM and runtime-loaded OpenGL; Qt/KF6: source-built\n'
+printf 'host contract: X11/xcb/ICE/SM, Canberra and runtime-loaded OpenGL; Qt/KF6: source-built\n'
 # shellcheck disable=SC2034  # lock-file fields are deliberately read for a plan-only inventory
 while IFS=' ' read -r name version _hash url; do
     [[ -z $name || $name == \#* ]] && continue
@@ -279,7 +279,7 @@ if [[ $PRINT_PLAN -eq 1 ]]; then
         --allow libxcb-render-util.so.0 --allow libxcb-shape.so.0 \
         --allow libxcb-shm.so.0 --allow libxcb-sync.so.1 \
         --allow libxcb-xfixes.so.0 --allow libxcb-xkb.so.1 \
-        --allow libICE.so.6 --allow libSM.so.6 --level 1 --strict "$KONSOLE_BIN"
+        --allow libICE.so.6 --allow libSM.so.6 --allow libcanberra.so.0 --level 1 --strict "$KONSOLE_BIN"
 else
     [[ -x $KONSOLE_BIN ]] || { printf 'error: kde-builder did not install %s\n' "$KONSOLE_BIN" >&2; exit 1; }
     "$REPO_ROOT/tools/verify-konsole-artifact.sh" "$KONSOLE_BIN" | tee "$OUT_ABS/konsole-audit.txt"
@@ -293,7 +293,7 @@ else
         --allow libxcb-render-util.so.0 --allow libxcb-shape.so.0
         --allow libxcb-shm.so.0 --allow libxcb-sync.so.1
         --allow libxcb-xfixes.so.0 --allow libxcb-xkb.so.1
-        --allow libICE.so.6 --allow libSM.so.6 --level 1 --strict "$KONSOLE_BIN"
+        --allow libICE.so.6 --allow libSM.so.6 --allow libcanberra.so.0 --level 1 --strict "$KONSOLE_BIN"
     )
     "$REPO_ROOT/tools/audit-with-hygiene-waivers.sh" "$ONEBIN_BIN" "${audit_args[@]}" \
         | tee "$OUT_ABS/konsole-onebin-audit.txt"

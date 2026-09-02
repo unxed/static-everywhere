@@ -78,6 +78,20 @@ global:
     -DWITH_LIBZSTD=OFF
     -DUDEV_DISABLED=ON
     -DATTICA_STATIC_BUILD=ON
+    # These optional framework integrations are not part of Konsole's
+    # application graph. Do not let an installed runner library silently
+    # turn them into host-linked targets.
+    -DCMAKE_DISABLE_FIND_PACKAGE_ACL=ON
+    -DCMAKE_DISABLE_FIND_PACKAGE_OpenMP=ON
+    -DCMAKE_DISABLE_FIND_PACKAGE_UTEMPTER=ON
+    -DCMAKE_DISABLE_FIND_PACKAGE_UDev=ON
+    # KWallet's default daemon targets are not part of the Konsole graph.
+    # BUILD_KWALLETD additionally requires libsecret-1 (and its GLib graph),
+    # while the backend requires LibGcrypt. Keep the KF6Wallet API, but do
+    # not build unused runtime services and their host-oriented dependencies.
+    -DBUILD_KSECRETD=OFF
+    -DBUILD_KWALLETD=OFF
+    -DBUILD_KWALLET_QUERY=OFF
     -DWITH_KAPSULE=OFF
     -DWITH_LIBSSH=OFF
     -DWITH_X11=ON
@@ -97,3 +111,4 @@ override qca:
     -DBUILD_WITH_QT6=ON
     -DBUILD_TESTS=OFF
     -DBUILD_TOOLS=OFF
+    -DBUILD_PLUGINS=none

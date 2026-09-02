@@ -24,12 +24,15 @@ jobs:
           sudo apt-get update -qq
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq \
             libgl-dev libegl-dev libx11-dev libxcb1-dev libxcb-xkb-dev \
-            python3-lxml python3-yaml gettext flex bison libmount-dev libcanberra-dev \
+            python3-lxml python3-yaml perl liburi-perl gettext flex bison libmount-dev libcanberra-dev \
             libdbus-1-dev libxml2-dev libxml2-utils libxslt1-dev xsltproc \
             docbook-xml docbook-xsl
 
       - name: Verify KDE build-time Python modules
         run: ./tools/test-konsole-host-python-modules.sh
+
+      - name: Verify KDE build-time Perl modules
+        run: ./tools/test-konsole-host-perl-modules.sh
 
       - name: Verify KDE DocBook build tools
         run: ./tools/test-konsole-host-docbook-tools.sh
@@ -96,13 +99,16 @@ jobs:
             libxcb-xkb-dev libxcb-icccm4-dev libxcb-image0-dev \
             libxcb-keysyms1-dev libxcb-randr0-dev libxcb-shape0-dev \
             libxcb-sync-dev libxcb-xfixes0-dev libxcb-xinerama0-dev \
-            gettext flex bison libmount-dev libcanberra-dev libdbus-1-dev \
+            gettext flex bison perl liburi-perl libmount-dev libcanberra-dev libdbus-1-dev \
             xvfb x11-utils x11-apps xdotool imagemagick ccache \
             python3-dbus python3-lxml python3-yaml python3-setproctitle \
             libxml2-dev libxml2-utils libxslt1-dev xsltproc docbook-xml docbook-xsl
 
       - name: Verify KDE build-time Python modules
         run: ./tools/test-konsole-host-python-modules.sh
+
+      - name: Verify KDE build-time Perl modules
+        run: ./tools/test-konsole-host-perl-modules.sh
 
       - name: Verify KDE DocBook build tools
         run: ./tools/test-konsole-host-docbook-tools.sh

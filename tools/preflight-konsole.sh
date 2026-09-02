@@ -19,6 +19,7 @@ bash -n "$REPO_ROOT/tools/build-konsole.sh" "$REPO_ROOT/tools/preflight-konsole.
     "$REPO_ROOT/tools/test-konsole-host-build-tool-discovery.sh" \
     "$REPO_ROOT/tools/test-linker-arg-compat.sh" \
     "$REPO_ROOT/tools/test-konsole-host-python-modules.sh" \
+    "$REPO_ROOT/tools/test-konsole-host-perl-modules.sh" \
     "$REPO_ROOT/tools/test-konsole-host-docbook-tools.sh"
 pass 'Konsole shell scripts parse'
 
@@ -98,9 +99,17 @@ for needle in \
     'WITH_LIBZSTD=OFF' \
     'UDEV_DISABLED=ON' \
     'ATTICA_STATIC_BUILD=ON' \
+    'CMAKE_DISABLE_FIND_PACKAGE_ACL=ON' \
+    'CMAKE_DISABLE_FIND_PACKAGE_OpenMP=ON' \
+    'CMAKE_DISABLE_FIND_PACKAGE_UTEMPTER=ON' \
+    'CMAKE_DISABLE_FIND_PACKAGE_UDev=ON' \
     'CMAKE_PROJECT_INCLUDE' \
     'verify-konsole-artifact.sh' \
-    'audit-with-hygiene-waivers.sh'; do
+    'audit-with-hygiene-waivers.sh' \
+    'BUILD_KSECRETD=OFF' \
+    'BUILD_KWALLETD=OFF' \
+    'BUILD_KWALLET_QUERY=OFF' \
+    'BUILD_PLUGINS=none'; do
     if ! grep -Fq -- "$needle" "$PLAN" &&
        ! grep -Fq -- "$needle" "$REPO_ROOT/contrib/konsole/kde-builder.yaml.in"; then
         fail "plan/config is missing: $needle"
@@ -156,6 +165,8 @@ pass 'rendered kde-builder YAML and workflow parse'
 
 grep -Fq 'libGL.so*' "$REPO_ROOT/tools/verify-konsole-artifact.sh" || \
     fail 'artifact verifier does not reject a hard libGL dependency'
+grep -Fq 'libcanberra.so.0' "$REPO_ROOT/tools/verify-konsole-artifact.sh" || \
+    fail 'artifact verifier does not allow the declared Canberra runtime dependency'
 pass 'artifact verifier rejects a hard libGL dependency'
 
 for needle in \
@@ -175,6 +186,7 @@ for needle in \
     'bison' \
     'libmount-dev' \
     'libcanberra-dev' \
+    'liburi-perl' \
     'libdbus-1-dev' \
     'python3-lxml' \
     'libxml2-dev' \
@@ -184,6 +196,7 @@ for needle in \
     'docbook-xml' \
     'docbook-xsl' \
     'test-konsole-host-docbook-tools.sh' \
+    'test-konsole-host-perl-modules.sh' \
     'run-konsole-smoke.sh' \
     'Scan Konsole sources for newer glibc symbols'; do
     grep -Fq "$needle" "$workflow" || fail "workflow is missing: $needle"
@@ -210,6 +223,15 @@ while read -r apt_package python_module extra; do
         fail "workflow does not install host Python package: $apt_package"
 done < "$REPO_ROOT/contrib/konsole/host-python-modules.txt"
 pass 'workflow installs declared host Python build modules'
+
+while read -r apt_package perl_module extra; do
+    [[ -z "${apt_package:-}" || "$apt_package" == \#* ]] && continue
+    [[ -n "${perl_module:-}" && -z "${extra:-}" ]] || \
+        fail 'host Perl module manifest has a malformed entry'
+    grep -Fq "$apt_package" "$workflow" || \
+        fail "workflow does not install host Perl package: $apt_package"
+done < "$REPO_ROOT/contrib/konsole/host-perl-modules.txt"
+pass 'workflow installs declared host Perl build modules'
 
 for needle in \
     'exports = "qt_cmake_components.py"' \
@@ -253,7 +275,8 @@ for needle in \
     'override qca:' \
     '-DBUILD_WITH_QT6=ON' \
     '-DBUILD_TESTS=OFF' \
-    '-DBUILD_TOOLS=OFF'; do
+    '-DBUILD_TOOLS=OFF' \
+    '-DBUILD_PLUGINS=none'; do
     grep -Fq -- "$needle" "$REPO_ROOT/contrib/konsole/kde-builder.yaml.in" || \
         fail "kde-builder recipe is missing qca Qt6 option: $needle"
 done

@@ -25,7 +25,8 @@ while IFS= read -r soname; do
         libxcb-icccm.so.4|libxcb-image.so.0|libxcb-keysyms.so.1|\
         libxcb-randr.so.0|libxcb-render.so.0|libxcb-render-util.so.0|\
         libxcb-shape.so.0|libxcb-shm.so.0|libxcb-sync.so.1|\
-        libxcb-xfixes.so.0|libxcb-xkb.so.1|libICE.so.6|libSM.so.6)
+        libxcb-xfixes.so.0|libxcb-xkb.so.1|libICE.so.6|libSM.so.6|\
+        libcanberra.so.0)
             ;;
         *)
             printf 'error: undeclared dynamic dependency: %s\n' "$soname" >&2
@@ -43,4 +44,4 @@ grep -Eq 'QXcb(Glx|Egl)IntegrationPlugin' <<< "$string_table" || {
     printf 'error: qxcb GL integration plugin is absent\n' >&2
     exit 1
 }
-printf 'Konsole artifact contract: PASS (static Qt/KF6, host X11/OpenGL ABI only)\n'
+printf 'Konsole artifact contract: PASS (static Qt/KF6, host X11/Canberra/OpenGL ABI only)\n'
