@@ -74,3 +74,11 @@ Several KDE Frameworks in the pinned dependency graph call
 CONFIG lookup therefore fails before it can use the target. The recipe emits
 adapters for the Qt private-component family and verifies the
 `Qt6GuiPrivate` form in its component regression test.
+
+## 5. qca defaults to Qt5 while the KDE graph uses its Qt6 branch
+
+The pinned qca `CMakeLists.txt` defaults `BUILD_WITH_QT6` to `OFF` and
+otherwise requires Qt5. Its Qt6 branch instead requires Qt6 Core, Test and
+Core5Compat. The kde-builder recipe selects that branch and disables qca's
+unneeded test/tool targets; the Conan recipe enables the corresponding
+`qt5compat` module.

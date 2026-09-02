@@ -213,6 +213,7 @@ for needle in \
     '"GuiPrivate"' \
     'component_config(module)' \
     'component_version_config()' \
+    '"qt/*:qt5compat": True' \
     '"qt/*:qtsvg": True' \
     '"bzip2/1.0.8"' \
     '"xz_utils/5.8.3"' \
@@ -231,6 +232,16 @@ pass 'Conan recipe carries component and target compatibility metadata'
 grep -Fq 'Qt6GuiPrivate' "$REPO_ROOT/tools/test-konsole-qt-cmake-component-shims.sh" || \
     fail 'Qt private-component adapter regression is missing'
 pass 'Conan recipe covers standalone Qt private-component lookups'
+
+for needle in \
+    'override qca:' \
+    '-DBUILD_WITH_QT6=ON' \
+    '-DBUILD_TESTS=OFF' \
+    '-DBUILD_TOOLS=OFF'; do
+    grep -Fq -- "$needle" "$REPO_ROOT/contrib/konsole/kde-builder.yaml.in" || \
+        fail "kde-builder recipe is missing qca Qt6 option: $needle"
+done
+pass 'qca is configured for the Qt6 graph without optional test tools'
 
 grep -Fq -- "-o:h 'qt/*:qtsvg=True'" "$REPO_ROOT/tools/build-konsole.sh" || \
     fail 'build-konsole.sh does not enable QtSvg required by KDE Frameworks'

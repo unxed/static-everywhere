@@ -88,3 +88,12 @@ global:
 
 override konsole:
   revision: "@KONSOLE_REF@"
+
+# qca defaults to its legacy Qt5 build. The KDE dependency graph consumes its
+# Qt6 package, and qca's CMakeLists.txt requires Qt6 Core5Compat even when its
+# optional tests and command-line tools are not part of the application build.
+override qca:
+  cmake-options: >
+    -DBUILD_WITH_QT6=ON
+    -DBUILD_TESTS=OFF
+    -DBUILD_TOOLS=OFF

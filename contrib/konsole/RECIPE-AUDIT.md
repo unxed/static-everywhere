@@ -128,6 +128,11 @@ that are not safe with a Widgets-only, no-QtWayland target:
   The recipe now emits compatibility adapters for the private-component
   family and the regression exercises `Qt6GuiPrivate`, so this package-form
   mismatch is handled as a class.
+- The transitive `qca` project defaults to Qt5, but its Qt6 branch is the one
+  consumed by this KDE graph and requires the Qt Core5Compat module. Its
+  project-specific kde-builder override selects Qt6 and disables qca-only
+  tests/tools; `qt/*:qt5compat=True` makes that source-level requirement
+  available in Conan before qca configures.
 
 Wayland is intentionally not part of this acceptance pass. There is no
 architectural blocker to adding it later: the recipe will need QtWayland,
