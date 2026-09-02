@@ -260,6 +260,12 @@
     silently pretending the flag was applied. `-Wl,--export-dynamic` and
     `-Wl,-z,relro/now/noexecstack` all work fine under zig's linker —
     only `--exclude-libs` doesn't.
+  - `-Wl,--fatal-warnings` is another GNU/LLD warning-policy flag rejected by
+    zig 0.13. The compiler wrappers drop it for both C and C++ links; unlike
+    result-changing flags such as `--wrap` or `--defsym`, it leaves the linker
+    diagnostics visible and does not alter the artifact's symbol or relocation
+    content. `tools/test-linker-arg-compat.sh` exercises this filter through
+    both wrappers.
   Both toolchain files were then verified end to end: `cmake` configures
   and builds a two-file C+C++ smoketest project via each, the resulting
   binaries run, and — the best available confirmation — `onebin audit`

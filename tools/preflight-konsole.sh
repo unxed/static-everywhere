@@ -16,6 +16,7 @@ bash -n "$REPO_ROOT/tools/build-konsole.sh" "$REPO_ROOT/tools/preflight-konsole.
     "$REPO_ROOT/tools/test-konsole-qt-cmake-component-shims.sh" \
     "$REPO_ROOT/tools/test-konsole-host-cmake-discovery.sh" \
     "$REPO_ROOT/tools/test-konsole-host-build-tool-discovery.sh" \
+    "$REPO_ROOT/tools/test-linker-arg-compat.sh" \
     "$REPO_ROOT/tools/test-konsole-host-python-modules.sh" \
     "$REPO_ROOT/tools/test-konsole-host-docbook-tools.sh"
 pass 'Konsole shell scripts parse'
@@ -28,6 +29,9 @@ pass 'host CMake module discovery survives Zig ABI-probe metadata loss'
 
 bash "$REPO_ROOT/tools/test-konsole-host-build-tool-discovery.sh"
 pass 'host build tools survive CONFIG-mode package lookup'
+
+bash "$REPO_ROOT/tools/test-linker-arg-compat.sh"
+pass 'Zig accepts KDE linker policy flags through the wrappers'
 
 bash "$REPO_ROOT/tools/test-konsole-qt-package-root.sh"
 pass 'Qt package roots are discovered from CMakeDeps metadata'

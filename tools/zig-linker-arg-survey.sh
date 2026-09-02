@@ -5,11 +5,12 @@
 # ---------------
 # zig cc parses -Wl, arguments itself and errors on any it does not
 # recognise ("error: unsupported linker arg: X"), where GNU ld and lld
-# would accept them. This project has now hit that twice, each time at
+# would accept them. This project has now hit that three times, each time at
 # the end of a long build:
 #
 #   -Wl,-rpath-link  from Conan's AutotoolsDeps generator, during elfutils
 #   -Wl,--exclude-libs  added by f4 itself, at the final link of f4-qt-host
+#   -Wl,--fatal-warnings  added by KDE compiler settings, during KDocTools
 #
 # Discovering these one build at a time is the expensive way. The set is
 # enumerable in about a second, so enumerate it, and keep the answer where

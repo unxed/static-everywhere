@@ -7,7 +7,7 @@
 #
 #   error: unsupported linker arg: --push-state
 #
-# after the whole program had compiled. Two separate defects, both of
+# after the whole program had compiled. Three separate defects, all of
 # them a class rather than a one-off:
 #
 # 1. zig 0.13 accepts `-Wl,--whole-archive` and rejects the identical
@@ -20,10 +20,14 @@
 # 2. CMake's default WHOLE_ARCHIVE expansion brackets the item with
 #    --push-state/--pop-state, which zig rejects in any spelling.
 #
-# Both are fixed away from the call site: the wrappers translate
+# 3. KDE's CMake settings add `-Wl,--fatal-warnings`, which zig 0.13 also
+#    rejects although it only changes warning policy.
+#
+# The first two are fixed away from the call site: the wrappers translate
 # -Xlinker, and the toolchains define WHOLE_ARCHIVE in terms zig accepts.
-# This checks the outcome rather than the mechanism, so either fix can be
-# rewritten without the test having to change.
+# The third is filtered by both compiler wrappers. This checks the outcome
+# rather than the mechanism, so either fix can be rewritten without the test
+# having to change.
 set -euo pipefail
 
 # shellcheck disable=SC1007
@@ -87,4 +91,17 @@ printf 'int main(void){ return 0; }\n' >"$PROBE/x.c"
     || { printf '-Xlinker is not being translated for the linker:\n' >&2
          sed 's/^/  /' "$PROBE/x.log" >&2; exit 1; }
 
-printf 'linker args: no --push-state, whole-archive links, -Xlinker survives\n'
+for compiler in zig-cc zig-c++; do
+    case "$compiler" in
+        zig-cc)  source="$PROBE/${compiler}.c" ;;
+        zig-c++) source="$PROBE/${compiler}.cpp" ;;
+    esac
+    printf 'int main(void){ return 0; }\n' >"$source"
+    "${REPO_ROOT}/onebin/toolchain/${compiler}" \
+        -target x86_64-linux-gnu.2.27 "$source" -o "$PROBE/${compiler}" \
+        -Wl,--fatal-warnings 2>"$PROBE/${compiler}.log" \
+        || { printf '%s let unsupported --fatal-warnings reach zig:\n' "$compiler" >&2
+             sed 's/^/  /' "$PROBE/${compiler}.log" >&2; exit 1; }
+done
+
+printf 'linker args: no --push-state, whole-archive links, -Xlinker survives, --fatal-warnings filtered\n'

@@ -113,6 +113,9 @@ done
 # and --unresolved-symbols all change what the link produces, and silently
 # discarding any of them would trade a loud build failure for a wrong
 # binary.
+# `--fatal-warnings` is a warning-policy switch, not a link-result feature,
+# and zig 0.13 rejects it. Drop that policy while keeping the underlying
+# linker diagnostics visible.
 has_export=0
 for _onebin_arg in "$@"; do
     case "$_onebin_arg" in
@@ -157,6 +160,9 @@ _onebin_emit_filtered_args() {
                 fi
                 ;;
             -Wl,-rpath-link,*)
+                _onebin_keep=0
+                ;;
+            -Wl,--fatal-warnings)
                 _onebin_keep=0
                 ;;
             -Wl,--exclude-libs,*|-Wl,--exclude-libs=*)
