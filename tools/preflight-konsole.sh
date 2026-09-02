@@ -338,4 +338,12 @@ if missing:
 PYEOF
 pass 'every template placeholder has a substitution'
 
+
+# A legacy-variable adapter must point at the directory holding the
+# header, not an ancestor of it. sonnet includes <hunspell.hxx>
+# unqualified while the package installs it under include/hunspell/,
+# and the build died on "file not found" with the package found.
+"$REPO_ROOT/tools/test-legacy-finder-header-dir.sh" \
+    || { printf 'FAIL: legacy finder adapter regression\n' >&2; exit 1; }
+
 printf 'Konsole preflight: PASS\n'

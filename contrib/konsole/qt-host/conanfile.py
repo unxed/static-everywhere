@@ -170,6 +170,13 @@ class KonsoleQtHostConan(ConanFile):
                 target="hunspell::hunspell",
                 variable_prefix="HUNSPELL",
                 version="1.7.2",
+                # sonnet includes <hunspell.hxx> unqualified while the
+                # package installs it under include/hunspell/, so handing
+                # over the target's include directory is one level too
+                # high: the plugin compiled and died on
+                # "'hunspell.hxx' file not found".
+                header="hunspell.hxx",
+                path_suffixes="hunspell",
             ),
         )
         self.output.info("Generated legacy-variable adapter: HUNSPELLConfig.cmake")

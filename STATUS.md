@@ -7,6 +7,41 @@ Everything below this section is a reverse-chronological log (newest
 first). Read *this* section first; consult the log below only for the
 detail behind a specific claim.
 
+### sonnet: the package was found, and its headers still were not
+
+```
+sonnet/src/plugins/hunspell/hunspelldict.h:11:10:
+    fatal error: 'hunspell.hxx' file not found
+```
+
+Conan declared `hunspell::hunspell`, sonnet enabled the plugin, and the
+compile line carried no hunspell include directory at all — sonnet's own
+directories and nothing else.
+
+The legacy-variable adapter handed over the imported target's
+`INTERFACE_INCLUDE_DIRECTORIES`, which is `<pkg>/include`. The header is
+at `<pkg>/include/hunspell/hunspell.hxx`, and sonnet writes `#include
+<hunspell.hxx>` unqualified. One level too high — and upstream's
+`FindHUNSPELL` never had this problem because it uses `find_path` with
+`PATH_SUFFIXES hunspell`, resolving to the directory that holds the file
+rather than to the package root.
+
+So the adapter now does the same when told which header to look for, and
+searches **inside the package only** (`NO_DEFAULT_PATH`): resolving to a
+host copy would compile against different headers than the library being
+linked, which is worse than failing.
+
+`tools/test-legacy-finder-header-dir.sh` builds a package laid out the
+way Conan lays hunspell out and requires the resolved directory to
+**contain** the header, not merely be an ancestor of it — the ancestor is
+exactly what was handed over before. It also plants a stray copy outside
+the package and requires the adapter not to find it. The negative control
+reverts to the old target-property behaviour and fails.
+
+The parameter is generic rather than hunspell-specific, because the shape
+recurs: a package installs `include/foo/foo.h`, a consumer includes
+`<foo.h>`, and the imported target points at `include/`.
+
 ### Run #43: replace unsupported linker interposition with captured source fixes
 
 Run #43 reached the final `gnome-terminal-server` link but failed because the
