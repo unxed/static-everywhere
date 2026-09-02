@@ -116,6 +116,12 @@ that are not safe with a Widgets-only, no-QtWayland target:
 - Designer plugins and text-to-speech are optional framework features and are
   disabled to keep the built graph aligned with Konsole's actual application
   targets.
+- The top-level Konsole `CMakeLists.txt` requests only Qt Core, Multimedia,
+  PrintSupport and Widgets, but the pinned KDE Frameworks graph adds a
+  mandatory QtSvg request in KIconThemes. `qt/*:qtsvg=True` is therefore an
+  explicit recipe input and the component-adapter regression exercises
+  `find_package(Qt6Svg)`; this prevents a framework-only Qt module from being
+  discovered one CI failure too late.
 
 Wayland is intentionally not part of this acceptance pass. There is no
 architectural blocker to adding it later: the recipe will need QtWayland,

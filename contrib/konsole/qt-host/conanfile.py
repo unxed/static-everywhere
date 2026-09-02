@@ -18,15 +18,18 @@ class KonsoleQtHostConan(ConanFile):
     # disabled in kde-builder; QtTools is included only for the build-time
     # Linguist tools used by KF6 translation catalogs. qtmultimedia itself is
     # required by Konsole, and Qt's qtmultimedia package requires
-    # qtshadertools; its optional audio backends are not. QtDBus is built
-    # because KNotifications' Linux CMakeLists.txt requires Qt6DBus even when
-    # the application-level USE_DBUS option is disabled.
+    # qtshadertools; its optional audio backends are not. QtSvg is required by
+    # KIconThemes' CMakeLists.txt even though Konsole's own top-level
+    # CMakeLists.txt does not request it. QtDBus is built because
+    # KNotifications' Linux CMakeLists.txt requires Qt6DBus even when the
+    # application-level USE_DBUS option is disabled.
     default_options = {
         "qt/*:shared": False,
         "qt/*:opengl": "desktop",
         "qt/*:qtdeclarative": True,
         "qt/*:qtmultimedia": True,
         "qt/*:qtimageformats": False,
+        "qt/*:qtsvg": True,
         "qt/*:qtshadertools": True,
         "qt/*:qttools": True,
         "qt/*:qttranslations": False,
