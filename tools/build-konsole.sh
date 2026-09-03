@@ -250,6 +250,7 @@ render_config() {
         -e "s|@ZIGCXX@|$ZIGCXX|g" \
         -e "s|@CMAKE_PREFIX_PATH@|$CMAKE_PREFIX_PATH|g" \
         -e "s|@PROJECT_INCLUDE@|$REPO_ROOT/contrib/konsole/project-include.cmake|g" \
+        -e "s|@INSTALL_PREFIX_CMD@|$REPO_ROOT/tools/kde-install-and-reconcile.sh|g" \
         -e "s|@KONSOLE_REF@|$KONSOLE_REF|g" \
         -e "s|@QT_PACKAGE_ROOT@|$QT_PACKAGE_ROOT|g" \
         "$REPO_ROOT/contrib/konsole/kde-builder.yaml.in"
@@ -262,6 +263,8 @@ fi
 
 run_env GIT_CONFIG_GLOBAL="$GIT_CONFIG_GLOBAL" PYTHONPATH="$KDE_BUILDER" \
     XDG_STATE_HOME="$KDE_STATE_DIR" \
+    SE_RECONCILE_TOOL="$REPO_ROOT/tools/reconcile-cmake-target-deps.sh" \
+    SE_RECONCILE_PREFIX="$KDE_INSTALL_DIR" \
     CC="$ZIGCC" CXX="$ZIGCXX" \
     PATH="$CONAN_VENV/bin:$PATH" python3 "$KDE_BUILDER/kde-builder" \
     --rc-file "$KDE_CONFIG" konsole

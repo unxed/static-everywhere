@@ -7,6 +7,44 @@ Everything below this section is a reverse-chronological log (newest
 first). Read *this* section first; consult the log below only for the
 detail behind a specific claim.
 
+### The core of the onion: the config template itself is wrong
+
+With the libdir pinned, both modules installed to `lib/cmake` -- and kio
+failed on the identical error anyway. So the split libdir was a real
+layer, but not the bottom one.
+
+The bottom one: `KF6JobWidgetsConfig.cmake.in` declares `find_dependency`
+for `Qt6Widgets` and `KF6CoreAddons` and **not** for `KF6Notifications`,
+though `CMakeLists.txt:53` requires the package and the exported target
+lists `KF6::Notifications`. The config under-declares its own export.
+That is upstream's bug, in the template, and no amount of arranging our
+side changes what that template omits.
+
+I spent too long trying to reach it from the project hook. The evidence
+finally settled it: `CMAKE_PROJECT_INCLUDE` shows up in kio's CMakeCache
+as `UNINITIALIZED`, so the hook's `find_package(KF6Notifications)` never
+took effect for the dependency modules -- the earlier "predefine" fix
+helped konsole itself and nothing upstream of it.
+
+The fix that works regardless of hooks is to repair the installed config.
+`tools/reconcile-cmake-target-deps.sh` already did that; the missing
+piece was *when* to run it, since kio configures mid-chain and there is
+no "after the build". kde-builder's `make-install-prefix` is the answer:
+it precedes each module's `make install`. The wrapper
+`tools/kde-install-and-reconcile.sh` installs first, then reconciles the
+configs that module just wrote, so kjobwidgets' config gains its
+`find_dependency(KF6Notifications)` before kio configures against it.
+
+Filed as UPSTREAM.md §4. Tested end to end -- install-then-reconcile
+order, transparent pass-through when the env is unset, and honest failure
+when the install fails -- and the reconciler's own test still guards the
+repair itself.
+
+Five layers on this one seam now, each genuine: poisoned export, disabled
+required dependency, split libdir, unreachable hook, and under the whole
+thing an upstream template that forgets what it exports. The onion had a
+core, and it belonged to KDE.
+
 ### Same error, different cause: the modules installed to two libdirs
 
 `kio` failed again on the identical message — `KF6::JobWidgets` needs

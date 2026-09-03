@@ -382,4 +382,10 @@ pass 'every template placeholder has a substitution'
     || { printf 'FAIL: KDE install libdir is not pinned uniformly\n' >&2
          exit 1; }
 
+# The install-and-reconcile wrapper must install first and reconcile
+# after, so kjobwidgets' under-declared config is repaired before kio
+# configures against it.
+"$REPO_ROOT/tools/test-kde-install-reconcile-wrapper.sh" \
+    || { printf 'FAIL: install-and-reconcile wrapper regression\n' >&2; exit 1; }
+
 printf 'Konsole preflight: PASS\n'

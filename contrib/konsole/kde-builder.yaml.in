@@ -57,6 +57,7 @@ global:
     # installs to the same place regardless of what pulled in
     # GNUInstallDirs first.
     -DKDE_INSTALL_LIBDIR=lib
+
     -DONEBIN_GLIBC_BASELINE=2.27
     -DBUILD_TESTING=OFF
     -DKCONFIG_USE_QML=OFF
@@ -121,6 +122,16 @@ global:
     -DKONSOLE_BUILD_UNI2CHARACTERWIDTH=OFF
     -DINSTALL_ICONS=ON
 
+
+  # Run each module's install through a wrapper that reconciles the CMake
+  # configs it just installed against the targets they export. kio consumes
+  # KF6JobWidgets, whose installed config omits its own KF6Notifications
+  # find_dependency (an upstream template bug), and kio configures mid-chain,
+  # so there is no "after the build" point to fix it. make-install-prefix runs
+  # right after each install and before the next module configures -- the only
+  # moment that works. The wrapper installs first, then reconciles; the tool
+  # and prefix reach it through SE_RECONCILE_* in the environment.
+  make-install-prefix: @INSTALL_PREFIX_CMD@
 override konsole:
   revision: "@KONSOLE_REF@"
 

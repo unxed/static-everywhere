@@ -123,3 +123,34 @@ consumers.
 `-DCMAKE_DISABLE_FIND_PACKAGE_KF6Notifications=ON`: Konsole does not use
 job notifications, and keeping the package unfound keeps it out of the
 export.
+
+## 4. kjobwidgets' installed config omits its own KF6Notifications dependency
+
+`KF6JobWidgetsConfig.cmake.in` declares `find_dependency` for
+`Qt6Widgets` and `KF6CoreAddons`, but not `KF6Notifications` — even though
+`CMakeLists.txt:53` calls `find_package(KF6Notifications REQUIRED)` and the
+exported `KF6::JobWidgets` target lists `KF6::Notifications` in its link
+interface. Any consumer calling `find_package(KF6JobWidgets)` then loads a
+targets file that references a target nobody has defined:
+
+```
+CMake Error at .../KF6JobWidgetsTargets.cmake:61 (set_target_properties):
+  The link interface of target "KF6::JobWidgets" contains:
+    KF6::Notifications
+  but the target was not found.
+```
+
+kio hit this mid-build. This is distinct from finding #3, which was the
+same symptom caused on our side by a split install libdir; with the libdir
+pinned, the remaining cause is purely the missing `find_dependency` in the
+template.
+
+**Suggested fix:** add `find_dependency(KF6Notifications "@KF_DEP_VERSION@")`
+to `KF6JobWidgetsConfig.cmake.in`, matching the `REQUIRED` find_package the
+build already performs.
+
+**Worked around here** by reconciling installed configs against their
+exported targets after each module installs
+(`tools/reconcile-cmake-target-deps.sh`, run via kde-builder's
+`make-install-prefix`), which adds the missing `find_dependency` before
+the next module configures.
