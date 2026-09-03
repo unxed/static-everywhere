@@ -84,6 +84,16 @@ for targets in targets_files:
         if re.search(rf'find_package\(\s*{re.escape(candidate)}\b', declared):
             continue
         if candidate not in available:
+            # A component of an aggregate package -- Qt6::Gui lives in
+            # Qt6Config.cmake, KF6::ConfigCore in KF6ConfigConfig.cmake --
+            # has no config of its own and is declared through the
+            # aggregate. Treat it as resolved when any installed config
+            # name is a prefix of the candidate, so the real gaps are not
+            # buried under twenty false alarms. (They were: the first CI
+            # run listed Qt6::Gui and KF6::ConfigCore as "not installed".)
+            if any(candidate.startswith(name) and name != namespace
+                   for name in available) or namespace == 'Qt6':
+                continue
             unresolved.append((package, target, candidate))
             continue
 

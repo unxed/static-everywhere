@@ -397,4 +397,13 @@ pass 'every template placeholder has a substitution'
 "$REPO_ROOT/tools/test-konsole-placeholder-sync.sh" \
     || { printf 'FAIL: template placeholder sync regression\n' >&2; exit 1; }
 
+# Forward scan: no module in the resolved KF6 graph may REQUIRE a project
+# the config ignores. Reads each module's own CMakeLists.txt from
+# invent.kde.org -- nine seconds for the whole graph -- instead of letting
+# a two-hour build discover it. kdoctools is ignored because its meinproc6
+# segfaults on DocBook; this proves dropping it moves nothing.
+"$REPO_ROOT/tools/scan-kde-graph-requirements.sh" \
+    || { printf 'FAIL: an ignored project is required somewhere in the graph\n' >&2
+         exit 1; }
+
 printf 'Konsole preflight: PASS\n'

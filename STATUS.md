@@ -7,6 +7,71 @@ Everything below this section is a reverse-chronological log (newest
 first). Read *this* section first; consult the log below only for the
 detail behind a specific claim.
 
+### Stop. Four two-hour runs on one seam, and every one tested a guess
+
+The reconciler *worked*. `kjobwidgets/install.log` lines 131–132 show
+`find_dependency(KF6Notifications)` and `KF6WidgetsAddons` being added,
+and `kio/cmake.log` ends with `exit code was: 0`. All five layers on the
+kio/kjobwidgets seam are through. I had concluded the wrapper never ran
+because I searched the top-level log; its output goes to each module's
+own `install.log`. A mechanism whose evidence I do not know where to look
+for is a mechanism I have not finished building.
+
+The new failure is a different kind: `meinproc6` — kdoctools' DocBook host
+tool, built with this toolchain — segfaults (`code=139`) on the first
+handbook kio hands it.
+
+### What I did differently this time: read ahead before touching anything
+
+Three questions, all answered from sources before any change:
+
+1. **Does konsole need documentation?** No. `find_package(KF6DocTools)`
+   without REQUIRED, gated by `if(KF6DocTools_FOUND)`, in konsole and in
+   kio. Checked kxmlgui, kparts, knewstuff, kirigami, kconfigwidgets,
+   ktextwidgets, kwallet, kservice as well: none requires it.
+2. **Can the graph drop it?** `ignore-projects` in kde-builder — read
+   `filter_out_unneeded_modules` in `module_resolver.py`: it applies after
+   dependency expansion, so `include-dependencies` cannot pull the project
+   back in.
+3. **What else will fail, further down?** Scanned every remaining module
+   for the classes that have bitten before — QML, Wayland, handbooks.
+   Two findings. `kirigami` is QML-heavy but knewstuff lists it as
+   `TYPE RUNTIME`, needed by its QML components at run time and never for
+   the build: ignored alongside kdoctools. And knewstuff *requires*
+   `Qt6 COMPONENTS Qml Quick QuickWidgets` plus Designer for its plugin —
+   the Conan listing showed both ABSENT, which would have been the next
+   two-hour failure. Except the listing is `-newer`-filtered. The Conan Qt
+   recipe itself (`_create_module("QuickWidgets", …)` under
+   `qtdeclarative && qtshadertools && widgets`, `Designer` under `qttools`)
+   confirms both exist for our options. Not a layer. Read, never derive —
+   including from my own collector's output.
+
+**Ignoring kdoctools removes the class, not the instance:** every module's
+handbook step, not kio's one segfault.
+
+### The check that makes the next layer a minute, not two hours
+
+`tools/scan-kde-graph-requirements.sh` fetches the live `CMakeLists.txt`
+of all 39 modules in the resolved graph (snapshot in
+`contrib/konsole/kde-graph.txt`, taken from the artifact's `kde-logs`
+directory) and fails if any REQUIRES an ignored project, or if an ignore
+names nothing in the graph. Nine seconds. Two negative controls — ignoring
+kconfig, which others require; a misspelled ignore — both caught. Wired
+into the preflight.
+
+Also: the reconciler no longer reports Qt6::Gui or KF6::ConfigCore as
+"not installed" — those are components of aggregate configs, and the
+twenty false alarms in the CI log were burying the real result.
+
+And the konsole preflight now runs to `PASS` **locally, end to end**, with
+gettext installed in the sandbox. That should have been the bar before
+every one of the last four runs.
+
+One process error to own: I ran `git reset --hard` and checked
+`origin/main..HEAD` *afterwards*. All six commits were upstream, so
+nothing was lost — but the order was wrong, and the rule exists because
+of exactly this.
+
 ### The preflight validated a different config than the build produces
 
 `make-install-prefix` went in as a bare `@INSTALL_PREFIX_CMD@`. Every

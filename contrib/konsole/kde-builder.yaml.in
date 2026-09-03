@@ -3,6 +3,24 @@ config-version: 2
 global:
   branch-group: latest-kf6
   include-dependencies: true
+
+  # Projects excluded from the graph, with the reason each is safe to drop.
+  #
+  # kdoctools: builds meinproc6, a host tool that generates DocBook
+  # handbooks -- and that tool, built with this toolchain, segfaults
+  # (code 139) on the first document kio hands it. Every consumer in the
+  # graph treats KF6DocTools as optional (find_package without REQUIRED,
+  # gated by if(KF6DocTools_FOUND)); read from the CMakeLists of konsole,
+  # kio, kservice, kwallet and the rest before deciding, not assumed. A
+  # terminal emulator ships no handbook it cannot open, so removing the
+  # tool removes the whole class -- every module's handbook step, not
+  # just kio's -- rather than one segfault.
+  #
+  # kirigami: a QML UI framework that knewstuff lists as TYPE RUNTIME,
+  # needed only by its QML components at run time, never for the build.
+  # Excluding it keeps a large Quick-based tree out of a graph whose
+  # consumer is a Widgets application.
+  ignore-projects: kdoctools kirigami
   source-dir: "@KDE_SOURCE_DIR@"
   build-dir: "@KDE_BUILD_DIR@"
   install-dir: "@KDE_INSTALL_DIR@"
