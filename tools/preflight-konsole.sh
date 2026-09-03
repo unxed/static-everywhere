@@ -361,4 +361,11 @@ pass 'every template placeholder has a substitution'
 "$REPO_ROOT/tools/test-konsole-qt-component-derivation.sh" \
     || { printf 'FAIL: Qt component derivation regression\n' >&2; exit 1; }
 
+# An exported CMake target must not name a package its config leaves
+# undeclared. kjobwidgets did, and kio stopped on a target nobody had
+# defined.
+"$REPO_ROOT/tools/test-cmake-target-dep-reconcile.sh" \
+    || { printf 'FAIL: cmake target dependency reconciler regression\n' >&2
+         exit 1; }
+
 printf 'Konsole preflight: PASS\n'

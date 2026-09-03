@@ -100,6 +100,26 @@ global:
     -DKONSOLE_BUILD_UNI2CHARACTERWIDTH=OFF
     -DINSTALL_ICONS=ON
 
+# kjobwidgets links KF6::Notifications when it finds it, and records that
+# in KF6JobWidgetsTargets.cmake -- but its generated
+# KF6JobWidgetsConfig.cmake declares only Qt6Widgets and KF6CoreAddons.
+# Any consumer that calls find_package(KF6JobWidgets) then gets a targets
+# file naming a target nobody defined, and kio stopped there:
+#
+#   The link interface of target "KF6::JobWidgets" contains:
+#     KF6::Notifications
+#   but the target was not found.
+#
+# Konsole does not use job notifications, so the narrow answer is to stop
+# kjobwidgets finding the package at all, which keeps it out of the
+# export. The general answer -- reconciling exported targets with the
+# dependencies their config declares -- is
+# tools/reconcile-cmake-target-deps.sh, and the inconsistency itself is
+# filed in UPSTREAM.md, since it is a packaging bug rather than ours.
+override kjobwidgets:
+  cmake-options: >
+    -DCMAKE_DISABLE_FIND_PACKAGE_KF6Notifications=ON
+
 override konsole:
   revision: "@KONSOLE_REF@"
 

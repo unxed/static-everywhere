@@ -7,6 +7,50 @@ Everything below this section is a reverse-chronological log (newest
 first). Read *this* section first; consult the log below only for the
 detail behind a specific claim.
 
+### The collector fix paid for itself immediately
+
+`kio/cmake.log` arrived this time, and named the failure in one read:
+
+```
+CMake Error at .../KF6JobWidgetsTargets.cmake:62
+  The link interface of target "KF6::JobWidgets" contains:
+    KF6::Notifications
+  but the target was not found.
+```
+
+Both modules had built, in the right order, and `KF6Notifications` was
+installed in the same prefix. The inconsistency is in what kjobwidgets
+exported: its `Targets.cmake` records a link interface on
+`KF6::Notifications` while its `Config.cmake` declares only `Qt6Widgets`
+and `KF6CoreAddons`. Any consumer calling `find_package(KF6JobWidgets)`
+receives a targets file naming a target nobody defined.
+
+That is upstream's packaging bug — an optional dependency found at build
+time, recorded in the export, and never added to the config template. It
+is filed as `UPSTREAM.md` §3.
+
+**The narrow fix**, since konsole does not use job notifications: build
+kjobwidgets with `-DCMAKE_DISABLE_FIND_PACKAGE_KF6Notifications=ON`, so
+the package is never found and never enters the export.
+
+**The general one** is `tools/reconcile-cmake-target-deps.sh`: it reads
+every installed `*Targets.cmake`, collects the namespaced targets it
+references, and adds the missing `find_dependency` to the sibling config.
+Conservative on purpose — if the referenced package has no config in the
+prefix, it reports and fails rather than patching, because a
+`find_dependency` for something absent only moves the error. It is
+idempotent, and both halves are covered by negative controls.
+
+It is not wired into the build itself: kde-builder builds the whole KF6
+chain in one invocation, so there is no point between the modules to run
+it. Recorded here as the answer if this recurs across a module boundary
+we do control.
+
+Worth noting how the test found a bug in its own fixture: the first
+version installed only `KF6Notifications`, and the tool objected that
+`KF6::CoreAddons` was also in the export with no config present. It was
+right — the fixture was wrong, not the check.
+
 ### The collector shrank to 23 MB and dropped the one file that mattered
 
 Good news first: the artifact is 23 MB instead of 429, solid and sonnet

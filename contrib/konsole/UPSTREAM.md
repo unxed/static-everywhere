@@ -94,3 +94,32 @@ This recipe supplies Hunspell 1.7.2 from ConanCenter directly. Its recipe
 installs the `include/hunspell` headers and `hunspell` library expected by
 Sonnet's `FindHUNSPELL.cmake`, and the build script forces that package through
 the Zig target compiler instead of accepting a prebuilt host-ABI package.
+
+## 3. kjobwidgets exports `KF6::Notifications` without declaring it
+
+`KF6JobWidgetsTargets.cmake` records `KF6::Notifications` in the link
+interface of `KF6::JobWidgets`, while the generated
+`KF6JobWidgetsConfig.cmake` declares only `Qt6Widgets` and
+`KF6CoreAddons`. A consumer that calls `find_package(KF6JobWidgets)`
+therefore gets a targets file naming a target nobody has defined:
+
+```
+CMake Error at .../KF6JobWidgetsTargets.cmake:62 (set_target_properties):
+  The link interface of target "KF6::JobWidgets" contains:
+    KF6::Notifications
+  but the target was not found.
+```
+
+kio stopped there. Both modules had built, in the right order, and the
+package was installed in the same prefix — the config simply never said
+it was needed.
+
+**Suggested fix:** add the matching `find_dependency(KF6Notifications)`
+to the config template on the same condition that links the library, so
+an optional dependency that ends up in the export is also declared to
+consumers.
+
+**Worked around here** by building kjobwidgets with
+`-DCMAKE_DISABLE_FIND_PACKAGE_KF6Notifications=ON`: Konsole does not use
+job notifications, and keeping the package unfound keeps it out of the
+export.
