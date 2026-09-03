@@ -374,4 +374,12 @@ pass 'every template placeholder has a substitution'
 "$REPO_ROOT/tools/test-konsole-export-target-predefine.sh" \
     || { printf 'FAIL: export target predefinition regression\n' >&2; exit 1; }
 
+# Every KF6 module must share one install libdir, or a dependency
+# installed by one is invisible to find_package in another. kjobwidgets
+# split off into lib/cmake while its dependency went to
+# lib/<arch>/cmake, and kio could not resolve KF6::Notifications.
+"$REPO_ROOT/tools/test-konsole-uniform-libdir.sh" \
+    || { printf 'FAIL: KDE install libdir is not pinned uniformly\n' >&2
+         exit 1; }
+
 printf 'Konsole preflight: PASS\n'

@@ -7,6 +7,45 @@ Everything below this section is a reverse-chronological log (newest
 first). Read *this* section first; consult the log below only for the
 detail behind a specific claim.
 
+### Same error, different cause: the modules installed to two libdirs
+
+`kio` failed again on the identical message — `KF6::JobWidgets` needs
+`KF6::Notifications` but the target was not found — while the predefine
+hook was in place. This time the target genuinely could not be found,
+because the two packages installed to different directories:
+
+- `kjobwidgets` -> `lib/cmake/KF6JobWidgets`
+- `knotifications`, `kcoreaddons` -> `lib/x86_64-linux-gnu/cmake/...`
+
+Only `kjobwidgets` carried ECM's warning that `KDE_INSTALL_LIBDIR got its
+value from CMAKE_INSTALL_LIBDIR`. That is the tell. ECM defaults the
+libdir to `lib/${CMAKE_LIBRARY_ARCHITECTURE}` on a Debian host, unless
+`CMAKE_INSTALL_LIBDIR` is already set. And it was — by my own predefine
+hook: `find_package(KF6Notifications CONFIG)` pulls in Qt6, which
+includes `GNUInstallDirs`, which sets `CMAKE_INSTALL_LIBDIR=lib` before
+kjobwidgets' `CMakeLists.txt` reaches `KDEInstallDirs`. Reproduced: a
+project-include that pulls GNUInstallDirs leaves `CMAKE_INSTALL_LIBDIR=lib`
+set at the top of the consumer.
+
+So the previous fix, correct in itself, split the install tree as a side
+effect — the module that ran the hook's find_package early diverged from
+the ones that did not. `-DKDE_INSTALL_LIBDIR=lib`, pinned once in the
+global options, ends the dependence on include order: every module
+installs to the same libdir no matter what pulled in GNUInstallDirs
+first.
+
+Honest limit: I could not reproduce the split in isolation — it needs a
+full KDE build with ECM's module tree — so the guarantee rests on reading
+ECM's libdir logic and on the install-path evidence in the artifact, not
+on a sandbox repro. The test therefore asserts the pin is present, single
+and global, with three negative controls (removed, duplicated with a
+different value, demoted below a per-module override).
+
+That is three consecutive failures on the same `kio`/kjobwidgets seam,
+each a different layer: a poisoned export, then a required dependency
+disabled, now a split libdir. Each fix was sound and uncovered the next —
+the layers were real, not a fix thrashing.
+
 ### My last fix was wrong, and the build said so precisely
 
 Disabling `KF6Notifications` for kjobwidgets moved the failure one module
