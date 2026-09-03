@@ -368,4 +368,10 @@ pass 'every template placeholder has a substitution'
     || { printf 'FAIL: cmake target dependency reconciler regression\n' >&2
          exit 1; }
 
+# A consumer must be able to include an export naming a target the
+# exporting package forgot to declare, and the required dependency must
+# stay enabled.
+"$REPO_ROOT/tools/test-konsole-export-target-predefine.sh" \
+    || { printf 'FAIL: export target predefinition regression\n' >&2; exit 1; }
+
 printf 'Konsole preflight: PASS\n'

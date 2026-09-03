@@ -7,6 +7,46 @@ Everything below this section is a reverse-chronological log (newest
 first). Read *this* section first; consult the log below only for the
 detail behind a specific claim.
 
+### My last fix was wrong, and the build said so precisely
+
+Disabling `KF6Notifications` for kjobwidgets moved the failure one module
+earlier:
+
+```
+find_package for module KF6Notifications called with REQUIRED, but
+CMAKE_DISABLE_FIND_PACKAGE_KF6Notifications is enabled.
+A REQUIRED package cannot be disabled.
+```
+
+I had inferred the dependency was optional from the fact that
+`KF6JobWidgetsConfig.cmake` did not declare it. It is `REQUIRED` at
+`CMakeLists.txt:53`. The dependency is real; only the *declaration* is
+missing. Inferring a package's intent from a generated file that is
+itself the bug was the mistake.
+
+Reverted. The fix now runs where it can: the project hook calls
+`find_package(KF6Notifications QUIET CONFIG)` so the target exists before
+any export refers to it. `QUIET`, not `REQUIRED`, because the hook runs
+for every module in the graph including those built before
+knotifications.
+
+And it had to be moved above the hook's early returns — the file exits
+for any project that is not konsole, so my first placement was
+unreachable for kio, the only consumer that needed it. The test caught
+that: it failed with the hook applied, which is what sent me to read the
+guards.
+
+`tools/test-konsole-export-target-predefine.sh` reproduces the real
+failure — a consumer that configures **only** with the hook — and
+separately asserts the dependency is not disabled again, since that is
+the wrong fix I already tried.
+
+Two defects in the test itself found along the way: a fixture with no
+real target, which CMake never validates, so it did not reproduce the
+failure at all; and a `pipefail` pipeline reporting cmake's expected
+non-zero exit rather than grep's result, which made the reproduction
+check invert. Both fixed before the test was trusted.
+
 ### The collector fix paid for itself immediately
 
 `kio/cmake.log` arrived this time, and named the failure in one read:

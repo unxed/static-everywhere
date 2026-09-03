@@ -88,6 +88,32 @@ endif()
 
 _se_promote_conan_package_prefixes()
 
+# Define KF6::Notifications before anything includes an export that names
+# it.
+#
+# kjobwidgets requires KF6Notifications -- find_package(... REQUIRED) at
+# CMakeLists.txt:53 -- and records KF6::Notifications in the link
+# interface it exports. Its generated KF6JobWidgetsConfig.cmake declares
+# only Qt6Widgets and KF6CoreAddons, so a consumer that calls
+# find_package(KF6JobWidgets) receives a targets file naming a target
+# nobody defined, and kio stopped there:
+#
+#   The link interface of target "KF6::JobWidgets" contains:
+#     KF6::Notifications
+#   but the target was not found.
+#
+# The first attempt at this was to stop kjobwidgets finding the package,
+# on the assumption the dependency was optional because the config did
+# not declare it. It is not optional; it is REQUIRED, and disabling it
+# only moved the failure one module earlier. The config is simply missing
+# a find_dependency call -- upstream's bug, filed in UPSTREAM.md.
+#
+# QUIET and not REQUIRED: this runs for every module in the graph,
+# including the ones built before knotifications exists. Where the
+# package is absent this does nothing, and where it is present the target
+# is defined before any export can refer to it.
+find_package(KF6Notifications QUIET CONFIG)
+
 if(NOT PROJECT_IS_TOP_LEVEL)
     return()
 endif()
