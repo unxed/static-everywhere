@@ -216,6 +216,28 @@ jobs:
             \( -name config.log -o -name CMakeError.log -o -name CMakeConfigureLog.yaml \
                -o -name meson-log.txt -o -name LastTest.log \) \
             -size -2M -exec cp --parents {} "$diag" \; 2>/dev/null || true
+          # The failing modules first, by name, before anything else.
+          #
+          # kde-builder prints "<<< PROJECTS FAILED TO BUILD >>>" followed
+          # by each module and the path to its log. Those are the files a
+          # reader opens first, so they are copied first and unconditionally
+          # -- no size test, no ordering luck, no ceiling reached before
+          # them. Everything else in this step is context around them.
+          mkdir -p "$diag/04-text"
+          sed -n '/PROJECTS FAILED TO BUILD/,/^$/p' /tmp/build-output.log \
+            2>/dev/null \
+            | grep -oE '/[^ ]*/kde-logs/[^ ]*' \
+            | while IFS= read -r failed_log; do
+                failed_dir=$(dirname "$failed_log")
+                [ -d "$failed_dir" ] || continue
+                for one in "$failed_dir"/*; do
+                  [ -f "$one" ] || continue
+                  target="$diag/04-text/${one#/}"
+                  mkdir -p "$(dirname "$target")"
+                  cp "$one" "$target" 2>/dev/null || true
+                done
+              done
+
           # Collect what diagnoses a build, not every text file in it.
           #
           # "any text file under 2 MB, minus a few exclusions" produced a
@@ -239,9 +261,16 @@ jobs:
           # a judgement about which files matter and could be wrong again;
           # 32 MB is arithmetic and cannot be.
           copied_kb=0
+          # No mime-type gate. The allowlist above already names the files
+          # by what they are; asking file(1) as well only adds a second
+          # opinion that can disagree. It did: kio's cmake.log was in the
+          # listing at 30 KB, its sibling git-*.log files were copied, and
+          # it was not -- so the failing module's configure log, the one
+          # file needed to diagnose the run, was the one dropped. A build
+          # log full of ANSI escapes is still a build log.
           while IFS= read -r candidate; do
-            case "$(file -b --mime-type "$candidate" 2>/dev/null)" in
-              text/*|application/json|application/xml|inode/x-empty)
+            case "keep" in
+              keep)
                 candidate_kb=$(du -k "$candidate" 2>/dev/null | cut -f1)
                 candidate_kb=${candidate_kb:-0}
                 if [ "$((copied_kb + candidate_kb))" -gt 32768 ]; then

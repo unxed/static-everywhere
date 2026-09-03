@@ -7,6 +7,33 @@ Everything below this section is a reverse-chronological log (newest
 first). Read *this* section first; consult the log below only for the
 detail behind a specific claim.
 
+### The collector shrank to 23 MB and dropped the one file that mattered
+
+Good news first: the artifact is 23 MB instead of 429, solid and sonnet
+both build now, and the run reached `kio`.
+
+Then `kio didn't build, stopping here` — and `kio/cmake.log` was not in
+the artifact. It was in the listing, at 30 KB. Its sibling `git-*.log`
+files were copied. The 32 MB ceiling was never reached; only 17 MB was
+collected.
+
+What dropped it was the `file -b --mime-type` gate the copy loop had kept
+from before: a second opinion, applied after the allowlist had already
+decided by name. Where the two disagreed, the second one won, and it lost
+exactly the configure log of the module that failed. A build log full of
+ANSI escapes is still a build log. The gate is gone; the allowlist names
+what it wants and that is enough.
+
+**And a stronger guarantee than "the filter is now correct":** the logs
+of failing modules are copied **first and unconditionally**, before the
+general sweep, driven by the paths kde-builder itself prints under
+`<<< PROJECTS FAILED TO BUILD >>>`. Verified against this run's output —
+the extraction resolves to `kio/cmake.log`, the file that was missing.
+
+No size test, no ordering luck, no ceiling reached before them. The one
+thing a reader opens first is now the one thing collected first, and it
+does not depend on any filter being right.
+
 ### An empty file, and forty minutes later a slot that does not exist
 
 ```
