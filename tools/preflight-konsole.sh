@@ -140,6 +140,8 @@ sed -e "s|@KDE_SOURCE_DIR@|$REPO_ROOT/.konsole-preflight-source|g" \
     -e "s|@ZIGCXX@|$REPO_ROOT/onebin/toolchain/zig-c++|g" \
     -e "s|@CMAKE_PREFIX_PATH@|$REPO_ROOT/.konsole-preflight-qt;$REPO_ROOT/.konsole-preflight-install|g" \
     -e "s|@PROJECT_INCLUDE@|$REPO_ROOT/contrib/konsole/project-include.cmake|g" \
+    -e "s|@INSTALL_PREFIX_CMD@|$REPO_ROOT/tools/kde-install-and-reconcile.sh|g" \
+    -e "s|@QT_PACKAGE_ROOT@|$REPO_ROOT/.konsole-preflight-qt|g" \
     -e "s|@KONSOLE_REF@|$(awk '$1 == "konsole" { print $2 }' "$REPO_ROOT/contrib/konsole/deps.lock")|g" \
     "$REPO_ROOT/contrib/konsole/kde-builder.yaml.in" >"$RENDERED"
 python3 - "$RENDERED" "$workflow" <<'PY'
@@ -387,5 +389,12 @@ pass 'every template placeholder has a substitution'
 # configures against it.
 "$REPO_ROOT/tools/test-kde-install-reconcile-wrapper.sh" \
     || { printf 'FAIL: install-and-reconcile wrapper regression\n' >&2; exit 1; }
+
+# Both renderers must substitute every template placeholder, and
+# top-level placeholders must be quoted -- an unquoted make-install-prefix
+# placeholder broke the YAML parse, and the preflight missed it because
+# its own substitution list had drifted from the build script's.
+"$REPO_ROOT/tools/test-konsole-placeholder-sync.sh" \
+    || { printf 'FAIL: template placeholder sync regression\n' >&2; exit 1; }
 
 printf 'Konsole preflight: PASS\n'

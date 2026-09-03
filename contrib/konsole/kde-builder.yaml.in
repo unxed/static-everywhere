@@ -131,7 +131,7 @@ global:
   # right after each install and before the next module configures -- the only
   # moment that works. The wrapper installs first, then reconciles; the tool
   # and prefix reach it through SE_RECONCILE_* in the environment.
-  make-install-prefix: @INSTALL_PREFIX_CMD@
+  make-install-prefix: "@INSTALL_PREFIX_CMD@"
 override konsole:
   revision: "@KONSOLE_REF@"
 

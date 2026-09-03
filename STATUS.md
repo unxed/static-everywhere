@@ -7,6 +7,36 @@ Everything below this section is a reverse-chronological log (newest
 first). Read *this* section first; consult the log below only for the
 detail behind a specific claim.
 
+### The preflight validated a different config than the build produces
+
+`make-install-prefix` went in as a bare `@INSTALL_PREFIX_CMD@`. Every
+other top-level value in the template is quoted, because `@` cannot open a
+YAML scalar; unquoted, kde-builder's own YAML parse failed and no
+preflight artifacts were produced.
+
+CI caught it. The preflight -- whose entire job is to catch this in one
+minute rather than two hours -- did not, and that is the more important
+failure. It renders the template with its own hard-coded list of `sed`
+substitutions before validating, and that list had drifted from the build
+script's: it never substituted `@INSTALL_PREFIX_CMD@` at all. So it was
+parsing a document with a leftover placeholder, not the one the build
+emits, and a genuinely broken top-level line slipped through.
+
+Fixed the immediate bug by quoting the placeholder, like every other
+top-level one. But the root cause is two renderers with two independently
+maintained substitution lists, so `tools/test-konsole-placeholder-sync.sh`
+now asserts that **both** the build script and the preflight name every
+placeholder the template uses, and that top-level placeholders are quoted.
+
+It immediately found a second drift I would have shipped:
+`@QT_PACKAGE_ROOT@` was substituted by the build script but not the
+preflight. It sits inside the folded `cmake-options`, so it never broke
+the parse -- the preflight was quietly validating a config with an
+unsubstituted path in it. Now both renderers carry it.
+
+Two negative controls: an unquoted top-level placeholder, and a renderer
+missing a substitution. Both fail the test.
+
 ### The core of the onion: the config template itself is wrong
 
 With the libdir pinned, both modules installed to `lib/cmake` -- and kio
