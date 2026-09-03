@@ -386,6 +386,7 @@ jobs:
           #     folder is what keeps this small enough to download on a
           #     mobile connection instead of dragging in all ~35
           #     packages' build trees.
+          copied_kb=0
           while IFS= read -r d; do
             [ -n "$d" ] && [ -d "$d" ] || continue
             rel=$(printf '%s' "$d" | sed 's|^/||; s|/|_|g')
@@ -420,8 +421,19 @@ jobs:
             while IFS= read -r f; do
               case "$(file -b --mime-type "$f" 2>/dev/null)" in
                 text/*|application/json|application/xml|inode/x-empty)
+                  f_kb=$(du -k "$f" 2>/dev/null | cut -f1); f_kb=${f_kb:-0}
+                  if [ "$((copied_kb + f_kb))" -gt 32768 ]; then
+                    # Collection stopped: a ceiling this copy has not needed
+                    # yet, since it only walks folders that failed. Kept
+                    # because the two collectors that did need one also
+                    # looked narrow until they were 178 MB and 429 MB.
+                    printf 'Collection stopped at 32 MB.\n' \
+                      >"$OUT/02-failing-build-folders/TRUNCATED.txt"
+                    break
+                  fi
                   t="$OUT/02-failing-build-folders/$rel/${f#"$d"/}"
                   mkdir -p "$(dirname "$t")" && cp "$f" "$t"
+                  copied_kb=$((copied_kb + f_kb))
                   ;;
               esac
             done < /tmp/candidates.txt

@@ -7,6 +7,58 @@ Everything below this section is a reverse-chronological log (newest
 first). Read *this* section first; consult the log below only for the
 detail behind a specific claim.
 
+### An empty file, and forty minutes later a slot that does not exist
+
+```
+moc_fstabwatcher.cpp:86:21: error: no member named 'onFileChanged'
+```
+
+`fstabwatcher.h` declares one slot under `#ifdef Q_OS_LINUX` and a
+different one under `#else`. moc generated the `#else` branch, so moc did
+not have `Q_OS_LINUX`, so it did not have `__linux__`. It gets those from
+`moc_predefs.h`, which CMake fills by running
+`<compiler> -dM -E -c <empty file>` and capturing stdout.
+
+In the artifact that file is **zero bytes**. gcc treats `-E` as dominant
+and prints 463 macros; zig 0.13 lets `-c` win, writes an object and
+prints nothing. Nothing failed, nothing warned — moc simply compiled the
+wrong half of an `#ifdef`, in a generated file, about a macro nobody
+mentioned, forty minutes in.
+
+Both wrappers now drop `-c` when `-E` is present, which is what every
+other driver does. Ordinary `-c` and `-E` paths verified unchanged.
+
+The shape worth remembering is not "a flag differs" but **a command that
+succeeds and returns nothing**. A build system asking the compiler about
+itself has no way to tell an empty answer from a wrong one.
+
+### 429 MB, and the same mistake in a second workflow
+
+No, 50 MB of logs is not fine, and the artifact was 429 MB unpacked. 412
+MB of it was `kde-build`: translation catalogues, DocBook, generated
+sources, ninja dependency files. The gnome-terminal collector had reached
+178 MB the same way a week earlier.
+
+Both filters looked selective — "not a binary, under 2 MB, newer than the
+job start" — and neither was. The job creates everything it touches, so
+the age test excludes nothing, and a size test on individual files says
+nothing about the total.
+
+konsole now uses an allowlist and a 32 MB ceiling, as gnome-terminal
+already does. And `tools/test-diagnostics-collector-bounds.sh` enforces
+both across **every** workflow, because this has now been the same
+mistake twice in two places.
+
+Writing that test was itself instructive. Its first version flagged six
+collectors, most of them wrongly — listings that copy nothing. Narrowing
+it to collectors whose own output is copied cleared the false positives.
+Then two negative controls both said MISSED, for one shared reason: the
+linkage regex required a quoted redirect target, and konsole's is
+unquoted, so that workflow escaped every check silently. A third control
+showed `-name '*'` passing as an allowlist entry, so a universal pattern
+now voids the list instead of joining it. The controls found more defects
+in the test than the test initially found in the workflows.
+
 ### The preflight demanded exactly what the new guard forbids
 
 The derivation commit turned the preflight red, and on nothing real:

@@ -445,6 +445,26 @@ fi
 # zig rejects --push-state, which is what CMake brackets WHOLE_ARCHIVE
 # with, and mishandles -Xlinker, which is how CMake spells every linker
 # flag. far2l compiled fully and then failed to link on both.
+# CMake asks the compiler for its predefined macros with -dM -E -c and
+# writes them to moc_predefs.h. zig let -c win and printed nothing, so moc
+# ran without Q_OS_LINUX and generated a call to a slot that was never
+# compiled -- forty minutes later, in a generated file.
+if INTROSPECT=$("${REPO_ROOT}/tools/test-compiler-introspection.sh" 2>&1); then
+    pass "compiler introspection reports predefined macros"
+else
+    fail "compiler introspection regression"
+    printf '%s\n' "$INTROSPECT" | sed 's/^/       /'
+fi
+
+# Two artifacts have been too large to download. Collectors must name
+# what they want and stop at a fixed size.
+if COLLECT=$("${REPO_ROOT}/tools/test-diagnostics-collector-bounds.sh" 2>&1); then
+    pass "diagnostics collectors are allowlisted and bounded"
+else
+    fail "diagnostics collector bounds regression"
+    printf '%s\n' "$COLLECT" | sed 's/^/       /'
+fi
+
 if LINKARGS=$("${REPO_ROOT}/tools/test-linker-arg-compat.sh" 2>&1); then
     pass "the linker arguments CMake emits are ones zig accepts"
 else

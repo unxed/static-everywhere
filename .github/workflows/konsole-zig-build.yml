@@ -216,18 +216,45 @@ jobs:
             \( -name config.log -o -name CMakeError.log -o -name CMakeConfigureLog.yaml \
                -o -name meson-log.txt -o -name LastTest.log \) \
             -size -2M -exec cp --parents {} "$diag" \; 2>/dev/null || true
+          # Collect what diagnoses a build, not every text file in it.
+          #
+          # "any text file under 2 MB, minus a few exclusions" produced a
+          # 429 MB artifact: 412 MB of it was kde-build, and its bulk was
+          # .ts translation catalogues, DocBook, generated .cpp and ninja
+          # .d files. None of that has ever answered a question here.
+          #
+          # An allowlist instead, of the files someone actually opens: what
+          # configure decided, what it decided with, and what the build and
+          # the KDE builder said.
           find "$HOME/.conan2/p/b" out/konsole/kde-build out/konsole/kde-logs \
             -type f -newer /tmp/job-start-marker -size -2M \
             ! -path '*/qt_sbom/*' ! -path '*/lib/cmake/*' \
-            ! -path '*_autogen.dir/*' ! -name 'cmake_install.cmake' \
-            ! -name '*.o' ! -name '*.a' ! -name '*.so' ! -name '*.so.*' \
+            ! -path '*_autogen.dir/*' \
+            \( -name '*.log' -o -name 'config.h' -o -name 'CMakeCache.txt' \
+               -o -name 'CMakeConfigureLog.yaml' -o -name 'meson-log.txt' \
+               -o -name 'config.log' -o -name 'moc_predefs.h' \
+               -o -name '*Config.cmake' \) \
             2>/dev/null > /tmp/konsole-text-candidates
+          # A ceiling independent of the allowlist above. The allowlist is
+          # a judgement about which files matter and could be wrong again;
+          # 32 MB is arithmetic and cannot be.
+          copied_kb=0
           while IFS= read -r candidate; do
             case "$(file -b --mime-type "$candidate" 2>/dev/null)" in
               text/*|application/json|application/xml|inode/x-empty)
+                candidate_kb=$(du -k "$candidate" 2>/dev/null | cut -f1)
+                candidate_kb=${candidate_kb:-0}
+                if [ "$((copied_kb + candidate_kb))" -gt 32768 ]; then
+                  printf 'Collection stopped at 32 MB; see 06-build-errors.txt,\n' \
+                    >"$diag/04-text/TRUNCATED.txt"
+                  printf 'which is extracted from the whole build log.\n' \
+                    >>"$diag/04-text/TRUNCATED.txt"
+                  break
+                fi
                 target="$diag/04-text/${candidate#/}"
                 mkdir -p "$(dirname "$target")"
                 cp "$candidate" "$target"
+                copied_kb=$((copied_kb + candidate_kb))
                 ;;
             esac
           done < /tmp/konsole-text-candidates

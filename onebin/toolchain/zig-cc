@@ -453,6 +453,45 @@ fi
 # standard output ourselves. This works for every mode, unlike simply
 # dropping the flag, which is only equivalent for -E (with -S or -c, zig
 # would write foo.s or foo.o to disk instead).
+# `-E` wins over `-c`, as it does in every other driver.
+#
+# CMake asks the compiler for its predefined macros with
+# `-dM -E -c <empty file>` and captures stdout into moc_predefs.h, which
+# is how moc learns the platform. gcc treats -E as dominant and prints
+# the macros; zig 0.13 lets -c win, writes an object file and prints
+# nothing.
+#
+# The result is a zero-byte moc_predefs.h, and nothing complains. moc
+# then runs without __linux__, so Q_OS_LINUX is undefined, and for a
+# header like solid's fstabwatcher.h -- which declares one slot under
+# #ifdef Q_OS_LINUX and a different one under #else -- moc generates a
+# call to the slot that was not compiled:
+#
+#   moc_fstabwatcher.cpp:86:21: error: no member named 'onFileChanged'
+#
+# Forty minutes into the build, in a file nobody wrote, about a macro
+# nobody mentioned. Silent wrong output is worse than a hard failure, so
+# drop -c when -E is present and let the preprocessor speak.
+_onebin_has_E=0
+_onebin_has_c=0
+for _onebin_arg in "$@"; do
+    case "$_onebin_arg" in
+        -E) _onebin_has_E=1 ;;
+        -c) _onebin_has_c=1 ;;
+    esac
+done
+
+if [ "$_onebin_has_E" = 1 ] && [ "$_onebin_has_c" = 1 ]; then
+    _onebin_rebuilt=""
+    for _onebin_arg in "$@"; do
+        if [ "$_onebin_arg" = "-c" ]; then
+            continue
+        fi
+        _onebin_rebuilt="${_onebin_rebuilt} $(_onebin_shell_quote "$_onebin_arg")"
+    done
+    eval "set --${_onebin_rebuilt}"
+fi
+
 # `-nostdlib` and `-nodefaultlibs` are link options; drop them when only
 # compiling.
 #
