@@ -7,6 +7,32 @@ Everything below this section is a reverse-chronological log (newest
 first). Read *this* section first; consult the log below only for the
 detail behind a specific claim.
 
+### Reviewed the KPackage workaround: correct, with one gap now closed
+
+Verified against kpackage's own sources rather than the symptom:
+`kpackage_common_STATIC` is installed at `src/kpackage/CMakeLists.txt:91`
+and **created nowhere** in the project. The guard is
+`if (NOT BUILD_SHARED_LIBS)`, so only a static build reaches it and
+upstream never does. A real upstream bug.
+
+The workaround is sound. It is idempotent -- on a second run the block is
+already gone, `string(FIND)` misses, and the `else()` branch does not
+fire because no reference remains -- and it fails loudly if the block
+changes shape instead of silently doing nothing.
+
+The gap was *when* that failure lands: `FATAL_ERROR` mid-build, two hours
+in. The block is a public file, so
+`tools/check-kpackage-stale-target.sh` fetches it and confirms the exact
+three lines still match, in about a second. It also reports the good case
+-- if upstream drops the reference, it says the workaround can be retired
+rather than quietly staying forever.
+
+One residual risk, recorded not fixed: the hook edits a git checkout that
+kde-builder stashes and rebases each run. Today it is clean (this run's
+`git-stash-push.log` is empty), and a fresh checkout self-heals, but a
+future upstream change touching those lines could surface as a stash-pop
+conflict rather than as our clear error.
+
 ### kio compiles now, and needs Qt with SSL
 ### KPackage: stale static helper target breaks configure
 

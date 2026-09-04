@@ -432,4 +432,10 @@ for f in contrib/konsole/qt-host/conanfile.py tools/build-konsole.sh; do
 done
 pass 'Qt is built with OpenSSL, as kio requires'
 
+# The KPackage block the hook deletes must still match upstream. The hook
+# raises FATAL_ERROR when it does not -- correctly, but two hours in.
+"$REPO_ROOT/tools/check-kpackage-stale-target.sh" \
+    || { printf 'FAIL: the kpackage workaround no longer matches upstream\n' >&2
+         exit 1; }
+
 printf 'Konsole preflight: PASS\n'
