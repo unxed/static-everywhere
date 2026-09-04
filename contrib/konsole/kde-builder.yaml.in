@@ -39,6 +39,24 @@ global:
   compile-commands-export: false
   compile-commands-linking: false
   num-cores: "@KDE_JOBS@"
+
+  # `cmake-options` is a YAML folded scalar. Keep rationale outside the
+  # scalar: an indented `#` line becomes literal option text, which is then
+  # passed to kde-builder's shlex.split. An apostrophe in such text (for
+  # example, `KDE's`) makes the whole build fail before the first configure.
+  #
+  # X11, XCB and the OpenGL/EGL ABI are deliberately host-owned. Conan
+  # prefixes remain first in CMAKE_PREFIX_PATH, while the empty ignore prefix
+  # option keeps the runner's FindX11/FindXCB modules discoverable.
+  # KDE_INSTALL_LIBDIR is pinned so every framework installs its CONFIG files
+  # under the same lib/cmake tree, independently of include order.
+  # /usr/include is declared implicit for Zig-built KDE modules, keeping host
+  # X11 headers lower priority than the Conan headers and avoiding host/Conan
+  # ICU mismatches.
+  # ki18n needs QtQmlIntegration's header even when its QML option is disabled;
+  # this is a package workaround documented in contrib/konsole/UPSTREAM.md.
+  # The remaining switches keep the graph Widgets/X11-only and disable unused
+  # services, optional integrations and host-oriented runtime dependencies.
   cmake-options: >
     -DCMAKE_BUILD_TYPE=Release
     -DCMAKE_TOOLCHAIN_FILE=@CONAN_TOOLCHAIN@
@@ -52,75 +70,15 @@ global:
     -DCMAKE_FIND_PACKAGE_PREFER_CONFIG=ON
     -DCMAKE_FIND_USE_PACKAGE_REGISTRY=OFF
     -DCMAKE_FIND_USE_SYSTEM_PACKAGE_REGISTRY=OFF
-    # X11, XCB and the OpenGL/EGL ABI are deliberately host-owned. KDE's
-    # KGuiAddons and KWindowSystem use CMake's FindX11/FindXCB MODULEs, so
-    # their development headers and libraries must remain discoverable in
-    # /usr. Conan prefixes are still first in CMAKE_PREFIX_PATH and the
-    # top-level hook rejects any host Qt/KF6 target that could be selected.
-    # Explicitly clear a value left in a reused CMake cache as well.
     -DCMAKE_IGNORE_PREFIX_PATH=
     -DKDE_INSTALL_USE_QT_SYS_PATHS=OFF
-    # Pin KDE_INSTALL_LIBDIR for every module, so where a framework's
-    # CMake files land does not depend on what happened to be included
-    # before KDEInstallDirs.
-    #
-    # ECM defaults this to lib/${CMAKE_LIBRARY_ARCHITECTURE} on a Debian
-    # host (lib/x86_64-linux-gnu on the runner) -- unless CMAKE_INSTALL_LIBDIR
-    # is already set, in which case ECM takes that and warns. The project
-    # hook's find_package(KF6Notifications CONFIG) pulls in Qt6, which
-    # includes GNUInstallDirs, which sets CMAKE_INSTALL_LIBDIR=lib before
-    # kjobwidgets' own CMakeLists reaches KDEInstallDirs. So kjobwidgets
-    # installed to lib/cmake while knotifications and kcoreaddons went to
-    # lib/x86_64-linux-gnu/cmake, and find_package(KF6JobWidgets) could not
-    # see its own dependency's config:
-    #
-    #   The link interface of target "KF6::JobWidgets" contains
-    #     KF6::Notifications but the target was not found.
-    #
-    # An explicit value ends the dependence on include order: every module
-    # installs to the same place regardless of what pulled in
-    # GNUInstallDirs first.
     -DKDE_INSTALL_LIBDIR=lib
-    # Declare /usr/include implicit, for every module. CMake cannot
-    # introspect zig-c++ and records CMAKE_CXX_IMPLICIT_INCLUDE_DIRECTORIES
-    # as empty, so it stops filtering /usr/include out of target include
-    # lists and emits it explicitly -- and FindX11 hands every X11
-    # consumer X11_INCLUDE_DIR=/usr/include, which then lands as
-    # `-isystem /usr/include` AHEAD of the Conan include paths. konsole
-    # compiled TerminalDisplay.cpp against the host's ICU 74 headers and
-    # linked Conan's ICU 78 archives: undefined ubidi_*_74. The Conan Qt
-    # graph already carries this variable (qt-host/conanfile.py); the
-    # KF6 modules and konsole are configured by kde-builder and did not.
-    # Same fix as f4-qt's, and truthful: the zig wrappers append
-    # `-idirafter /usr/include`, so it genuinely is a lowest-priority
-    # implicit path for this compiler.
     -DCMAKE_C_IMPLICIT_INCLUDE_DIRECTORIES=/usr/include
     -DCMAKE_CXX_IMPLICIT_INCLUDE_DIRECTORIES=/usr/include
 
     -DONEBIN_GLIBC_BASELINE=2.27
     -DBUILD_TESTING=OFF
     -DKCONFIG_USE_QML=OFF
-    # ki18n's src/i18n-qml compiles against Qt6::Qml, and Qt's own
-    # klocalizedqmlcontext.h opens with #include <qqmlintegration.h>.
-    # That header is not in include/QtQml: it belongs to the separate
-    # QtQmlIntegration module. Upstream Qt propagates that include
-    # directory through the Qt6::Qml target; this Conan package does not,
-    # so the compile line lists include/QtQml, include/QtCore and friends
-    # but never include/QtQmlIntegration, and the build dies with
-    # "'qqmlintegration.h' file not found".
-    #
-    # Note what does NOT fix it: -DBUILD_WITH_QML=OFF is already set
-    # above and has no effect here, because ki18n gates the subdirectory
-    # on `if (TARGET Qt6::Qml)` rather than on that option, and Conan's
-    # Qt6 config defines every component target regardless.
-    #
-    # CMAKE_CXX_STANDARD_INCLUDE_DIRECTORIES adds the directory to every
-    # compile without touching CMAKE_CXX_FLAGS, so the toolchain file's
-    # own flags are left alone. Verified with a real cmake configure:
-    # without it the include fails, with it the build completes.
-    #
-    # The real defect is in the Qt package and is filed in
-    # contrib/konsole/UPSTREAM.md; this unblocks the build meanwhile.
     -DCMAKE_CXX_STANDARD_INCLUDE_DIRECTORIES=@QT_PACKAGE_ROOT@/include/QtQmlIntegration
     -DBUILD_WITH_QML=OFF
     -DKCOREADDONS_USE_QML=OFF
@@ -139,17 +97,10 @@ global:
     -DWITH_LIBZSTD=OFF
     -DUDEV_DISABLED=ON
     -DATTICA_STATIC_BUILD=ON
-    # These optional framework integrations are not part of Konsole's
-    # application graph. Do not let an installed runner library silently
-    # turn them into host-linked targets.
     -DCMAKE_DISABLE_FIND_PACKAGE_ACL=ON
     -DCMAKE_DISABLE_FIND_PACKAGE_OpenMP=ON
     -DCMAKE_DISABLE_FIND_PACKAGE_UTEMPTER=ON
     -DCMAKE_DISABLE_FIND_PACKAGE_UDev=ON
-    # KWallet's default daemon targets are not part of the Konsole graph.
-    # BUILD_KWALLETD additionally requires libsecret-1 (and its GLib graph),
-    # while the backend requires LibGcrypt. Keep the KF6Wallet API, but do
-    # not build unused runtime services and their host-oriented dependencies.
     -DBUILD_KSECRETD=OFF
     -DBUILD_KWALLETD=OFF
     -DBUILD_KWALLET_QUERY=OFF

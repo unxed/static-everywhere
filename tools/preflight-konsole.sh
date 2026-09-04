@@ -150,6 +150,7 @@ sed -e "s|@KDE_SOURCE_DIR@|$REPO_ROOT/.konsole-preflight-source|g" \
     "$REPO_ROOT/contrib/konsole/kde-builder.yaml.in" >"$RENDERED"
 python3 - "$RENDERED" "$workflow" <<'PY'
 import pathlib
+import shlex
 import sys
 import yaml
 
@@ -163,11 +164,14 @@ assert "CMAKE_IGNORE_PREFIX_PATH=" in cmake_options
 assert "CMAKE_IGNORE_PREFIX_PATH=/usr" not in cmake_options
 assert "WITH_X11=ON" in cmake_options
 assert config["override konsole"]["revision"]
+assert "#" not in cmake_options
+shlex.split(cmake_options)
 workflow = yaml.safe_load(pathlib.Path(sys.argv[2]).read_text())
 assert set(workflow["jobs"]) == {"preflight", "build"}
 print("YAML config/workflow parse: PASS")
 PY
 pass 'rendered kde-builder YAML and workflow parse'
+pass 'folded cmake-options scalar is free of comments and shlex-safe'
 
 grep -Fq 'libGL.so*' "$REPO_ROOT/tools/verify-konsole-artifact.sh" || \
     fail 'artifact verifier does not reject a hard libGL dependency'
