@@ -219,7 +219,11 @@ GitHub workflow dispatch:
 7. A miniature CMake project with fake static qxcb/GL plugin archives
    configured and built successfully. It exercised the Itanium symbol parser,
    `.prl` closure, executable-only `INTERFACE_SOURCES`, optional-GL CXX
-   compilation and static-graph assertion.
+   compilation and static-graph assertion. The Konsole-specific probe also
+   verifies that its registration unit exists before CMake validates consumer
+   sources, that all three QPA imports are present, that repeated imports are
+   not emitted, and that even a visible Conan `::` target is filtered from the
+   link interface.
 8. `./tools/test-optional-gl-cxx-only.sh` passed.
 9. `make -C onebin test` passed: 273 tests passed and 3 were skipped by their
    existing fixture/locale guards.
