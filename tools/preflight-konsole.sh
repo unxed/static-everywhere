@@ -461,6 +461,19 @@ if command -v git >/dev/null 2>&1; then
     else
         fail "konsole pin $konsole_ref is not a ref on $konsole_repo; kde-builder will report 'has no ref'"
     fi
+    # The lock's third field must be the COMMIT the tag points at -- what
+    # rev-parse HEAD yields after checkout and what the workflow compares
+    # against. For an annotated tag a plain ls-remote returns the tag
+    # object instead, and the first repin recorded exactly that; the
+    # workflow's provenance check then failed before any artifact existed.
+    konsole_sha=$(awk '$1 == "konsole" { print $3 }' "$REPO_ROOT/contrib/konsole/deps.lock")
+    peeled=$(timeout 30 git ls-remote "$konsole_repo" "refs/tags/${konsole_ref}^{}" 2>/dev/null | cut -c1-40)
+    [ -n "$peeled" ] || peeled=$(timeout 30 git ls-remote "$konsole_repo" "$konsole_ref" 2>/dev/null | cut -c1-40)
+    if [ -n "$peeled" ] && [ "$peeled" = "$konsole_sha" ]; then
+        pass "konsole $konsole_ref points at $konsole_sha, matching deps.lock"
+    elif [ -n "$peeled" ]; then
+        fail "konsole $konsole_ref points at $peeled but deps.lock records $konsole_sha (tag object instead of commit, or the tag moved)"
+    fi
 fi
 
 printf 'Konsole preflight: PASS\n'

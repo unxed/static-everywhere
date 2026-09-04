@@ -7,6 +7,43 @@ Everything below this section is a reverse-chronological log (newest
 first). Read *this* section first; consult the log below only for the
 detail behind a specific claim.
 
+### The repin broke a second consumer of the lock I had not found
+
+The preflight died in 32 seconds, before any artifact:
+
+```
+test "$(git -C konsole-src rev-parse HEAD)" = "$KONSOLE_REF"
+```
+
+A workflow step also reads `deps.lock`, clones the GitHub mirror, and
+compares `rev-parse HEAD` with the ref itself. That held while the ref
+was a sha; with a tag it compares a commit hash to the string
+`v26.08.0`. I had grepped `tools/` for consumers of the lock and found
+the build script; the workflow has one too. Every consumer of a changed
+file has to be found, and `tools/` is not everywhere.
+
+The step now reads all four lock fields -- tag, sha, URL -- clones the
+URL kde-builder uses (invent, not the GitHub mirror), checks out the
+tag, and compares HEAD to the recorded sha. That is the provenance check
+the lock was always meant to give.
+
+Simulating the step locally before committing found the *next* mistake:
+a mismatch. `v26.08.0` is an annotated tag, so plain `ls-remote`
+returns the **tag object** (`696b8c…`), while `rev-parse HEAD` after
+checkout returns the **commit** (`9a3040…`). My repin had recorded the
+tag object. Fixed to the peeled commit (`ls-remote … 'refs/tags/X^{}'`)
+and documented in the lock so the distinction survives the next repin.
+
+Preflight now performs the same peel-and-compare; the negative control
+plants the tag object back and is caught -- that is precisely the state
+that killed this run. It would have been caught in a second.
+
+Two lessons, both mine. A file with more than one consumer needs all of
+them enumerated, across the whole repository, before its format changes.
+And simulate the failing step *locally* against the real data before
+shipping: the tag-object mismatch surfaced only because I ran the
+workflow's commands by hand.
+
 ### All 39 frameworks built. konsole itself could not be checked out.
 
 The static-helper hook did its job -- one export recorded in knewstuff's

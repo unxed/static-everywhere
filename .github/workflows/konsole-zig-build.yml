@@ -49,11 +49,25 @@ jobs:
 
       - name: Fetch the pinned Konsole source for the glibc scan
         run: |
+          # deps.lock: `konsole <tag> <sha> <url>`. The tag is what
+          # kde-builder checks out (it resolves pins with ls-remote and
+          # cannot see a bare commit); the sha is what the tag resolved to
+          # when it was pinned, and is the provenance check here. The URL
+          # is invent.kde.org, the same remote kde-builder fetches from --
+          # this step used to clone the GitHub mirror and compare HEAD to
+          # the ref itself, which held only while the ref was a sha.
           KONSOLE_REF=$(awk '$1 == "konsole" { print $2 }' contrib/konsole/deps.lock)
-          git clone --filter=blob:none --quiet https://github.com/KDE/konsole.git konsole-src
+          KONSOLE_SHA=$(awk '$1 == "konsole" { print $3 }' contrib/konsole/deps.lock)
+          KONSOLE_URL=$(awk '$1 == "konsole" { print $4 }' contrib/konsole/deps.lock)
+          git clone --filter=blob:none --quiet "$KONSOLE_URL" konsole-src
           git -C konsole-src fetch --quiet --depth 1 origin "$KONSOLE_REF"
           git -C konsole-src checkout --quiet "$KONSOLE_REF"
-          test "$(git -C konsole-src rev-parse HEAD)" = "$KONSOLE_REF"
+          actual=$(git -C konsole-src rev-parse HEAD)
+          if [ "$actual" != "$KONSOLE_SHA" ]; then
+            echo "konsole $KONSOLE_REF resolved to $actual, but deps.lock records $KONSOLE_SHA" >&2
+            echo "The tag moved, or the lock is stale. Re-pin deliberately." >&2
+            exit 1
+          fi
 
       - name: Fast Konsole invariant checks
         run: ./tools/preflight-konsole.sh

@@ -8,9 +8,11 @@
 # previous pin, 264ecd08, was also a January-2024 commit against KF6
 # frameworks built from 2026 master; the tag below is the release
 # matching that era. The commit it resolves to is recorded for
-# provenance; kde-builder fetches from invent.kde.org, not the GitHub
+# provenance -- the COMMIT the tag points at (ls-remote with ^{}),
+# not the tag object itself, since rev-parse HEAD after checkout yields
+# the commit; kde-builder fetches from invent.kde.org, not the GitHub
 # mirror, so that is the URL that matters.
-konsole v26.08.0 696b8c3d47d9dbf32b73138d6b667997e6cb4697 https://invent.kde.org/utilities/konsole.git
+konsole v26.08.0 9a304001aad60b7a3a39bca39ce3a3764ec058d5 https://invent.kde.org/utilities/konsole.git
 qt 6.11.1 - -
 icu 78.1 - -
 hunspell 1.7.2 - -
