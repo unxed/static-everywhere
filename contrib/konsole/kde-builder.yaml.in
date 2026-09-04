@@ -20,7 +20,13 @@ global:
   # needed only by its QML components at run time, never for the build.
   # Excluding it keeps a large Quick-based tree out of a graph whose
   # consumer is a Widgets application.
-  ignore-projects: kdoctools kirigami
+  # A YAML list, not a space-separated string: kde-builder's
+  # options_base.verify_option_value_type singles out ignore-projects and
+  # rejects a str outright ("has invalid value type"). It is the only
+  # option with that check, which is why the surrounding ones are scalars.
+  ignore-projects:
+    - kdoctools
+    - kirigami
   source-dir: "@KDE_SOURCE_DIR@"
   build-dir: "@KDE_BUILD_DIR@"
   install-dir: "@KDE_INSTALL_DIR@"

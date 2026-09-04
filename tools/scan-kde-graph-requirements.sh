@@ -33,7 +33,14 @@ if ! command -v curl >/dev/null 2>&1; then
     exit 0
 fi
 
-ignored=$(sed -n 's/^  ignore-projects:[[:space:]]*//p' "$CONFIG" | tr -d '"')
+# ignore-projects is a YAML list (kde-builder rejects a string outright),
+# so read the "- item" lines that follow the key.
+ignored=$(python3 -c "
+import re,sys
+t=open(sys.argv[1]).read()
+m=re.search(r'^  ignore-projects:\\s*\\n((?:\\s*(?:#.*|- .*)\\n)+)', t, re.M)
+print(' '.join(re.findall(r'^\\s*- (\\S+)', m.group(1), re.M)) if m else '')
+" "$CONFIG")
 [ -n "$ignored" ] || { printf 'no ignore-projects in the config; nothing to check\n'; exit 0; }
 
 mapfile -t modules < <(grep -vE '^\s*(#|$)' "$GRAPH")

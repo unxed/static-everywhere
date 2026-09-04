@@ -7,6 +7,25 @@ Everything below this section is a reverse-chronological log (newest
 first). Read *this* section first; consult the log below only for the
 detail behind a specific claim.
 
+### ignore-projects must be a list, and the preflight now knows it
+
+```
+Config Error: Option "ignore-projects" has invalid value type "str",
+but "list" is expected
+```
+
+I wrote it as a space-separated string. kde-builder's
+`options_base.verify_option_value_type` singles out this one option and
+rejects a str outright -- which is why every neighbouring option is a
+scalar and this one cannot be. The documentation says "Type: String";
+the code disagrees, and the code runs.
+
+Fixed as a YAML list. The scan tool reads the list form now too.
+
+The preflight validates the *rendered* config against that rule, so the
+next option with a type constraint fails in a second rather than half an
+hour in. Negative control: the string form is rejected.
+
 ### Stop. Four two-hour runs on one seam, and every one tested a guess
 
 The reconciler *worked*. `kjobwidgets/install.log` lines 131–132 show

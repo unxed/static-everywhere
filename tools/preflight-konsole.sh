@@ -406,4 +406,19 @@ pass 'every template placeholder has a substitution'
     || { printf 'FAIL: an ignored project is required somewhere in the graph\n' >&2
          exit 1; }
 
+# kde-builder type-checks a few option values and rejects the rest of the
+# config outright. ignore-projects must be a list -- a space-separated
+# string fails with "has invalid value type", which is how the last run
+# died half an hour in. Checked against the rendered config here.
+python3 - "$RENDERED" <<'TYPES'
+import sys, yaml
+cfg = yaml.safe_load(open(sys.argv[1]))
+g = cfg.get("global", {})
+v = g.get("ignore-projects")
+if v is not None and not isinstance(v, list):
+    sys.exit("FAIL: ignore-projects must be a YAML list; kde-builder rejects "
+             f"a {type(v).__name__} with 'has invalid value type'")
+TYPES
+pass 'kde-builder option value types are valid'
+
 printf 'Konsole preflight: PASS\n'
