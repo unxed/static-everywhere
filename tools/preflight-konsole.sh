@@ -20,7 +20,8 @@ bash -n "$REPO_ROOT/tools/build-konsole.sh" "$REPO_ROOT/tools/preflight-konsole.
     "$REPO_ROOT/tools/test-linker-arg-compat.sh" \
     "$REPO_ROOT/tools/test-konsole-host-python-modules.sh" \
     "$REPO_ROOT/tools/test-konsole-host-perl-modules.sh" \
-    "$REPO_ROOT/tools/test-konsole-host-docbook-tools.sh"
+    "$REPO_ROOT/tools/test-konsole-host-docbook-tools.sh" \
+    "$REPO_ROOT/tools/test-konsole-static-qt-plugins.sh"
 pass 'Konsole shell scripts parse'
 
 bash "$REPO_ROOT/tools/test-konsole-cmake-package-prefixes-regression.sh"
@@ -43,6 +44,9 @@ pass 'Qt package roots are discovered from CMakeDeps metadata'
 
 bash "$REPO_ROOT/tools/test-konsole-qt-cmake-component-shims.sh"
 pass 'Qt component-style CONFIG packages resolve through Conan aggregate metadata'
+
+bash "$REPO_ROOT/tools/test-konsole-static-qt-plugins.sh"
+pass 'Konsole static Qt plugin imports are configure-time and Conan-safe'
 
 for tool in msgmerge msgfmt flex bison; do
     command -v "$tool" >/dev/null 2>&1 || fail "Gettext tool is missing: $tool"

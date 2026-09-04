@@ -172,6 +172,12 @@ add_library(Qt6::Gui INTERFACE IMPORTED)
 set_property(TARGET Qt6::Gui PROPERTY
              INTERFACE_INCLUDE_DIRECTORIES "${FAKE_QT}/include")
 
+# A same-named Conan target must not be retained merely because it happens
+# to be visible while the package directory is being configured. The link
+# interface is consumed from other directories and must contain no Conan
+# build-time target from a .prl file.
+add_library(CONAN_LIB::double-conversion_double-conversion_RELEASE INTERFACE IMPORTED)
+
 file(WRITE "${CMAKE_BINARY_DIR}/xcb.cpp"
 "extern \"C\" int se_plugin_impl_QXcbIntegrationPlugin(){return 0;}
 extern \"C\" int se_plugin_impl_QSvgPlugin(){return 0;}
@@ -223,6 +229,11 @@ function(_probe_check_module_targets)
     message(FATAL_ERROR
       "probe: Qt6::qtquick2plugin QT_PLUGIN_CLASS_NAME is '${_cls}', "
       "expected 'QtQuick2Plugin'")
+  endif()
+  get_target_property(_gui_links Qt6::Gui INTERFACE_LINK_LIBRARIES)
+  if("${_gui_links}" MATCHES "CONAN_LIB")
+    message(FATAL_ERROR
+      "probe: Conan build target leaked into Qt6::Gui: ${_gui_links}")
   endif()
 endfunction()
 cmake_language(DEFER DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"

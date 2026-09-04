@@ -165,11 +165,7 @@ function(_se_prl_closure archive out_var required)
         # ever were genuinely missing, the link would fail loudly on an
         # undefined symbol -- unlike this, which failed on bookkeeping.
         foreach(_it IN LISTS _prl_items)
-            string(REGEX REPLACE "^-l" "" _bare "${_it}")
-            if(_bare MATCHES "::")
-                if(TARGET "${_bare}")
-                    list(APPEND _out "${_bare}")
-                endif()
+            if(_it MATCHES "::")
                 continue()
             endif()
             # Existence gate. Conan's recipe does not ship Qt's
