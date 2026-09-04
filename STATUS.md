@@ -8,6 +8,34 @@ first). Read *this* section first; consult the log below only for the
 detail behind a specific claim.
 
 ### kio compiles now, and needs Qt with SSL
+### KPackage: stale static helper target breaks configure
+
+The next failure is in `kpackage` during CMake configure:
+
+```
+
+CMake Error at src/kpackage/CMakeLists.txt:91 (install):
+install TARGETS given target "kpackage_common_STATIC" which does not exist.
+
+```
+
+This is an upstream KPackage/KF6 stale target. The framework now builds
+`private/packagejobthread.cpp` directly as part of `KF6Package`, and the
+source no longer defines a `kpackage_common_STATIC` target, but the old
+static-only `install(TARGETS kpackage_common_STATIC ...)` block is still
+present. With `BUILD_SHARED_LIBS=OFF`, which this recipe deliberately uses,
+that dead install rule is executed and configuration stops.
+
+The workaround is deliberately local to the showcase: the existing
+`CMAKE_PROJECT_INCLUDE` hook removes exactly that obsolete block when the
+`KPackage` project is configured. It is idempotent, and if the stale symbol
+changes shape instead of disappearing, the hook fails loudly rather than
+silently editing unrelated upstream source.
+
+The corresponding upstream fix should simply remove the obsolete
+`kpackage_common_STATIC` install block. The static-everywhere workaround
+keeps the pinned upstream source untouched in git while allowing the graph
+to continue.
 
 Every earlier layer is through: kio configured, and the failure moved
 into compilation.

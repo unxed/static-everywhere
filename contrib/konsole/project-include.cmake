@@ -113,7 +113,45 @@ _se_promote_conan_package_prefixes()
 # package is absent this does nothing, and where it is present the target
 # is defined before any export can refer to it.
 find_package(KF6Notifications QUIET CONFIG)
+if(PROJECT_NAME STREQUAL "KPackage")
+    set(_se_kpackage_cmake
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/kpackage/CMakeLists.txt")
+    if(EXISTS "${_se_kpackage_cmake}")
+        file(READ "${_se_kpackage_cmake}" _se_kpackage_content)
+        set(_se_kpackage_stale_block [=[
+if (NOT BUILD_SHARED_LIBS)
+    install(TARGETS kpackage_common_STATIC EXPORT KF6PackageTargets ${KF_INSTALL_TARGETS_DEFAULT_ARGS})
+endif()
+]=])
+        string(FIND "${_se_kpackage_content}" "${_se_kpackage_stale_block}"
+               _se_kpackage_block_pos)
+        if(_se_kpackage_block_pos GREATER -1)
+            string(REPLACE "${_se_kpackage_stale_block}" ""
+                   _se_kpackage_content "${_se_kpackage_content}")
+            file(WRITE "${_se_kpackage_cmake}" "${_se_kpackage_content}")
+            message(STATUS
+                    "static-everywhere: removed stale KPackage kpackage_common_STATIC install target")
+        else()
+            string(FIND "${_se_kpackage_content}" "kpackage_common_STATIC"
+                   _se_kpackage_symbol_pos)
+            if(_se_kpackage_symbol_pos GREATER -1)
+                message(FATAL_ERROR
+                        "static-everywhere: found kpackage_common_STATIC in "
+                        "KPackage, but its expected stale install block changed")
+            endif()
+        endif()
+    endif()
+endif()
 
+if(PROJECT_NAME STREQUAL "KPackage")
+    set(_se_kpackage_cmake
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/kpackage/CMakeLists.txt")
+    if(NOT EXISTS "${_se_kpackage_cmake}")
+        message(FATAL_ERROR
+                "static-everywhere: KPackage project has no "
+                "${_se_kpackage_cmake}")
+    endif()
+endif()
 if(NOT PROJECT_IS_TOP_LEVEL)
     return()
 endif()
