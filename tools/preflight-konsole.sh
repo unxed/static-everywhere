@@ -476,4 +476,22 @@ if command -v git >/dev/null 2>&1; then
     fi
 fi
 
+# Two f4-qt fixes that konsole's kde-builder side lacked, each verified
+# on a minimal project before being wired in. Both are asserted here so
+# neither can quietly fall out of the config.
+#
+# (1) /usr/include must be declared implicit for every module, or FindX11's
+# X11_INCLUDE_DIR=/usr/include is emitted as -I ahead of the Conan paths
+# and konsole compiles against the host's ICU 74 while linking ICU 78.
+for lang in C CXX; do
+    grep -qE "^\s*-DCMAKE_${lang}_IMPLICIT_INCLUDE_DIRECTORIES=/usr/include" \
+        "$REPO_ROOT/contrib/konsole/kde-builder.yaml.in" \
+        || fail "CMAKE_${lang}_IMPLICIT_INCLUDE_DIRECTORIES is not set for kde-builder modules; host /usr/include will shadow the Conan ICU headers"
+done
+pass 'kde-builder modules declare /usr/include implicit (host ICU cannot shadow Conan ICU)'
+# (2) the Qt6::Quick -> Qt6::OpenGL edge must be repaired for konsole's link.
+grep -q 'link-qt6-opengl.cmake' "$REPO_ROOT/contrib/konsole/project-include.cmake" \
+    || fail 'project-include.cmake no longer includes link-qt6-opengl.cmake; konsolepart.so will miss QOpenGL* symbols'
+pass 'the Qt6::Quick -> Qt6::OpenGL edge is repaired for konsole'
+
 printf 'Konsole preflight: PASS\n'

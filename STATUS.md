@@ -7,6 +7,38 @@ Everything below this section is a reverse-chronological log (newest
 first). Read *this* section first; consult the log below only for the
 detail behind a specific claim.
 
+### konsole compiled. The link needed two fixes f4-qt already had.
+
+konsole configured and compiled; `konsolepart.so` failed to link on two
+families of undefined symbols. Both were solved in f4-qt months ago --
+this is the direct answer to "was the f4-qt experience reused?": for the
+Conan graph, yes; for the kde-builder side, not until now.
+
+**`QOpenGL*` from `libQt6Quick.a`** -- `qsgdefaultpainternode.cpp`, the
+exact line f4-qt's `link-qt6-opengl.cmake` quotes. Conan's qt recipe
+omits the Qt6::Quick -> Qt6::OpenGL edge; only a static link notices.
+konsole's hook included f4-qt's `optional-gl.cmake` but not that file.
+Now it does. Verified the deferred hook fires under `project(konsole)`
+and leaves Qt6::Quick's interface carrying Qt6::OpenGL.
+
+**`ubidi_*_74` from konsole's own `TerminalDisplay.cpp`** -- ICU mangles
+every API with its major version. `find_package(ICU)` had found Conan's
+78.1 correctly; the compiler still read the host's `unicode/ubidi.h`
+(74). Cause: CMake cannot introspect zig-c++, records
+`CMAKE_CXX_IMPLICIT_INCLUDE_DIRECTORIES` as empty, and so stops
+filtering `/usr/include` from include lists -- and FindX11 hands every
+X11 consumer `X11_INCLUDE_DIR=/usr/include`, emitted as `-I` ahead of the
+Conan paths. One legitimate host header directory drags in the whole
+host. f4-qt's build script documents this word for word, down to
+"ICU 74 against ICU 78"; konsole's *Conan* recipe carries the fix
+(`conanfile.py:222`), but the KF6 modules and konsole are configured by
+kde-builder and never received it. Added to the global cmake-options.
+Proved on a minimal project: with the variable, `-I/usr/include` leaves
+the compile line; without it, it is there.
+
+Both asserted in preflight. Neither needed CI to find: the failure named
+the file, and the file named the fix.
+
 ### The repin broke a second consumer of the lock I had not found
 
 The preflight died in 32 seconds, before any artifact:

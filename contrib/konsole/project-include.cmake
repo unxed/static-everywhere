@@ -178,6 +178,12 @@ include("${CMAKE_CURRENT_LIST_DIR}/import-static-qt-plugins.cmake")
 # host-OpenGL behavior as the reference recipe.
 
 include("${_SE_REPO_ROOT}/contrib/f4-qt/optional-gl.cmake")
+# Conan's qt recipe omits the Qt6::Quick -> Qt6::OpenGL edge; libQt6Quick.a
+# references QOpenGLFramebufferObject and QOpenGLPaintDevice from
+# libQt6OpenGL.a, and only a static link notices. konsolepart.so failed on
+# exactly the symbols f4-qt's file documents, down to
+# qsgdefaultpainternode.cpp. Reused rather than re-derived.
+include("${_SE_REPO_ROOT}/contrib/f4-qt/link-qt6-opengl.cmake")
 
 function(_se_konsole_assert_static_graph)
     set(_qt_components Core Gui Multimedia PrintSupport Widgets Xml)

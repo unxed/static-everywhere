@@ -81,6 +81,21 @@ global:
     # installs to the same place regardless of what pulled in
     # GNUInstallDirs first.
     -DKDE_INSTALL_LIBDIR=lib
+    # Declare /usr/include implicit, for every module. CMake cannot
+    # introspect zig-c++ and records CMAKE_CXX_IMPLICIT_INCLUDE_DIRECTORIES
+    # as empty, so it stops filtering /usr/include out of target include
+    # lists and emits it explicitly -- and FindX11 hands every X11
+    # consumer X11_INCLUDE_DIR=/usr/include, which then lands as
+    # `-isystem /usr/include` AHEAD of the Conan include paths. konsole
+    # compiled TerminalDisplay.cpp against the host's ICU 74 headers and
+    # linked Conan's ICU 78 archives: undefined ubidi_*_74. The Conan Qt
+    # graph already carries this variable (qt-host/conanfile.py); the
+    # KF6 modules and konsole are configured by kde-builder and did not.
+    # Same fix as f4-qt's, and truthful: the zig wrappers append
+    # `-idirafter /usr/include`, so it genuinely is a lowest-priority
+    # implicit path for this compiler.
+    -DCMAKE_C_IMPLICIT_INCLUDE_DIRECTORIES=/usr/include
+    -DCMAKE_CXX_IMPLICIT_INCLUDE_DIRECTORIES=/usr/include
 
     -DONEBIN_GLIBC_BASELINE=2.27
     -DBUILD_TESTING=OFF
