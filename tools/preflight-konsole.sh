@@ -444,4 +444,23 @@ pass 'Qt is built with OpenSSL, as kio requires'
 "$REPO_ROOT/tools/test-konsole-static-helper-export.sh" \
     || { printf 'FAIL: static helper export regression\n' >&2; exit 1; }
 
+# The konsole pin must be a ref kde-builder can resolve. It validates the
+# pin with `git ls-remote --exit-code <repo> <ref>`, which sees ref names
+# only -- branches and tags, never a bare commit -- so a sha fails with
+# "repository has no ref" after the whole KF6 graph has built. This runs
+# the identical command against the repository kde-builder fetches from
+# (invent.kde.org, not the GitHub mirror), so a bad pin fails in seconds.
+konsole_ref=$(awk '$1 == "konsole" { print $2 }' "$REPO_ROOT/contrib/konsole/deps.lock")
+konsole_repo=$(awk '$1 == "konsole" { print $4 }' "$REPO_ROOT/contrib/konsole/deps.lock")
+if [[ $konsole_ref =~ ^[0-9a-f]{40}$ ]]; then
+    fail "konsole is pinned to a commit sha ($konsole_ref); kde-builder resolves pins with ls-remote and cannot see bare commits -- pin a tag"
+fi
+if command -v git >/dev/null 2>&1; then
+    if timeout 30 git ls-remote --exit-code "$konsole_repo" "$konsole_ref" >/dev/null 2>&1; then
+        pass "konsole pin $konsole_ref resolves on $konsole_repo, as kde-builder will check"
+    else
+        fail "konsole pin $konsole_ref is not a ref on $konsole_repo; kde-builder will report 'has no ref'"
+    fi
+fi
+
 printf 'Konsole preflight: PASS\n'

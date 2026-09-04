@@ -7,6 +7,40 @@ Everything below this section is a reverse-chronological log (newest
 first). Read *this* section first; consult the log below only for the
 detail behind a specific claim.
 
+### All 39 frameworks built. konsole itself could not be checked out.
+
+The static-helper hook did its job -- one export recorded in knewstuff's
+`cmake.log` -- and every framework in the graph came through. The run
+stopped at step 38/38:
+
+```
+konsole repository at kde:utilities/konsole.git has no ref 264ecd08...
+Unable to update konsole, build canceled.
+```
+
+The sha exists -- a shallow fetch of master history finds it -- but
+kde-builder validates a pin with `git ls-remote --exit-code <repo> <ref>`
+(`updater.py:121`), and `ls-remote` lists ref *names* only. `revision`
+and `commit` are both `git_type="tag"` in its checkout-source table. A
+bare commit sha therefore fails every time, regardless of whether it
+exists; the pin was doomed by its form, not its value.
+
+Its value was wrong too: `git describe` places 264ecd08 just after
+`v24.01.90`, a January-2024 konsole against KF6 frameworks built from
+2026 master. And the lock named the GitHub mirror while kde-builder
+fetches from invent.kde.org.
+
+Repinned to `v26.08.0`, the current release, with the commit it
+resolves to recorded for provenance and the invent URL as the source.
+The lock line keeps the four-field shape the build script parses.
+
+The preflight now runs the identical `ls-remote --exit-code` against the
+identical repository, and separately rejects any 40-hex pin outright.
+Both negative controls -- the old sha, a nonexistent tag -- caught.
+
+This is the check that would have saved this run. It cost nothing but
+reading twenty lines of kde-builder to know what to check.
+
 ### knewstuff: the static-build class, closed for every module at once
 
 kpackage passed. knewstuff:

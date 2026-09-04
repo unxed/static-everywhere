@@ -1,7 +1,16 @@
 # contrib/konsole/deps.lock — pinned inputs for the Konsole showcase.
 # The Qt/KF6 graph is built from source; only the ABI-stable desktop contract
 # remains on the host (X11/xcb and OpenGL), exactly as in f4-qt.
-konsole 264ecd0808f752a10204f954dfc1f87f7aba9ea8 - https://github.com/KDE/konsole.git
+# konsole is pinned to a TAG, not a commit sha. kde-builder validates the
+# pin with `git ls-remote --exit-code <repo> <ref>`, which sees only ref
+# names -- branches and tags -- never a bare commit, so a sha fails with
+# "repository has no ref" every time regardless of whether it exists. The
+# previous pin, 264ecd08, was also a January-2024 commit against KF6
+# frameworks built from 2026 master; the tag below is the release
+# matching that era. The commit it resolves to is recorded for
+# provenance; kde-builder fetches from invent.kde.org, not the GitHub
+# mirror, so that is the URL that matters.
+konsole v26.08.0 696b8c3d47d9dbf32b73138d6b667997e6cb4697 https://invent.kde.org/utilities/konsole.git
 qt 6.11.1 - -
 icu 78.1 - -
 hunspell 1.7.2 - -
