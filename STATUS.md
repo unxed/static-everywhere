@@ -7,6 +7,46 @@ Everything below this section is a reverse-chronological log (newest
 first). Read *this* section first; consult the log below only for the
 detail behind a specific claim.
 
+### knewstuff: the static-build class, closed for every module at once
+
+kpackage passed. knewstuff:
+
+```
+install(EXPORT "KF6NewStuffCoreTargets" ...) includes target
+"KF6NewStuffCore" which requires target "knscore_jobs_static" that is
+not in any export set.
+```
+
+`KF6NewStuffCore` links `knscore_jobs_static` PRIVATE
+(`src/core/CMakeLists.txt:116`). Shared, that is absorbed and forgotten;
+static, CMake writes `$<LINK_ONLY:knscore_jobs_static>` into the exported
+interface and then requires the helper to be exported too. Upstream
+builds shared and never meets this. kpackage was the mirror image -- an
+install for a static-only target that no longer exists.
+
+**Read ahead first.** Only three modules remain after knewstuff
+(knotifyconfig, kparts, kpty) plus konsole; scanned all four for
+`add_library(... STATIC)` helpers: none in the three, and konsole's are
+internal to an application with no export set. knewstuff itself has
+three, of which one reaches an export.
+
+**Closed as a class, not a name.** `export-static-helpers.cmake`, included
+from the project hook above its konsole-only guards, runs a deferred pass
+at the end of every module's configure: finds STATIC targets with no
+install rule, finds the exported STATIC targets that link them, reads the
+export set from the module's own `install(TARGETS X EXPORT Set)` line,
+and installs the helper there. Where the set cannot be read it reports
+and leaves the helper alone; guessing would only move the error.
+`install()` is wrapped to record what the module installs itself, so
+nothing is exported twice.
+
+Reproduced on a minimal project of exactly this shape -- the same
+message, verbatim -- and verified: fixed with the hook, inert for a
+shared build, inert when the helper is already exported upstream, and
+`CAUGHT` when the export is disabled. The hook says what it did, so the
+next artifact shows it in `cmake.log` rather than leaving me to search
+for silence.
+
 ### Reviewed the KPackage workaround: correct, with one gap now closed
 
 Verified against kpackage's own sources rather than the symptom:

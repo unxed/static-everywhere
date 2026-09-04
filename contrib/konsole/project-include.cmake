@@ -88,6 +88,14 @@ endif()
 
 _se_promote_conan_package_prefixes()
 
+# A static build drags each module's private STATIC helpers into its
+# export set, and CMake then requires them to be exported too -- which
+# upstream, building shared, never has to do. knewstuff stopped on
+# knscore_jobs_static; kpackage has the mirror-image bug. Handled for
+# every module by a deferred pass at the end of configure, above the
+# konsole-only guards below so it reaches the dependency modules.
+include("${CMAKE_CURRENT_LIST_DIR}/export-static-helpers.cmake")
+
 # Define KF6::Notifications before anything includes an export that names
 # it.
 #

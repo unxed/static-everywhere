@@ -438,4 +438,10 @@ pass 'Qt is built with OpenSSL, as kio requires'
     || { printf 'FAIL: the kpackage workaround no longer matches upstream\n' >&2
          exit 1; }
 
+# Private STATIC helpers must be exported alongside the targets that link
+# them, for every module: knewstuff stopped on knscore_jobs_static, and
+# the shape recurs wherever a static build meets a shared-only upstream.
+"$REPO_ROOT/tools/test-konsole-static-helper-export.sh" \
+    || { printf 'FAIL: static helper export regression\n' >&2; exit 1; }
+
 printf 'Konsole preflight: PASS\n'
