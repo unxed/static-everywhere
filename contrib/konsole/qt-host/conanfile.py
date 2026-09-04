@@ -61,7 +61,15 @@ class KonsoleQtHostConan(ConanFile):
         "qt/*:with_odbc": False,
         "qt/*:with_sqlite3": False,
         "qt/*:with_vulkan": False,
-        "qt/*:openssl": False,
+        # Qt needs SSL: kio's KIOCore compiles ksslcertificatemanager.cpp
+        # unconditionally and uses QSslError::SslError, which only exists
+        # when Qt is built with a TLS backend. Without OpenSSL Qt defines
+        # QT_NO_SSL, QSslError becomes an empty stub, and kio fails at
+        # compile with "no type named 'SslError' in 'QSslError'". It was
+        # False here with no reason recorded, just one of a row of
+        # disabled options; f4-qt already builds openssl from source in
+        # the same graph and has the -pie/-shared conflict resolved.
+        "qt/*:openssl": True,
         "qt/*:with_gssapi": False,
         "qt/*:with_zstd": False,
         "xkbcommon/*:with_x11": True,

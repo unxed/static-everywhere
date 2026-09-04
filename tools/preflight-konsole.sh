@@ -421,4 +421,15 @@ if v is not None and not isinstance(v, list):
 TYPES
 pass 'kde-builder option value types are valid'
 
+# Qt must be built with a TLS backend: kio's KIOCore uses
+# QSslError::SslError unconditionally, and without OpenSSL Qt stubs
+# QSslError out under QT_NO_SSL. Both places that state the option are
+# checked, since it is spelled in the recipe and on the conan command line.
+for f in contrib/konsole/qt-host/conanfile.py tools/build-konsole.sh; do
+    grep -qE "qt/\*:openssl['\"]?[=:] ?['\"]?True" "$REPO_ROOT/$f" \
+        || { printf 'FAIL: %s does not build Qt with openssl; kio needs QSslError\n' "$f" >&2
+             exit 1; }
+done
+pass 'Qt is built with OpenSSL, as kio requires'
+
 printf 'Konsole preflight: PASS\n'

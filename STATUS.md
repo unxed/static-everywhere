@@ -7,6 +7,33 @@ Everything below this section is a reverse-chronological log (newest
 first). Read *this* section first; consult the log below only for the
 detail behind a specific claim.
 
+### kio compiles now, and needs Qt with SSL
+
+Every earlier layer is through: kio configured, and the failure moved
+into compilation.
+
+```
+ksslcertificatemanager.h:76:36: error: no type named 'SslError' in 'QSslError'
+```
+
+`qt/*:openssl` was `False` -- in the recipe and again on the conan
+command line -- with no reason recorded, one of a row of disabled
+options. Without a TLS backend Qt defines `QT_NO_SSL` and `QSslError`
+becomes an empty stub; KIOCore compiles `ksslcertificatemanager.cpp`
+unconditionally (checked in kio's `src/core/CMakeLists.txt`), so this is a
+requirement of kio, not a choice of ours.
+
+Enabled in both places, and openssl added to the from-source build list.
+Checked ahead rather than in CI: f4-qt already builds openssl in the same
+graph and resolved its `-pie/-shared` conflict, and konsole's conan
+install carries the same `exelinkflags`/`sharedlinkflags` split, so
+`providers/legacy.so` will link. `*:shared=False` keeps openssl static,
+and `libssl`/`libcrypto` are deliberately absent from the artifact
+audit's allow list, so a dynamic leak would fail loudly.
+
+Preflight asserts openssl stays on in both places; negative control
+turns it off and is caught.
+
 ### ignore-projects must be a list, and the preflight now knows it
 
 ```
