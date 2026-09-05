@@ -25,6 +25,7 @@ Legend: **P** = caught by preflight locally · **C** = caught by CI only ·
 | 1.13 | Ignored project required by another | kdoctools | P | live scan of 39 module CMakeLists |
 | 1.14 | Feature the consumer needs disabled in a dependency | Qt without SSL for kio | P | asserted in both places it is spelled |
 | 1.15 | Deferred callback resolves a recipe file in the dependency source tree | ICU consistency probe | P | captured absolute path helper plus `test-konsole-deferred-recipe-file.sh` |
+| 1.16 | CMake probe loses imported target generator expressions in `try_compile` | ICU probe used host headers and no archive | P | concrete FindICU paths plus Conan-shaped imported-target regression |
 
 ## 2. Compile-time
 
