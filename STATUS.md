@@ -7,6 +7,44 @@ Everything below this section is a reverse-chronological log (newest
 first). Read *this* section first; consult the log below only for the
 detail behind a specific claim.
 
+### The OpenGL fix held. The ICU one did not, and three models of why were wrong.
+
+konsolepart.so no longer misses QOpenGL* -- the deferred edge hook fired
+(`added Qt6::OpenGL to Qt6::Quick` in konsole's cmake.log). Only
+`ubidi_*_74` remains, and the implicit-include -D reached konsole's
+CMakeCache without effect.
+
+Three hypotheses, each refuted locally before it could cost a run:
+
+1. *pkg-config emits -I/usr/include as a compile option, which implicit
+   filtering never touches.* Only under PKG_CONFIG_ALLOW_SYSTEM_CFLAGS,
+   which konsole's build never sets. Refuted.
+2. *The -D sets only the cache, and CMakeCXXCompiler.cmake's normal
+   `set(... "")` shadows it.* True mechanically -- proved on a minimal
+   project -- but the hook already set the normal variable (`7bc7ca7`),
+   and CI still produced 74. So true and insufficient.
+3. *The zig-c++ wrapper reorders host include args.* Its rewriting block
+   is musl-only; konsole is glibc. Refuted.
+
+A fourth reproduction, with IMPORTED targets in FindX11/FindICU's exact
+shape and the real hook, resolves ICU to 78 locally. Every model I can
+build agrees with itself and disagrees with CI. That is the signal to
+stop modelling: the compile line that produced `_74` has never been
+seen, because ninja does not echo it and the collector does not ship it.
+
+So this patch makes it observable rather than guessing a fifth time:
+`CMAKE_EXPORT_COMPILE_COMMANDS=ON` for every module, the failing
+module's `compile_commands.json` travels with its logs, and the hook
+prints what it saw (system, processor, project) so the next cmake.log
+shows whether its guarded block ran. The implicit-include set is now also
+unconditional, and `test-konsole-implicit-include.sh` checks the
+behaviour under cache shadowing, in the IMPORTED shape.
+
+Also in this patch: the cmake-options folded scalar held 67 comment lines
+that YAML folds into the value -- kde-builder passed them to CMake for
+weeks, until an apostrophe broke shlex on module 1. Moved out; preflight
+parses every *-options value the way kde-builder does.
+
 ### konsole compiled. The link needed two fixes f4-qt already had.
 
 konsole configured and compiled; `konsolepart.so` failed to link on two

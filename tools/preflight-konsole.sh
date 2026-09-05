@@ -502,4 +502,10 @@ grep -q 'link-qt6-opengl.cmake' "$REPO_ROOT/contrib/konsole/project-include.cmak
     || fail 'project-include.cmake no longer includes link-qt6-opengl.cmake; konsolepart.so will miss QOpenGL* symbols'
 pass 'the Qt6::Quick -> Qt6::OpenGL edge is repaired for konsole'
 
+# /usr/include must stay implicit even after CMake's compiler detection
+# shadows the cache value with a normal "" -- checked by behaviour, not by
+# grep, on a project of FindX11/FindICU's exact IMPORTED shape.
+"$REPO_ROOT/tools/test-konsole-implicit-include.sh" \
+    || { printf 'FAIL: host /usr/include can shadow Conan headers again\n' >&2; exit 1; }
+
 printf 'Konsole preflight: PASS\n'

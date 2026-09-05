@@ -88,6 +88,29 @@ endif()
 
 _se_promote_conan_package_prefixes()
 
+# Declare /usr/include implicit -- as a NORMAL variable, here, after
+# project(). The -D form in cmake-options sets only the cache, and
+# CMakeCXXCompiler.cmake (CMake cannot introspect zig-c++) then runs
+# `set(CMAKE_CXX_IMPLICIT_INCLUDE_DIRECTORIES "")` as a normal variable,
+# which shadows the cache for the rest of configure. konsole's cache held
+# the value and its compile line still carried -I/usr/include, so
+# TerminalDisplay.cpp read the host's ICU 74 headers and linked Conan's
+# ICU 78: undefined ubidi_*_74. Proved on a minimal project: a cache
+# value shadowed to "" re-emits -I/usr/include; a normal set from this
+# hook removes it. Truthful, too: the zig wrappers append
+# `-idirafter /usr/include`, so it genuinely is an implicit path.
+foreach(_se_lang C CXX)
+    set(CMAKE_${_se_lang}_IMPLICIT_INCLUDE_DIRECTORIES "/usr/include")
+endforeach()
+# Say so, with what this hook saw: three local models of the include order
+# each predicted no host header on the line, and CI compiled against the
+# host's ICU 74 regardless. The next cmake.log must show whether this ran
+# and what the guarded block above concluded, rather than leaving it to be
+# inferred from a link error forty minutes later.
+message(STATUS "static-everywhere: implicit include dirs set to /usr/include "
+    "(system=${CMAKE_SYSTEM_NAME} processor=${CMAKE_SYSTEM_PROCESSOR} "
+    "project=${PROJECT_NAME})")
+
 # A static build drags each module's private STATIC helpers into its
 # export set, and CMake then requires them to be exported too -- which
 # upstream, building shared, never has to do. knewstuff stopped on

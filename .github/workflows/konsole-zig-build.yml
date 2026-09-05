@@ -244,6 +244,18 @@ jobs:
             | while IFS= read -r failed_log; do
                 failed_dir=$(dirname "$failed_log")
                 [ -d "$failed_dir" ] || continue
+                # The failing module's compile_commands.json, too. ninja does
+                # not echo compile lines, so a link error whose cause is the
+                # include ORDER of a compile -- konsole's ubidi_*_74 against
+                # Conan's ICU 78 -- cannot be diagnosed from logs alone. Three
+                # hypotheses about that order were each refuted locally; the
+                # fourth needs the actual command, so it travels with the logs.
+                failed_module=$(basename "$failed_dir")
+                cc_json="out/konsole/kde-build/$failed_module/compile_commands.json"
+                if [ -f "$cc_json" ]; then
+                  mkdir -p "$diag/04-text/$(dirname "$cc_json")"
+                  cp "$cc_json" "$diag/04-text/$cc_json" 2>/dev/null || true
+                fi
                 for one in "$failed_dir"/*; do
                   [ -f "$one" ] || continue
                   target="$diag/04-text/${one#/}"
