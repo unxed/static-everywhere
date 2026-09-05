@@ -12,6 +12,7 @@ pass() { printf 'PASS: %s\n' "$1"; }
 
 bash -n "$REPO_ROOT/tools/build-konsole.sh" "$REPO_ROOT/tools/preflight-konsole.sh" \
     "$REPO_ROOT/tools/run-konsole-smoke.sh" "$REPO_ROOT/tools/verify-konsole-artifact.sh" \
+    "$REPO_ROOT/tools/preflight-konsole-kde-builder-pretend.sh" \
     "$REPO_ROOT/contrib/konsole/qt-package-root.sh" "$REPO_ROOT/tools/test-konsole-qt-package-root.sh" \
     "$REPO_ROOT/tools/test-konsole-cmake-find-mode.sh" \
     "$REPO_ROOT/tools/test-konsole-qt-cmake-component-shims.sh" \

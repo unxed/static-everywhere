@@ -31,7 +31,8 @@ template = (root / 'contrib/konsole/kde-builder.yaml.in').read_text()
 placeholders = set(re.findall(r'@[A-Z_]+@', template))
 
 problems = []
-for renderer in ('tools/build-konsole.sh', 'tools/preflight-konsole.sh'):
+for renderer in ('tools/build-konsole.sh', 'tools/preflight-konsole.sh',
+                 'tools/preflight-konsole-kde-builder-pretend.sh'):
     text = (root / renderer).read_text()
     for ph in sorted(placeholders):
         # The renderer must name the placeholder (in a sed -e s|@X@|...| ).
@@ -69,4 +70,4 @@ for n, line in enumerate(lines, 1):
         sys.exit(1)
 PY
 
-printf 'placeholder sync: both renderers know every placeholder, top-level ones are quoted\n'
+printf 'placeholder sync: all renderers know every placeholder, top-level ones are quoted\n'
