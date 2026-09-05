@@ -585,4 +585,13 @@ if [ -n "${_stage_all_present:-}" ]; then
     rm -rf "$_st" "$_st.roots"
 fi
 
+# Every Qt inter-module edge Qt's sources declare must be one the Conan
+# recipe declares or the hook repairs. Reads both from source; predicted
+# the OpenGL edge retroactively and found Quick -> QmlMeta and
+# Multimedia -> Concurrent/DBus before any run.
+"$REPO_ROOT/tools/scan-qt-module-edges.sh" \
+    || { printf 'FAIL: a Qt module dependency is missing from the static link\n' >&2; exit 1; }
+"$REPO_ROOT/tools/test-qt-edge-repair.sh" \
+    || { printf 'FAIL: the Qt edge repair does not resolve a --no-undefined MODULE link\n' >&2; exit 1; }
+
 printf 'Konsole preflight: PASS\n'

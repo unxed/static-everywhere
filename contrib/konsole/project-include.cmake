@@ -207,6 +207,11 @@ include("${_SE_REPO_ROOT}/contrib/f4-qt/optional-gl.cmake")
 # exactly the symbols f4-qt's file documents, down to
 # qsgdefaultpainternode.cpp. Reused rather than re-derived.
 include("${_SE_REPO_ROOT}/contrib/f4-qt/link-qt6-opengl.cmake")
+# The other edges the Conan recipe omits, found by tools/scan-qt-module-edges.sh
+# from Qt's own module declarations rather than from a link error:
+# Quick -> QmlMeta (a module Conan never exposes), Multimedia -> Concurrent,
+# Multimedia -> DBus.
+include("${CMAKE_CURRENT_LIST_DIR}/link-qt6-orphan-modules.cmake")
 
 # Static ICU wants U_STATIC_IMPLEMENTATION. Conan's ICU config carries that
 # define; konsole finds ICU through CMake's FindICU MODULE, which hands

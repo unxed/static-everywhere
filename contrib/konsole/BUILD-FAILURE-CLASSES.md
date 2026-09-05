@@ -44,7 +44,7 @@ Legend: **P** = caught by preflight locally · **C** = caught by CI only ·
 
 | # | Class | Seen here | Status | Guard |
 |---|-------|-----------|--------|-------|
-| 3.1 | Undefined symbol: transitive static dep not declared | Qt6::Quick → OpenGL | P | edge repaired; deferred hook reports |
+| 3.1 | Undefined symbol: transitive static dep not declared | Qt6::Quick → OpenGL; then QmlMeta, Multimedia→Concurrent/DBus | P | `scan-qt-module-edges.sh` reads Qt's module declarations and the Conan recipe and fails on any edge neither declares nor the hook repairs; `link-qt6-orphan-modules.cmake` repairs them and creates targets for modules Conan builds but never exposes. Retroactively predicts the OpenGL edge |
 | 3.2 | Undefined symbol: version-suffixed API from wrong headers | `ubidi_*_74` | P | 1.7 |
 | 3.3 | Undefined symbol: newer glibc than baseline | `close_range` | P | glibc shim, three recipes |
 | 3.4 | Two C++ runtimes in one link | SoLo libstdc++ vs libc++ | P | runtime checker at handoff |

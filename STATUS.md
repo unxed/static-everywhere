@@ -7,6 +7,29 @@ Everything below this section is a reverse-chronological log (newest
 first). Read *this* section first; consult the log below only for the
 detail behind a specific claim.
 
+### The third symbol family, found before the link that would have shown it
+
+konsolepart.so links with --no-undefined, so every transitive dependency
+of every static Qt archive must be on the line. The two known families
+were exactly that class. So: read Qt's own module declarations
+(`qt_internal_add_module` / `add_qml_module` / `extend_target`, from the
+6.11 sources) and the Conan recipe's `_create_module` edges, and diff
+them for the 17 modules on konsole's link.
+
+Control first: with the OpenGL repair removed, the scan reports
+`Quick -> OpenGL` -- it predicts the bug that cost a run. Then it found
+what is still missing: **Quick -> QmlMeta** (a Qt 6.9+ module Conan
+builds but never exposes as a component, so `libQt6QmlMeta.a` is on no
+link line), **Multimedia -> Concurrent** and **Multimedia -> DBus**
+(components exist, edges omitted; konsole links Qt6::Multimedia
+directly).
+
+`link-qt6-orphan-modules.cmake` creates `Qt6::QmlMeta` from the archive
+in the Qt package folder and appends the missing edges; the scan reads
+its edge table back, so the two cannot drift. Reproduced end to end on a
+MODULE with --no-undefined: `undefined symbol` without the repair, links
+with it, archives in dependency order. In the preflight.
+
 ### Walking the build step by step, asking what breaks at each
 
 Not the class list -- the actual sequence from the point we fail.
