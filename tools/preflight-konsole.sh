@@ -153,6 +153,7 @@ sed -e "s|@KDE_SOURCE_DIR@|$REPO_ROOT/.konsole-preflight-source|g" \
     -e "s|@CMAKE_PREFIX_PATH@|$REPO_ROOT/.konsole-preflight-qt;$REPO_ROOT/.konsole-preflight-install|g" \
     -e "s|@PROJECT_INCLUDE@|$REPO_ROOT/contrib/konsole/project-include.cmake|g" \
     -e "s|@INSTALL_PREFIX_CMD@|$REPO_ROOT/tools/kde-install-and-reconcile.sh|g" \
+    -e 's|@TARGET_TRIPLE@|x86_64-linux-gnu.2.27|g' \
     -e "s|@QT_PACKAGE_ROOT@|$REPO_ROOT/.konsole-preflight-qt|g" \
     -e "s|@KONSOLE_REF@|$(awk '$1 == "konsole" { print $2 }' "$REPO_ROOT/contrib/konsole/deps.lock")|g" \
     "$REPO_ROOT/contrib/konsole/kde-builder.yaml.in" >"$RENDERED"
@@ -171,6 +172,8 @@ assert "BUILD_SHARED_LIBS=OFF" in cmake_options
 assert "CMAKE_IGNORE_PREFIX_PATH=" in cmake_options
 assert "CMAKE_IGNORE_PREFIX_PATH=/usr" not in cmake_options
 assert "WITH_X11=ON" in cmake_options
+assert "-DCMAKE_C_FLAGS=--target=x86_64-linux-gnu.2.27" in cmake_options
+assert "-DCMAKE_CXX_FLAGS=--target=x86_64-linux-gnu.2.27" in cmake_options
 assert config["override konsole"]["revision"]
 assert "#" not in cmake_options
 shlex.split(cmake_options)
@@ -534,6 +537,9 @@ hook = (root / "contrib/konsole/project-include.cmake").read_text()
 checks = {
     "3.6 PIC pinned for the MODULE plugin":        "-DCMAKE_POSITION_INDEPENDENT_CODE=ON" in co,
     "2.10 U_STATIC_IMPLEMENTATION for static ICU": "add_compile_definitions(U_STATIC_IMPLEMENTATION)" in hook,
+    "1.17 target pinned for every source-module compiler":
+        "-DCMAKE_C_FLAGS=--target=x86_64-linux-gnu.2.27" in co and
+        "-DCMAKE_CXX_FLAGS=--target=x86_64-linux-gnu.2.27" in co,
     "ninja -v so compile lines reach build.log":   opts.get("ninja-options", "") == "-v",
 }
 failed = [k for k, ok in checks.items() if not ok]

@@ -252,6 +252,7 @@ render_config() {
         -e "s|@CMAKE_PREFIX_PATH@|$CMAKE_PREFIX_PATH|g" \
         -e "s|@PROJECT_INCLUDE@|$REPO_ROOT/contrib/konsole/project-include.cmake|g" \
         -e "s|@INSTALL_PREFIX_CMD@|$REPO_ROOT/tools/kde-install-and-reconcile.sh|g" \
+        -e "s|@TARGET_TRIPLE@|$TARGET_TRIPLE|g" \
         -e "s|@KONSOLE_REF@|$KONSOLE_REF|g" \
         -e "s|@QT_PACKAGE_ROOT@|$QT_PACKAGE_ROOT|g" \
         "$REPO_ROOT/contrib/konsole/kde-builder.yaml.in"

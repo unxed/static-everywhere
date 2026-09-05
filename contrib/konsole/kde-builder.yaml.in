@@ -56,9 +56,14 @@ global:
   # option keeps the runner's FindX11/FindXCB modules discoverable.
   # KDE_INSTALL_LIBDIR is pinned so every framework installs its CONFIG files
   # under the same lib/cmake tree, independently of include order.
+  # The Conan toolchain carries the target in its package-build and link flags,
+  # but kde-builder configures every KDE source module separately. Keep the
+  # compile driver on the same pinned target too; otherwise zig-c++ silently
+  # falls back to the host target, and its default host include tree can supply
+  # a different version of any library whose archive is Conan-owned.
   # /usr/include is declared implicit for Zig-built KDE modules, keeping host
   # X11 headers lower priority than the Conan headers and avoiding host/Conan
-  # ICU mismatches.
+  # ICU mismatches once the wrapper knows which target it is serving.
   # ki18n needs QtQmlIntegration's header even when its QML option is disabled;
   # this is a package workaround documented in contrib/konsole/UPSTREAM.md.
   # The remaining switches keep the graph Widgets/X11-only and disable unused
@@ -99,6 +104,8 @@ global:
     -DBUILD_TESTING=OFF
     -DKCONFIG_USE_QML=OFF
     -DCMAKE_CXX_STANDARD_INCLUDE_DIRECTORIES=@QT_PACKAGE_ROOT@/include/QtQmlIntegration
+    -DCMAKE_C_FLAGS=--target=@TARGET_TRIPLE@
+    -DCMAKE_CXX_FLAGS=--target=@TARGET_TRIPLE@
     -DBUILD_WITH_QML=OFF
     -DKCOREADDONS_USE_QML=OFF
     -DKICONTHEMES_USE_QTQUICK=OFF

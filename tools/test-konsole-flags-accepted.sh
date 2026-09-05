@@ -30,7 +30,8 @@ printf 'int f(void){ return 1; }\n' >"$PROBE/s.c"
 # Every -DCMAKE_<X>_FLAGS=<value> and -DCMAKE_<X>_LINKER_FLAGS=<value> in
 # the template, with placeholders neutralised.
 mapfile -t flagsets < <(
-    sed -E 's/@[A-Z_]+@/x/g' "$REPO_ROOT/contrib/konsole/kde-builder.yaml.in" \
+    sed -E 's/@TARGET_TRIPLE@/x86_64-linux-gnu.2.28/g; s/@[A-Z_]+@/x/g' \
+        "$REPO_ROOT/contrib/konsole/kde-builder.yaml.in" \
     | grep -oE -- '-DCMAKE_(C|CXX|EXE_LINKER|SHARED_LINKER|MODULE_LINKER)_FLAGS(_INIT)?=[^[:space:]]+' \
     | sort -u)
 
