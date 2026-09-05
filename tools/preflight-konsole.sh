@@ -21,7 +21,8 @@ bash -n "$REPO_ROOT/tools/build-konsole.sh" "$REPO_ROOT/tools/preflight-konsole.
     "$REPO_ROOT/tools/test-konsole-host-python-modules.sh" \
     "$REPO_ROOT/tools/test-konsole-host-perl-modules.sh" \
     "$REPO_ROOT/tools/test-konsole-host-docbook-tools.sh" \
-    "$REPO_ROOT/tools/test-konsole-static-qt-plugins.sh"
+    "$REPO_ROOT/tools/test-konsole-static-qt-plugins.sh" \
+    "$REPO_ROOT/tools/test-konsole-deferred-recipe-file.sh"
 pass 'Konsole shell scripts parse'
 
 bash "$REPO_ROOT/tools/test-konsole-cmake-package-prefixes-regression.sh"
@@ -47,6 +48,9 @@ pass 'Qt component-style CONFIG packages resolve through Conan aggregate metadat
 
 bash "$REPO_ROOT/tools/test-konsole-static-qt-plugins.sh"
 pass 'Konsole static Qt plugin imports are configure-time and Conan-safe'
+
+bash "$REPO_ROOT/tools/test-konsole-deferred-recipe-file.sh"
+pass 'deferred recipe files retain their absolute path'
 
 for tool in msgmerge msgfmt flex bison; do
     command -v "$tool" >/dev/null 2>&1 || fail "Gettext tool is missing: $tool"

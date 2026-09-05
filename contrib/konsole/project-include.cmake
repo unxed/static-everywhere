@@ -225,8 +225,9 @@ add_compile_definitions(U_STATIC_IMPLEMENTATION)
 # ICU headers and archives must be the same version -- decided here, at
 # configure, rather than by an "undefined ubidi_open_74" at link. Deferred
 # so ICU::uc exists (konsole's find_package(ICU) runs later).
-cmake_language(DEFER DIRECTORY "${CMAKE_SOURCE_DIR}"
-    CALL include "${CMAKE_CURRENT_LIST_DIR}/check-icu-consistency.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/defer-recipe-file.cmake")
+_se_konsole_defer_recipe_file(
+    "${CMAKE_CURRENT_LIST_DIR}/check-icu-consistency.cmake")
 message(STATUS "static-everywhere: U_STATIC_IMPLEMENTATION defined for konsole's static ICU")
 
 function(_se_konsole_assert_static_graph)
