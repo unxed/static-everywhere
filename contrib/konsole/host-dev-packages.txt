@@ -1,0 +1,42 @@
+# contrib/konsole/host-dev-packages.txt -- the host header contract.
+#
+# Every -dev package the build job installs, hence every host header the
+# compiler may see. tools/stage-host-includes.sh stages the dependency
+# closure of these -- minus any top-level include name a Conan package
+# vendors -- into ONEBIN_HOST_INCLUDE_DIR, and the zig wrappers redirect
+# every /usr/include on the command line, and their own fallback, to that
+# stage. A host library not listed here is invisible to the compile
+# however the search path is arranged: this is how konsole stops
+# compiling against the host's ICU 74 while linking Conan's ICU 78.
+# The workflow reads this file for apt; the preflight asserts no drift.
+libcanberra-dev
+libdbus-1-dev
+libegl1-mesa-dev
+libgl1-mesa-dev
+libmount-dev
+libx11-xcb-dev
+libxcb-composite0-dev
+libxcb-cursor-dev
+libxcb-dri2-0-dev
+libxcb-dri3-dev
+libxcb-ewmh-dev
+libxcb-glx0-dev
+libxcb-icccm4-dev
+libxcb-image0-dev
+libxcb-keysyms1-dev
+libxcb-present-dev
+libxcb-randr0-dev
+libxcb-render-util0-dev
+libxcb-render0-dev
+libxcb-res0-dev
+libxcb-shape0-dev
+libxcb-sync-dev
+libxcb-util-dev
+libxcb-util0-dev
+libxcb-xfixes0-dev
+libxcb-xinerama0-dev
+libxcb-xkb-dev
+libxkbcommon-dev
+libxkbcommon-x11-dev
+uuid-dev
+xorg-dev
