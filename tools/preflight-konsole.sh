@@ -543,4 +543,29 @@ pass 'every guarded class in BUILD-FAILURE-CLASSES.md has its guard in place'
 "$REPO_ROOT/tools/test-konsole-flags-accepted.sh" \
     || { printf 'FAIL: a flag in the kde-builder config is rejected by the zig wrappers\n' >&2; exit 1; }
 
+# The host-include stage: the wrappers must honour it (both compilers),
+# and it must build from the contract file the workflow reads, contain
+# the contract, and exclude anything a vendored root provides. Where the
+# contract packages are installed (CI preflight installs them), the stage
+# is built for real; otherwise only the wrapper behaviour is checked.
+"$REPO_ROOT/tools/test-host-include-stage.sh" \
+    || { printf 'FAIL: the zig wrappers do not honour ONEBIN_HOST_INCLUDE_DIR\n' >&2; exit 1; }
+if command -v dpkg >/dev/null 2>&1; then
+    mapfile -t _pk < <(grep -vE '^\s*(#|$)' "$REPO_ROOT/contrib/konsole/host-dev-packages.txt")
+    _have=(); for _p in "${_pk[@]}"; do dpkg -s "$_p" >/dev/null 2>&1 && _have+=("$_p"); done
+    if [ "${#_have[@]}" -eq "${#_pk[@]}" ]; then
+        _stage=$(mktemp -d)
+        printf '' >"$_stage.roots"
+        "$REPO_ROOT/tools/stage-host-includes.sh" "$_stage" "$_stage.roots" "${_pk[@]}" >/dev/null \
+            || { printf 'FAIL: the host-include stage cannot be built from host-dev-packages.txt\n' >&2; exit 1; }
+        rm -rf "$_stage" "$_stage.roots"
+        pass "the host-include stage builds from all ${#_pk[@]} contract packages"
+    else
+        pass "host-include stage: wrapper behaviour verified (${#_have[@]}/${#_pk[@]} contract packages present here)"
+    fi
+fi
+# The workflow's apt line must read the contract file, or the two drift.
+grep -q "host-dev-packages.txt" "$REPO_ROOT/.github/workflows/konsole-zig-build.yml" \
+    || fail "the workflow no longer installs host packages from host-dev-packages.txt"
+
 printf 'Konsole preflight: PASS\n'

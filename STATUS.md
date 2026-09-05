@@ -7,6 +7,42 @@ Everything below this section is a reverse-chronological log (newest
 first). Read *this* section first; consult the log below only for the
 detail behind a specific claim.
 
+### The class, removed without waiting: staged host headers for glibc
+
+Asked, correctly, why the staged host-include directory should wait for
+another run. It should not have. It exists now, and the sandbox reset
+that ate the first attempt made the second one commit at every step.
+
+The mechanism: `tools/stage-host-includes.sh` builds a filtered copy of
+`/usr/include` from the dependency closure of the -dev packages in
+`contrib/konsole/host-dev-packages.txt` -- now the single source the
+workflow's apt line reads too -- minus every top-level name a Conan include
+root provides. Both sets derived. Locally: `X11/X.h` present via
+x11proto-dev in the closure; `unicode/` absent although libxml2-dev's
+closure includes libicu-dev. Both wrappers rewrite `-I`/`-isystem`/
+`-idirafter /usr/include` to the stage and point their own fallback at it,
+for any target, when `ONEBIN_HOST_INCLUDE_DIR` is set; unset, glibc
+behaviour is unchanged.
+
+Reproduced on a host with ICU 74 and a vendored ICU 78, both wrappers:
+with the stage the vendored header wins under `-I/usr/include` first,
+under `-isystem /usr/include` first, and when the vendored dir is absent
+the compile fails loudly. Without the stage the last case silently yields
+74 -- **that is the CI mechanism**: the wrapper's own fallback supplied
+host ICU whenever the Conan include was missing from the line. The cause
+of its absence is now irrelevant; `ninja -v` will still show it.
+
+Diffing the old apt list against the new contract file caught two
+packages (libxml2-dev, libxslt1-dev) in a second apt block I had not
+read. Wired into build-konsole.sh through `run` so `--print-plan` shows
+the steps instead of writing into a directory plan mode never creates --
+which the preflight caught.
+
+Also this session: `-Wl,--trace`, my regression -- zig rejects it and
+every other tracing flag, and kiconthemes died on the first shared link.
+Removed; the preflight now runs every CMAKE_*_FLAGS value in the config
+through the wrappers, and the control reproduces CI's exact message.
+
 ### The checklist that should have preceded the first run
 
 Written now: `contrib/konsole/BUILD-FAILURE-CLASSES.md` -- every class of

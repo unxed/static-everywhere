@@ -267,8 +267,10 @@ fi
 # Qt graph installed; host packages from the file the workflow feeds to apt.
 HOST_INCLUDE_STAGE="$OUT_ABS/host-include-stage"
 VENDORED_ROOTS="$OUT_ABS/vendored-include-roots.txt"
-find "$CONAN_HOME/p" -maxdepth 4 -type d -name include -path '*/p/include' 2>/dev/null \
-    | sort >"$VENDORED_ROOTS"
+# Through `run`, so --print-plan lists it instead of writing into a
+# directory that plan mode never creates.
+run bash -c 'find "$1" -maxdepth 4 -type d -name include -path "*/p/include" 2>/dev/null | sort >"$2"' \
+    _ "$CONAN_HOME/p" "$VENDORED_ROOTS"
 mapfile -t HOST_DEV_PACKAGES < <(grep -vE '^\s*(#|$)' "$REPO_ROOT/contrib/konsole/host-dev-packages.txt")
 run "$REPO_ROOT/tools/stage-host-includes.sh" "$HOST_INCLUDE_STAGE" "$VENDORED_ROOTS" \
     "${HOST_DEV_PACKAGES[@]}"
