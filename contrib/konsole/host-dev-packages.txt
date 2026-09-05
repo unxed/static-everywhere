@@ -38,5 +38,7 @@ libxcb-xinerama0-dev
 libxcb-xkb-dev
 libxkbcommon-dev
 libxkbcommon-x11-dev
+libxml2-dev
+libxslt1-dev
 uuid-dev
 xorg-dev

@@ -121,20 +121,12 @@ jobs:
       - name: Install host X11/EGL/OpenGL development headers
         run: |
           sudo apt-get update
+          # -dev packages are the host header contract, read from
+          # contrib/konsole/host-dev-packages.txt -- the same file the build
+          # stages headers from, so apt and the stage cannot drift apart.
           sudo apt-get install --no-install-recommends -y \
-            xorg-dev libx11-xcb-dev uuid-dev libegl1-mesa-dev libgl1-mesa-dev \
-            xkb-data libxkbcommon-dev libxkbcommon-x11-dev \
-            libxcb-util-dev libxcb-util0-dev libxcb-cursor-dev \
-            libxcb-dri3-dev libxcb-dri2-0-dev libxcb-present-dev \
-            libxcb-composite0-dev libxcb-ewmh-dev libxcb-res0-dev \
-            libxcb-glx0-dev libxcb-render0-dev libxcb-render-util0-dev \
-            libxcb-xkb-dev libxcb-icccm4-dev libxcb-image0-dev \
-            libxcb-keysyms1-dev libxcb-randr0-dev libxcb-shape0-dev \
-            libxcb-sync-dev libxcb-xfixes0-dev libxcb-xinerama0-dev \
-            gettext flex bison perl liburi-perl libmount-dev libcanberra-dev libdbus-1-dev \
-            xvfb x11-utils x11-apps xdotool imagemagick ccache \
-            python3-dbus python3-lxml python3-yaml python3-setproctitle \
-            libxml2-dev libxml2-utils libxslt1-dev xsltproc docbook-xml docbook-xsl
+            $(grep -vE '^\s*(#|$)' contrib/konsole/host-dev-packages.txt | tr '\n' ' ') \
+            bison ccache docbook-xml docbook-xsl flex gettext imagemagick liburi-perl libxml2-utils perl python3-dbus python3-lxml python3-setproctitle python3-yaml x11-apps x11-utils xdotool xkb-data xsltproc xvfb
 
       - name: Verify KDE build-time Python modules
         run: ./tools/test-konsole-host-python-modules.sh

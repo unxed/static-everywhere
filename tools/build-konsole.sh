@@ -262,8 +262,20 @@ else
     render_config >"$KDE_CONFIG"
 fi
 
+# Stage the host contract's headers so nothing else on the host can shadow a
+# vendored library. Vendored top-level names come from the Conan packages the
+# Qt graph installed; host packages from the file the workflow feeds to apt.
+HOST_INCLUDE_STAGE="$OUT_ABS/host-include-stage"
+VENDORED_ROOTS="$OUT_ABS/vendored-include-roots.txt"
+find "$CONAN_HOME/p" -maxdepth 4 -type d -name include -path '*/p/include' 2>/dev/null \
+    | sort >"$VENDORED_ROOTS"
+mapfile -t HOST_DEV_PACKAGES < <(grep -vE '^\s*(#|$)' "$REPO_ROOT/contrib/konsole/host-dev-packages.txt")
+run "$REPO_ROOT/tools/stage-host-includes.sh" "$HOST_INCLUDE_STAGE" "$VENDORED_ROOTS" \
+    "${HOST_DEV_PACKAGES[@]}"
+
 run_env GIT_CONFIG_GLOBAL="$GIT_CONFIG_GLOBAL" PYTHONPATH="$KDE_BUILDER" \
     XDG_STATE_HOME="$KDE_STATE_DIR" \
+    ONEBIN_HOST_INCLUDE_DIR="$HOST_INCLUDE_STAGE" \
     SE_RECONCILE_TOOL="$REPO_ROOT/tools/reconcile-cmake-target-deps.sh" \
     SE_RECONCILE_PREFIX="$KDE_INSTALL_DIR" \
     CC="$ZIGCC" CXX="$ZIGCXX" \
