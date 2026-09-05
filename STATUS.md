@@ -7,6 +7,52 @@ Everything below this section is a reverse-chronological log (newest
 first). Read *this* section first; consult the log below only for the
 detail behind a specific claim.
 
+### Walking the build step by step, asking what breaks at each
+
+Not the class list -- the actual sequence from the point we fail.
+
+**0. The stage is built.** Conan install precedes it (line ~164 vs 275),
+so vendored roots exist. Verified by reading the script.
+
+**1. kde-builder starts.** It ADDS to os.environ rather than replacing
+it (module.py commit_environment_changes), so ONEBIN_HOST_INCLUDE_DIR
+reaches every compile -- the same path SE_RECONCILE_* already took in a
+real run.
+
+**2. Every module configures with the hook.** FOUND A KILLER:
+CMAKE_PROJECT_INCLUDE runs again for each nested project(), which KDE
+modules have; the static-helper hook redefined function(install) each
+time and the second wrapper recursed into the first -- "Maximum
+recursion depth of 1000 exceeded" on the first module with a
+subproject. Guarded on global properties; fixture gains a nested
+project(); control reproduces the recursion.
+
+**3. Host include paths through the wrapper.** FOUND TWO MORE:
+-I/usr/include/x86_64-linux-gnu was mapped to the stage ROOT (subpath
+lost, multiarch headers unresolvable), and -I/usr/include/freetype2
+passed through to the host copy of a vendored library. One rule now:
+every path under /usr/include maps to the same subpath under the stage.
+Multiarch resolves; a stray host -I to a vendored name fails loudly.
+
+**4. ninja -v fills build.log.** Measured: 0.27 MB / 50 commands for
+kcoreaddons; the largest modules approach the 2 MB per-file cap that
+would have dropped exactly these logs. build.log alone may reach 8 MB;
+find expression proved on synthetic files.
+
+**5. Reconciler after each install.** Against an export shaped by the
+static-helper hook: a namespace-less helper is ignored,
+$<LINK_ONLY:KF6::X> inside a generator expression is recognised. Correct.
+
+**6. konsole's own configure.** U_STATIC_IMPLEMENTATION reaches targets in
+src/ (add_compile_definitions at project() scope); the Qt plugin import
+that needs Qt6::Core is deferred, so order is fine -- and the previous
+real konsole configure passed through this tail.
+
+**7. The konsolepart.so link.** The last failing log had exactly two
+symbol families (QOpenGL*, ubidi/u_shapeArabic_*_74); both addressed.
+What cannot be checked before a binary exists: whether a THIRD family
+appears once those two are gone. Stated as unknown, not assumed absent.
+
 ### The class, removed without waiting: staged host headers for glibc
 
 Asked, correctly, why the staged host-include directory should wait for
