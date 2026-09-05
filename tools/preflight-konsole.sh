@@ -525,7 +525,6 @@ co = opts.get("cmake-options", "")
 hook = (root / "contrib/konsole/project-include.cmake").read_text()
 checks = {
     "3.6 PIC pinned for the MODULE plugin":        "-DCMAKE_POSITION_INDEPENDENT_CODE=ON" in co,
-    "3.7 link tracing on shared/module links":     "-DCMAKE_MODULE_LINKER_FLAGS=-Wl,--trace" in co,
     "2.10 U_STATIC_IMPLEMENTATION for static ICU": "add_compile_definitions(U_STATIC_IMPLEMENTATION)" in hook,
     "ninja -v so compile lines reach build.log":   opts.get("ninja-options", "") == "-v",
 }
@@ -536,5 +535,12 @@ if failed:
     sys.exit(1)
 CLASSES
 pass 'every guarded class in BUILD-FAILURE-CLASSES.md has its guard in place'
+
+# Every CMAKE_*_FLAGS value in the config must compile and link through
+# the wrappers. -Wl,--trace was added for diagnostics without ever being
+# run through zig, which rejects it, and kiconthemes died on the first
+# shared-object link.
+"$REPO_ROOT/tools/test-konsole-flags-accepted.sh" \
+    || { printf 'FAIL: a flag in the kde-builder config is rejected by the zig wrappers\n' >&2; exit 1; }
 
 printf 'Konsole preflight: PASS\n'

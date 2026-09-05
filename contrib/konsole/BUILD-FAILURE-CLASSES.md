@@ -50,7 +50,7 @@ Legend: **P** = caught by preflight locally · **C** = caught by CI only ·
 | 3.4 | Two C++ runtimes in one link | SoLo libstdc++ vs libc++ | P | runtime checker at handoff |
 | 3.5 | Linker flag unsupported by the driver | `--push-state`, `-Xlinker` | P | wrapper translation; WHOLE_ARCHIVE redefined |
 | 3.6 | Non-PIC objects in a shared MODULE | konsolepart.so links static KF6 | **partial** | no relocation errors observed (KDECompilerSettings sets PIC); **not asserted** — add `CMAKE_POSITION_INDEPENDENT_CODE=ON` |
-| 3.7 | Duplicate symbol across static archives | — | — | none; would surface as `duplicate symbol` — add `-Wl,--trace` to failing link diagnostics |
+| 3.7 | Duplicate symbol across static archives | — | — | zig 0.13 rejects `--trace`/`-t`/`-Map`/`--why-extract` outright (adding `--trace` broke kiconthemes); trace on demand by replaying the FAILED link line from `build.log` (`ninja -v`) with ld.lld |
 | 3.8 | Archive order (static libs before their users) | — | — | CMake handles for declared deps; undeclared ones are 3.1 |
 | 3.9 | `-o -` / stdout output mishandled by driver | stray `-` file | P | wrapper |
 | 3.10 | Whole-archive / plugin registration missing at runtime | QPA plugins | P | user's `9299262` |

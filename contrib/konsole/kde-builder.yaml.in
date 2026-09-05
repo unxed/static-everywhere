@@ -68,12 +68,12 @@ global:
   # "relocation R_X86_64_32 cannot be used when making a shared object".
   # KDECompilerSettings sets this ON already -- this pins it, since a class
   # that is merely believed absent is not a class that is guarded.
-  # --trace on shared/module links: lld names every archive member it
-  # pulls in, so an undefined or duplicate symbol shows which archive
-  # actually satisfied (or failed to satisfy) it. KDE TechBase's linker
-  # debugging page has prescribed -Wl,-t since 2012; this pipeline never
-  # had it. Executable links are left alone to keep konsole's own link
-  # log readable.
+  # No -Wl,--trace / -t / -Map / --why-extract: zig 0.13 rejects every one
+  # of them as "unsupported linker arg", and adding --trace broke the
+  # first shared-object link in the graph (kiconthemes). Link tracing has
+  # to be done on demand by replaying the FAILED command from build.log
+  # with a real ld.lld. The preflight now runs every -Wl, flag in this
+  # file through the wrapper before a build can.
   cmake-options: >
     -DCMAKE_BUILD_TYPE=Release
     -DCMAKE_TOOLCHAIN_FILE=@CONAN_TOOLCHAIN@
@@ -91,8 +91,6 @@ global:
     -DKDE_INSTALL_USE_QT_SYS_PATHS=OFF
     -DKDE_INSTALL_LIBDIR=lib
     -DCMAKE_POSITION_INDEPENDENT_CODE=ON
-    -DCMAKE_SHARED_LINKER_FLAGS=-Wl,--trace
-    -DCMAKE_MODULE_LINKER_FLAGS=-Wl,--trace
     -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
     -DCMAKE_C_IMPLICIT_INCLUDE_DIRECTORIES=/usr/include
     -DCMAKE_CXX_IMPLICIT_INCLUDE_DIRECTORIES=/usr/include
