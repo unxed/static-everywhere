@@ -284,8 +284,14 @@ jobs:
           # An allowlist instead, of the files someone actually opens: what
           # configure decided, what it decided with, and what the build and
           # the KDE builder said.
+          # build.log is allowed up to 8 MB: with ninja -v every compile
+          # command is in it, and the largest modules approach the old 2 MB
+          # cap -- which would have dropped exactly the logs -v exists for.
+          # Everything else keeps the 2 MB per-file cap; the 32 MB total
+          # ceiling below still bounds the artifact.
           find "$HOME/.conan2/p/b" out/konsole/kde-build out/konsole/kde-logs \
-            -type f -newer /tmp/job-start-marker -size -2M \
+            -type f -newer /tmp/job-start-marker \
+            \( -size -2M -o \( -name 'build.log' -size -8M \) \) \
             ! -path '*/qt_sbom/*' ! -path '*/lib/cmake/*' \
             ! -path '*_autogen.dir/*' \
             \( -name '*.log' -o -name 'config.h' -o -name 'CMakeCache.txt' \
