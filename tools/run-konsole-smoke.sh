@@ -45,6 +45,11 @@ export DISPLAY="$display"
 export XDG_RUNTIME_DIR="$runtime_dir"
 export XDG_DATA_DIRS="$install_dir/share:/usr/share"
 export QT_QPA_PLATFORM=xcb
+# Make plugin resolution visible in konsole.log: a QPA, KF6 or ICU-data
+# failure otherwise shows up only as "no window appeared", which says what
+# happened and nothing about why. (BUILD-FAILURE-CLASSES.md 4.3.)
+export QT_DEBUG_PLUGINS=1
+export QT_LOGGING_RULES="qt.core.plugin*=true;kf.*=true"
 export LD_LIBRARY_PATH="$install_dir/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 export LIBGL_ALWAYS_SOFTWARE=1
 export SE_RENDER_DEBUG_FILE="$render_log"

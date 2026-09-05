@@ -15,8 +15,8 @@ Legend: **P** = caught by preflight locally · **C** = caught by CI only ·
 | 1.3 | Template placeholder unsubstituted / unquoted | `@INSTALL_PREFIX_CMD@` | P | placeholder-sync test |
 | 1.4 | Pin not resolvable by the driver | sha vs tag, tag object vs commit | P | `ls-remote --exit-code` + peel, same command as kde-builder |
 | 1.5 | Lock file consumers disagree on layout | workflow compared HEAD to tag | P | repository-wide consumer enumeration |
-| 1.6 | `find_package` finds the wrong package (host vs vendored) | ICU (headers), X11 by design | **partial** | CONFIG preference + prefix promotion; **host header shadowing still open (1.7)** |
-| 1.7 | Correct package found, wrong headers compiled (search-path order) | ICU 74 vs 78 | **—** | implicit-include set; **three models refuted; awaiting `ninja -v` compile line**. Candidate class fix: staged host-include dir for glibc targets (mechanism exists for musl) |
+| 1.6 | `find_package` finds the wrong package (host vs vendored) | ICU (headers), X11 by design | P | CONFIG preference + prefix promotion; header side closed by 1.7 |
+| 1.7 | Correct package found, wrong headers compiled (search-path order) | ICU 74 vs 78 | P | **staged host-include directory**: only the contract's dependency closure is visible, vendored names excluded; both wrappers redirect every `/usr/include` and their fallback. Reproduced and closed on a host with ICU 74. `scan-kde-graph-host-includes.sh`: 35 modules, 1457 includes, none host-only |
 | 1.8 | Package found but include dir one level off | hunspell `include/` vs `include/hunspell/` | P | adapter resolves the declared header; mandatory `header=` |
 | 1.9 | Exported target references undeclared dependency | kjobwidgets → Notifications | P (mechanism) / C (effect) | reconcile after each install via `make-install-prefix` |
 | 1.10 | Install split across libdirs | `lib` vs `lib/x86_64-linux-gnu` | P | `KDE_INSTALL_LIBDIR` pinned; asserted |
@@ -30,7 +30,7 @@ Legend: **P** = caught by preflight locally · **C** = caught by CI only ·
 | # | Class | Seen here | Status | Guard |
 |---|-------|-----------|--------|-------|
 | 2.1 | Header not found (missing `-I`) | QtQmlIntegration, hunspell | P | 1.8; QmlIntegration injected |
-| 2.2 | Wrong header found (shadowing by version) | ICU | **—** | see 1.7 |
+| 2.2 | Wrong header found (shadowing by version) | ICU | P | 1.7 |
 | 2.3 | Feature-test macro asymmetry (C vs C++) | `Dl_info` under `_GNU_SOURCE` | P | shim ordering test sweeps both languages |
 | 2.4 | Predefined macros missing from a code generator | `moc_predefs.h` empty | P | `-E` wins over `-c`; introspection test |
 | 2.5 | Link-only flag misread at compile time | `-nostdlib` dropped libc++ path | P | wrapper drops it on `-c/-S/-E` |
@@ -38,18 +38,18 @@ Legend: **P** = caught by preflight locally · **C** = caught by CI only ·
 | 2.7 | Warnings-as-errors from a stricter compiler | vte `-Wcast-function-type*` | P (gnome-terminal) | suppressed in native file |
 | 2.8 | Code generator segfault (host tool built by us) | meinproc6 | P | tool excluded; forward scan proves nothing requires it |
 | 2.9 | Language standard vs input language | `-std=c++17` with C input | P | 2.6 |
-| 2.10 | Missing define a static library's headers need | `U_STATIC_IMPLEMENTATION` for static ICU | **—** | FindICU MODULE does not carry Conan's defines. Not yet failing; **add `-DU_STATIC_IMPLEMENTATION` for konsole** |
+| 2.10 | Missing define a static library's headers need | `U_STATIC_IMPLEMENTATION` for static ICU | P | defined for konsole in the project hook; asserted |
 
 ## 3. Link-time
 
 | # | Class | Seen here | Status | Guard |
 |---|-------|-----------|--------|-------|
 | 3.1 | Undefined symbol: transitive static dep not declared | Qt6::Quick → OpenGL | P | edge repaired; deferred hook reports |
-| 3.2 | Undefined symbol: version-suffixed API from wrong headers | `ubidi_*_74` | **—** | 1.7 |
+| 3.2 | Undefined symbol: version-suffixed API from wrong headers | `ubidi_*_74` | P | 1.7 |
 | 3.3 | Undefined symbol: newer glibc than baseline | `close_range` | P | glibc shim, three recipes |
 | 3.4 | Two C++ runtimes in one link | SoLo libstdc++ vs libc++ | P | runtime checker at handoff |
 | 3.5 | Linker flag unsupported by the driver | `--push-state`, `-Xlinker` | P | wrapper translation; WHOLE_ARCHIVE redefined |
-| 3.6 | Non-PIC objects in a shared MODULE | konsolepart.so links static KF6 | **partial** | no relocation errors observed (KDECompilerSettings sets PIC); **not asserted** — add `CMAKE_POSITION_INDEPENDENT_CODE=ON` |
+| 3.6 | Non-PIC objects in a shared MODULE | konsolepart.so links static KF6 | P | zig refuses non-PIC for x86_64-linux-gnu at all ("requires position independent code"); pinned by `test-toolchain-pic-enforced.sh` so a zig upgrade cannot relax it silently |
 | 3.7 | Duplicate symbol across static archives | — | — | zig 0.13 rejects `--trace`/`-t`/`-Map`/`--why-extract` outright (adding `--trace` broke kiconthemes); trace on demand by replaying the FAILED link line from `build.log` (`ninja -v`) with ld.lld |
 | 3.8 | Archive order (static libs before their users) | — | — | CMake handles for declared deps; undeclared ones are 3.1 |
 | 3.9 | `-o -` / stdout output mishandled by driver | stray `-` file | P | wrapper |
@@ -61,7 +61,7 @@ Legend: **P** = caught by preflight locally · **C** = caught by CI only ·
 |---|-------|--------|-------|
 | 4.1 | Dynamic dependency leaked into "static" binary | P | onebin audit allow-list; libssl/libcrypto deliberately absent |
 | 4.2 | Host-loaded library ABI (X11/GL) | by design | hybrid profile contract |
-| 4.3 | Missing runtime data (ICU data, QPA plugins, KF6 plugins in MODULE form) | **—** | X11 smoke test exists; **ICU data (`libicudata.a`) is linked; KF6 MODULE plugins need `KDE_INSTALL_PLUGINDIR` reachable at runtime — untested** |
+| 4.3 | Missing runtime data (ICU data, QPA plugins, KF6 plugins in MODULE form) | C | X11 smoke test waits for a visible window; `QT_DEBUG_PLUGINS=1` + `kf.*` logging make a plugin failure name itself in `konsole.log` (shipped) instead of appearing as "no window". Not checkable before a binary exists; this is the one class that is CI-only by nature |
 
 ## Diagnostic inventory — what each tool can emit, and what we collect
 
@@ -83,4 +83,4 @@ involving static linking, ICU, `BUILD_SHARED_LIBS`, link errors. No issue
 documents a static Konsole/KF6 build. KDE TechBase's linker-debugging page
 (2012) prescribes exactly `VERBOSE=1` and `-Wl,-t`, neither of which this
 pipeline had. Conclusion: the static path is untested upstream; every
-static-only defect (1.11, 3.6) must be assumed present until proven absent.
+static-only defect must be assumed present until proven absent. 3.6 is now proven absent by the toolchain; 1.11's remaining modules were scanned for static helpers (none).

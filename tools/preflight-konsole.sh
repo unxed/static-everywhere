@@ -560,6 +560,7 @@ if command -v dpkg >/dev/null 2>&1; then
             || { printf 'FAIL: the host-include stage cannot be built from host-dev-packages.txt\n' >&2; exit 1; }
         rm -rf "$_stage" "$_stage.roots"
         pass "the host-include stage builds from all ${#_pk[@]} contract packages"
+        _stage_all_present=1
     else
         pass "host-include stage: wrapper behaviour verified (${#_have[@]}/${#_pk[@]} contract packages present here)"
     fi
@@ -567,5 +568,21 @@ fi
 # The workflow's apt line must read the contract file, or the two drift.
 grep -q "host-dev-packages.txt" "$REPO_ROOT/.github/workflows/konsole-zig-build.yml" \
     || fail "the workflow no longer installs host packages from host-dev-packages.txt"
+
+# Class 3.6: non-PIC code must be impossible for the target, so the shared
+# MODULE plugin can link the static archives. Pinned as a toolchain property.
+"$REPO_ROOT/tools/test-toolchain-pic-enforced.sh" \
+    || { printf 'FAIL: the toolchain can emit non-PIC objects for the glibc target\n' >&2; exit 1; }
+
+# The stage must not break any module: every angle-include in the graph's
+# sources must resolve with the stage in place. Runs when the contract
+# packages are installed (CI preflight) so a real stage can be built.
+if [ -n "${_stage_all_present:-}" ]; then
+    _st=$(mktemp -d); printf '' >"$_st.roots"
+    "$REPO_ROOT/tools/stage-host-includes.sh" "$_st" "$_st.roots" "${_pk[@]}" >/dev/null
+    "$REPO_ROOT/tools/scan-kde-graph-host-includes.sh" "$_st" \
+        || { printf 'FAIL: a module in the graph needs a host header outside the contract\n' >&2; exit 1; }
+    rm -rf "$_st" "$_st.roots"
+fi
 
 printf 'Konsole preflight: PASS\n'
