@@ -508,4 +508,10 @@ pass 'the Qt6::Quick -> Qt6::OpenGL edge is repaired for konsole'
 "$REPO_ROOT/tools/test-konsole-implicit-include.sh" \
     || { printf 'FAIL: host /usr/include can shadow Conan headers again\n' >&2; exit 1; }
 
+# Every consumer of deps.lock, repository-wide, must agree on its field
+# layout. The repin broke a workflow step I had not found because I
+# grepped tools/ rather than the tree.
+"$REPO_ROOT/tools/test-konsole-lock-consumers.sh" \
+    || { printf 'FAIL: a consumer of konsole/deps.lock disagrees on the field layout\n' >&2; exit 1; }
+
 printf 'Konsole preflight: PASS\n'

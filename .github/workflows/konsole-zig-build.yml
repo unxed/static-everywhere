@@ -69,6 +69,24 @@ jobs:
             exit 1
           fi
 
+      - name: Run kde-builder itself in pretend mode on the rendered config
+        # The one check that would have caught most of the config-level
+        # failures in seconds rather than after Qt built: run the real
+        # kde-builder, at the pinned revision, on the real rendered config,
+        # and let it parse the options, type-check them, resolve the
+        # dependency graph from KDE's metadata, and validate every pin --
+        # exactly as the build job will, minus the building. A grep-based
+        # preflight can only assert what it was taught to look for; this
+        # asserts what kde-builder actually accepts.
+        run: |
+          set -euo pipefail
+          KDE_BUILDER_REF=$(awk '$1 == "kde-builder" { print $2 }' contrib/konsole/deps.lock)
+          git clone --filter=blob:none --quiet https://invent.kde.org/sdk/kde-builder.git kde-builder-src
+          git -C kde-builder-src fetch --quiet --depth 1 origin "$KDE_BUILDER_REF"
+          git -C kde-builder-src checkout --quiet "$KDE_BUILDER_REF"
+          pip install --quiet setproctitle pyyaml
+          tools/preflight-konsole-kde-builder-pretend.sh "$PWD/kde-builder-src"
+
       - name: Fast Konsole invariant checks
         run: ./tools/preflight-konsole.sh
 

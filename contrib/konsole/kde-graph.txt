@@ -1,9 +1,13 @@
-# contrib/konsole/kde-graph.txt — the KF6 graph kde-builder resolves for
-# konsole with include-dependencies, as observed in CI. A snapshot, not a
-# source of truth: kde-builder recomputes it from KDE's metadata every run.
-# It exists so the preflight can read each module's CMakeLists.txt and
-# check the ignore-projects list against what the graph actually requires,
-# before a two-hour build finds out.
+# contrib/konsole/kde-graph.txt -- the KF6 graph kde-builder resolves for
+# konsole with include-dependencies. Written from the output of
+# `kde-builder --pretend konsole` on the rendered config, which the
+# preflight re-runs and diffs against this file, so it cannot drift:
+# when kde-builder resolves a different set, the preflight says so and
+# this file is updated from that output, never by hand.
+#
+# kdoctools and kirigami are listed although ignore-projects drops them:
+# the forward scan needs them present to verify that nothing else in the
+# graph REQUIRES them.
 attica
 breeze-icons
 extra-cmake-modules
@@ -29,6 +33,7 @@ kjobwidgets
 knewstuff
 knotifications
 knotifyconfig
+konsole
 kpackage
 kparts
 kpty

@@ -7,6 +7,36 @@ Everything below this section is a reverse-chronological log (newest
 first). Read *this* section first; consult the log below only for the
 detail behind a specific claim.
 
+### Run the tool, not a model of the tool
+
+Called out, correctly: I had announced three changes of method and made
+none of them. This commit makes them.
+
+**The preflight now runs kde-builder itself**, at the pinned revision, on
+the config rendered exactly as build-konsole.sh renders it, in
+`--pretend` mode. That parses every option, type-checks it, fetches
+KDE's metadata, resolves the dependency graph and validates every pin --
+everything the build job does short of building -- in about thirty
+seconds. Verified it reproduces the `ignore-projects` type error with
+the identical message CI printed. A grep-based check can only assert
+what it was taught to look for; this asserts what kde-builder accepts.
+It should have been the first thing written, not the fortieth.
+
+It found something immediately: the graph snapshot lacked `konsole`
+itself -- taken from a log directory before konsole had run -- so the
+forward scan had never read konsole's CMakeLists. The snapshot is now
+written from kde-builder's own output and diffed against it on every
+preflight; it cannot drift by hand.
+
+**Every consumer of deps.lock is enumerated repository-wide** by
+`test-konsole-lock-consumers.sh`: four files, where my grep of `tools/`
+had found one. It asserts the field layout and catches the exact bug --
+tag compared to HEAD -- that killed a run.
+
+**Observability before hypotheses** landed in the previous commit
+(compile_commands.json in the artifact). The order of those two things
+is the whole lesson, and I had it backwards four times.
+
 ### The OpenGL fix held. The ICU one did not, and three models of why were wrong.
 
 konsolepart.so no longer misses QOpenGL* -- the deferred edge hook fired
