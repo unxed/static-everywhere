@@ -594,4 +594,23 @@ fi
 "$REPO_ROOT/tools/test-qt-edge-repair.sh" \
     || { printf 'FAIL: the Qt edge repair does not resolve a --no-undefined MODULE link\n' >&2; exit 1; }
 
+# ICU data must be compiled into libicudata.a. With the recipe default
+# ("archive") the data lives in a .dat reached by a path compiled in from
+# the Conan cache: present on the runner, absent everywhere else, and
+# konsole never checks the bidi error code -- a runtime failure CI cannot
+# observe. Both places the option is spelled are checked.
+for f in contrib/konsole/qt-host/conanfile.py tools/build-konsole.sh; do
+    grep -qE "icu/\*:data_packaging['\"]?[=:] ?['\"]?static" "$REPO_ROOT/$f" \
+        || fail "$f does not build ICU with data_packaging=static; the shipped binary would have no ICU data off the runner"
+done
+pass 'ICU data is compiled into the static archive (self-contained off the runner)'
+
+# The runtime class is only observable when every build-time path is
+# hidden: the workflow must run the smoke test a second time that way.
+if ! grep -q 'KONSOLE_INSTALL_DIR=/nonexistent' "$REPO_ROOT/.github/workflows/konsole-zig-build.yml" \
+   || ! grep -q 'conan2/p.hidden' "$REPO_ROOT/.github/workflows/konsole-zig-build.yml"; then
+    fail "the workflow has no isolated smoke run; a binary that only works on the runner would pass"
+fi
+pass 'the workflow runs an isolated smoke test with build-time paths hidden'
+
 printf 'Konsole preflight: PASS\n'

@@ -206,6 +206,31 @@ jobs:
             "$PWD/out/konsole/kde-install/bin/konsole" \
             "$PWD/out/konsole/smoke"
 
+      - name: Run the X11 smoke test as a user's machine would see it
+        # The first smoke run passes on this runner even for a binary that
+        # is broken everywhere else: paths compiled in at build time -- the
+        # Conan cache (ICU data, fontconfig's config dir, Qt's plugin prefix)
+        # and the install tree (KF6 plugins, share/) -- all exist here. Hide
+        # them, copy the executable somewhere neutral, and run it again.
+        # This is the runtime class (BUILD-FAILURE-CLASSES.md 4.3) made
+        # observable before a user observes it.
+        run: |
+          set -euo pipefail
+          neutral=$(mktemp -d)
+          cp out/konsole/kde-install/bin/konsole "$neutral/konsole"
+          mv "$HOME/.conan2/p" "$HOME/.conan2/p.hidden"
+          mv out/konsole/kde-install out/konsole/kde-install.hidden
+          trap 'mv "$HOME/.conan2/p.hidden" "$HOME/.conan2/p"; mv out/konsole/kde-install.hidden out/konsole/kde-install' EXIT
+          KONSOLE_INSTALL_DIR=/nonexistent ./tools/run-konsole-smoke.sh \
+            "$neutral/konsole" "$PWD/out/konsole/smoke-isolated"
+          # Warnings that mean a compiled-in path was needed and is gone:
+          if grep -qiE 'Cannot load default config file|u_init|ICU data|could not find the Qt platform plugin' \
+              out/konsole/smoke-isolated/konsole.log 2>/dev/null; then
+            echo "the isolated run relied on a build-time path:" >&2
+            grep -iE 'Cannot load default config file|u_init|ICU data|platform plugin' out/konsole/smoke-isolated/konsole.log >&2
+            exit 1
+          fi
+
       - name: ccache statistics and disk usage
         if: always()
         run: |
@@ -378,5 +403,6 @@ jobs:
             out/konsole/konsole-onebin-audit.txt
             out/konsole/smoke
             out/konsole/smoke/render.log
+            out/konsole/smoke-isolated
           if-no-files-found: warn
           retention-days: 14

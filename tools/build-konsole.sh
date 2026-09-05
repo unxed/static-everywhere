@@ -184,7 +184,7 @@ conan_args=(
     -o:h 'qt/*:with_glib=False' -o:h 'qt/*:with_openal=False'
     -o:h 'qt/*:with_gstreamer=False' -o:h 'qt/*:with_pulseaudio=False'
     -o:h 'qt/*:with_libalsa=False'
-    -o:h 'qt/*:openssl=True' -o:h 'xkbcommon/*:with_x11=True'
+    -o:h 'qt/*:openssl=True' -o:h 'icu/*:data_packaging=static' -o:h 'xkbcommon/*:with_x11=True'
     -o:h 'xkbcommon/*:with_wayland=False'
     -c "tools.build:compiler_executables={\"c\":\"$ZIGCC\",\"cpp\":\"$ZIGCXX\"}"
     -c 'tools.cmake.cmaketoolchain:extra_variables={"CMAKE_C_COMPILER_LAUNCHER":"ccache","CMAKE_CXX_COMPILER_LAUNCHER":"ccache","CMAKE_SIZEOF_VOID_P":"8","CMAKE_LIBRARY_ARCHITECTURE":"x86_64-linux-gnu","CMAKE_C_IMPLICIT_INCLUDE_DIRECTORIES":"/usr/include","CMAKE_CXX_IMPLICIT_INCLUDE_DIRECTORIES":"/usr/include","CMAKE_SKIP_RPATH":"ON","CMAKE_FIND_PACKAGE_PREFER_CONFIG":"ON"}'

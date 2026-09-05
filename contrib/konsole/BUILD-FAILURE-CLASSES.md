@@ -61,7 +61,7 @@ Legend: **P** = caught by preflight locally · **C** = caught by CI only ·
 |---|-------|--------|-------|
 | 4.1 | Dynamic dependency leaked into "static" binary | P | onebin audit allow-list; libssl/libcrypto deliberately absent |
 | 4.2 | Host-loaded library ABI (X11/GL) | by design | hybrid profile contract |
-| 4.3 | Missing runtime data (ICU data, QPA plugins, KF6 plugins in MODULE form) | C | X11 smoke test waits for a visible window; `QT_DEBUG_PLUGINS=1` + `kf.*` logging make a plugin failure name itself in `konsole.log` (shipped) instead of appearing as "no window". Not checkable before a binary exists; this is the one class that is CI-only by nature |
+| 4.3 | Missing runtime data (ICU data, QPA plugins, KF6 plugins in MODULE form) | C (made observable) | The smoke run on the runner sees every build-time path -- Conan cache (ICU `.dat`, fontconfig's `res/etc`, Qt plugin prefix) and the install tree -- so it passes for binaries broken elsewhere. A second smoke run hides the Conan cache and the install tree and runs a copied exe with `KONSOLE_INSTALL_DIR=/nonexistent`; warnings naming a compiled-in path fail it. Pre-checked from recipes/code: ICU `data_packaging` default `archive` would leave konsole's unchecked `ubidi_*` calls with no data -- now `static`; fontconfig falls back to `/usr/share/fonts` with a warning (degraded, not fatal, recorded); QPA xcb is imported; KF6 MODULE plugins are optional at runtime |
 
 ## Diagnostic inventory — what each tool can emit, and what we collect
 

@@ -70,6 +70,15 @@ class KonsoleQtHostConan(ConanFile):
         # disabled options; f4-qt already builds openssl from source in
         # the same graph and has the -pie/-shared conflict resolved.
         "qt/*:openssl": True,
+        # ICU data compiled INTO libicudata.a. The recipe default, "archive",
+        # keeps the data in a separate .dat found through a path compiled in
+        # at build time -- the Conan cache. On the CI runner that path exists
+        # and the smoke test passes; on any other machine ICU has no data,
+        # and konsole calls ubidi_setPara/ubidi_getVisualMap on every line
+        # without checking errorCode (TerminalDisplay.cpp:3632+), so every
+        # line is laid out from a failed bidi run. A failure CI cannot see,
+        # found by reading the recipe and the code; "static" ends it.
+        "icu/*:data_packaging": "static",
         "qt/*:with_gssapi": False,
         "qt/*:with_zstd": False,
         "xkbcommon/*:with_x11": True,
