@@ -7,6 +7,44 @@ Everything below this section is a reverse-chronological log (newest
 first). Read *this* section first; consult the log below only for the
 detail behind a specific claim.
 
+### The checklist that should have preceded the first run
+
+Written now: `contrib/konsole/BUILD-FAILURE-CLASSES.md` -- every class of
+C/C++ configure, compile, link and runtime failure, each marked with
+whether the preflight catches it locally, CI only, or nothing does, and
+which mechanism closes it. Plus the inventory of what every tool in the
+pipeline can emit against what the collector actually ships.
+
+That inventory found the gap under the ICU question directly: ninja
+prints only the FAILED command, so every link line was in the logs and
+no compile line ever was. `ninja-options: -v` fixes that at the source.
+The collector also now ships `CMakeCXXCompiler.cmake` (the implicit
+include dirs as CMake detected them), `build.ninja`, `.ninja_log`, the
+Conan toolchain and data files, and `compile_commands.json`.
+
+Reading the link line that was already there: Conan's ICU 78 archives
+sit after `libkonsoleprivate.a`, in the right order. The link is
+correct; the objects want `_74`. Fact, not model. The compile line will
+say why.
+
+Three classes on the list were open and closable without a run, so they
+are closed: PIC pinned for the MODULE plugin (3.6), `-Wl,--trace` on
+shared and module links (3.7 -- KDE TechBase has prescribed it since
+2012), and `U_STATIC_IMPLEMENTATION` for static ICU (2.10 -- Conan's
+config carries it, FindICU MODULE does not). The preflight is tied to the
+document: remove a guard and the two disagree.
+
+Tracker survey: no public Konsole issue documents a static build. The
+static path is untested upstream, which is why kpackage and knewstuff
+broke, and why every static-only class must be assumed present until
+proven absent.
+
+Still open, honestly: 1.7/3.2 -- the header-order cause of `_74`. Four
+local models, all consistent with each other and none with CI. The next
+artifact carries the compile line; if it does not settle it, the next
+move is a staged host-include directory for glibc targets (the
+mechanism exists for musl), which removes the class regardless of cause.
+
 ### Run the tool, not a model of the tool
 
 Called out, correctly: I had announced three changes of method and made

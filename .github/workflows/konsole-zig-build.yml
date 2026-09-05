@@ -299,7 +299,11 @@ jobs:
             \( -name '*.log' -o -name 'config.h' -o -name 'CMakeCache.txt' \
                -o -name 'CMakeConfigureLog.yaml' -o -name 'meson-log.txt' \
                -o -name 'config.log' -o -name 'moc_predefs.h' \
-               -o -name '*Config.cmake' \) \
+               -o -name '*Config.cmake' \
+               -o -name 'CMakeCXXCompiler.cmake' -o -name 'CMakeCCompiler.cmake' \
+               -o -name 'build.ninja' -o -name '.ninja_log' \
+               -o -name 'conan_toolchain.cmake' -o -name '*-data.cmake' \
+               -o -name 'CMakePresets.json' -o -name 'compile_commands.json' \) \
             2>/dev/null > /tmp/konsole-text-candidates
           # A ceiling independent of the allowlist above. The allowlist is
           # a judgement about which files matter and could be wrong again;

@@ -208,6 +208,16 @@ include("${_SE_REPO_ROOT}/contrib/f4-qt/optional-gl.cmake")
 # qsgdefaultpainternode.cpp. Reused rather than re-derived.
 include("${_SE_REPO_ROOT}/contrib/f4-qt/link-qt6-opengl.cmake")
 
+# Static ICU wants U_STATIC_IMPLEMENTATION. Conan's ICU config carries that
+# define; konsole finds ICU through CMake's FindICU MODULE, which hands
+# over include dirs and libraries and nothing else, so the define never
+# arrives. Not the cause of ubidi_*_74 -- that is a header version -- but
+# a class on the list (BUILD-FAILURE-CLASSES.md 2.10) that would surface
+# next as visibility/export mismatches against libicu*.a. Closed here,
+# scoped to the one consumer, rather than discovered by a run.
+add_compile_definitions(U_STATIC_IMPLEMENTATION)
+message(STATUS "static-everywhere: U_STATIC_IMPLEMENTATION defined for konsole's static ICU")
+
 function(_se_konsole_assert_static_graph)
     set(_qt_components Core Gui Multimedia PrintSupport Widgets Xml)
     foreach(_component IN LISTS _qt_components)

@@ -24,6 +24,12 @@ global:
   # options_base.verify_option_value_type singles out ignore-projects and
   # rejects a str outright ("has invalid value type"). It is the only
   # option with that check, which is why the surrounding ones are scalars.
+  # ninja prints only the FAILED command by default, so a link error whose
+  # cause lies in how an object was COMPILED -- konsole's ubidi_*_74 against
+  # Conan's ICU 78 -- shows the link line and hides the compile line that
+  # explains it. -v echoes every command into the module's build.log.
+  ninja-options: -v
+
   ignore-projects:
     - kdoctools
     - kirigami
@@ -57,6 +63,17 @@ global:
   # this is a package workaround documented in contrib/konsole/UPSTREAM.md.
   # The remaining switches keep the graph Widgets/X11-only and disable unused
   # services, optional integrations and host-oriented runtime dependencies.
+  # CMAKE_POSITION_INDEPENDENT_CODE=ON: konsolepart.so is a MODULE that links
+  # the static KF6 archives; any non-PIC object in them fails the link with
+  # "relocation R_X86_64_32 cannot be used when making a shared object".
+  # KDECompilerSettings sets this ON already -- this pins it, since a class
+  # that is merely believed absent is not a class that is guarded.
+  # --trace on shared/module links: lld names every archive member it
+  # pulls in, so an undefined or duplicate symbol shows which archive
+  # actually satisfied (or failed to satisfy) it. KDE TechBase's linker
+  # debugging page has prescribed -Wl,-t since 2012; this pipeline never
+  # had it. Executable links are left alone to keep konsole's own link
+  # log readable.
   cmake-options: >
     -DCMAKE_BUILD_TYPE=Release
     -DCMAKE_TOOLCHAIN_FILE=@CONAN_TOOLCHAIN@
@@ -73,6 +90,9 @@ global:
     -DCMAKE_IGNORE_PREFIX_PATH=
     -DKDE_INSTALL_USE_QT_SYS_PATHS=OFF
     -DKDE_INSTALL_LIBDIR=lib
+    -DCMAKE_POSITION_INDEPENDENT_CODE=ON
+    -DCMAKE_SHARED_LINKER_FLAGS=-Wl,--trace
+    -DCMAKE_MODULE_LINKER_FLAGS=-Wl,--trace
     -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
     -DCMAKE_C_IMPLICIT_INCLUDE_DIRECTORIES=/usr/include
     -DCMAKE_CXX_IMPLICIT_INCLUDE_DIRECTORIES=/usr/include

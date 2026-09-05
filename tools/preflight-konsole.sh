@@ -514,4 +514,27 @@ pass 'the Qt6::Quick -> Qt6::OpenGL edge is repaired for konsole'
 "$REPO_ROOT/tools/test-konsole-lock-consumers.sh" \
     || { printf 'FAIL: a consumer of konsole/deps.lock disagrees on the field layout\n' >&2; exit 1; }
 
+# Guards that close entries in contrib/konsole/BUILD-FAILURE-CLASSES.md.
+# Each is a class named there; if one is removed, the document and the
+# preflight disagree and this fails.
+python3 - "$RENDERED" "$REPO_ROOT" <<'CLASSES'
+import pathlib, sys, yaml
+rendered, root = sys.argv[1], pathlib.Path(sys.argv[2])
+opts = yaml.safe_load(open(rendered))["global"]
+co = opts.get("cmake-options", "")
+hook = (root / "contrib/konsole/project-include.cmake").read_text()
+checks = {
+    "3.6 PIC pinned for the MODULE plugin":        "-DCMAKE_POSITION_INDEPENDENT_CODE=ON" in co,
+    "3.7 link tracing on shared/module links":     "-DCMAKE_MODULE_LINKER_FLAGS=-Wl,--trace" in co,
+    "2.10 U_STATIC_IMPLEMENTATION for static ICU": "add_compile_definitions(U_STATIC_IMPLEMENTATION)" in hook,
+    "ninja -v so compile lines reach build.log":   opts.get("ninja-options", "") == "-v",
+}
+failed = [k for k, ok in checks.items() if not ok]
+if failed:
+    print("guards missing for classes in BUILD-FAILURE-CLASSES.md:")
+    for k in failed: print("  " + k)
+    sys.exit(1)
+CLASSES
+pass 'every guarded class in BUILD-FAILURE-CLASSES.md has its guard in place'
+
 printf 'Konsole preflight: PASS\n'
