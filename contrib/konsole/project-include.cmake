@@ -221,6 +221,12 @@ include("${CMAKE_CURRENT_LIST_DIR}/link-qt6-orphan-modules.cmake")
 # next as visibility/export mismatches against libicu*.a. Closed here,
 # scoped to the one consumer, rather than discovered by a run.
 add_compile_definitions(U_STATIC_IMPLEMENTATION)
+
+# ICU headers and archives must be the same version -- decided here, at
+# configure, rather than by an "undefined ubidi_open_74" at link. Deferred
+# so ICU::uc exists (konsole's find_package(ICU) runs later).
+cmake_language(DEFER DIRECTORY "${CMAKE_SOURCE_DIR}"
+    CALL include "${CMAKE_CURRENT_LIST_DIR}/check-icu-consistency.cmake")
 message(STATUS "static-everywhere: U_STATIC_IMPLEMENTATION defined for konsole's static ICU")
 
 function(_se_konsole_assert_static_graph)

@@ -279,7 +279,25 @@ jobs:
             | while IFS= read -r failed_log; do
                 failed_dir=$(dirname "$failed_log")
                 [ -d "$failed_dir" ] || continue
-                # The failing module's compile_commands.json, too. ninja does
+                # Facts about the vendored libraries themselves, which no log
+          # carries: the ICU major version actually installed, and whether
+          # its archives define the renamed entry points. Reading the
+          # artifact for the ubidi_open_74 failure, every inference from
+          # the logs contradicted another because neither was there.
+          {
+            for u in "$HOME"/.conan2/p/b/icu*/p/include/unicode/uvernum.h; do
+              [ -f "$u" ] || continue
+              echo "== $u"
+              grep -E '#define U_ICU_VERSION(_MAJOR_NUM|_SUFFIX)? ' "$u" || true
+            done
+            for a in "$HOME"/.conan2/p/b/icu*/p/lib/libicuuc.a; do
+              [ -f "$a" ] || continue
+              echo "== $a"
+              nm -g --defined-only "$a" 2>/dev/null | grep -oE 'ubidi_open[_0-9]*' | sort -u | head -3
+            done
+          } >"$diag/09-icu-facts.txt" 2>&1 || true
+
+          # The failing module's compile_commands.json, too. ninja does
                 # not echo compile lines, so a link error whose cause is the
                 # include ORDER of a compile -- konsole's ubidi_*_74 against
                 # Conan's ICU 78 -- cannot be diagnosed from logs alone. Three
