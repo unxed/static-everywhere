@@ -50,7 +50,12 @@ target_link_libraries(KF6NewStuffCore PRIVATE knscore_jobs_static)
 install(TARGETS KF6NewStuffCore EXPORT KF6NewStuffCoreTargets DESTINATION lib)
 $3
 install(EXPORT KF6NewStuffCoreTargets DESTINATION lib/cmake/KF6NewStuffCore)
+add_subdirectory(sub)
 EOF
+    # A nested project(), as KDE modules have: CMAKE_PROJECT_INCLUDE runs
+    # again for it, and the install() wrapper must not shadow itself.
+    mkdir -p "$1/sub"
+    printf 'project(nested CXX)\nadd_library(nestedlib STATIC ../h.cpp)\ninstall(TARGETS nestedlib DESTINATION lib)\n' >"$1/sub/CMakeLists.txt"
 }
 
 configure() {  # $1 = src, $2 = build, $3... = extra args

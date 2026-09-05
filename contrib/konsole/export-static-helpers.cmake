@@ -108,7 +108,15 @@ endfunction()
 # Record which targets the module installs itself, so helpers already
 # handled upstream are not exported twice. install() is a command, not a
 # property, so wrap it: any install(TARGETS ...) marks its targets.
-if(NOT COMMAND _se_original_install)
+# Guard on a global property, not on a command name. CMAKE_PROJECT_INCLUDE
+# runs again for every nested project() -- KDE modules have them -- and a
+# second function(install) would shadow the first, making _install point
+# at the previous wrapper: infinite recursion, "Maximum recursion depth of
+# 1000 exceeded", on the first module with a subproject. Caught by a
+# local probe before any run.
+get_property(_se_install_wrapped GLOBAL PROPERTY _se_install_wrapped)
+if(NOT _se_install_wrapped)
+    set_property(GLOBAL PROPERTY _se_install_wrapped TRUE)
     function(install)
         if(ARGV0 STREQUAL "TARGETS")
             set(_i 1)
@@ -127,5 +135,9 @@ if(NOT COMMAND _se_original_install)
     endfunction()
 endif()
 
-cmake_language(DEFER DIRECTORY "${CMAKE_SOURCE_DIR}"
-               CALL _se_export_private_static_helpers)
+get_property(_se_defer_registered GLOBAL PROPERTY _se_defer_registered)
+if(NOT _se_defer_registered)
+    set_property(GLOBAL PROPERTY _se_defer_registered TRUE)
+    cmake_language(DEFER DIRECTORY "${CMAKE_SOURCE_DIR}"
+                   CALL _se_export_private_static_helpers)
+endif()
