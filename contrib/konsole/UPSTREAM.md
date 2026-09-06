@@ -154,3 +154,23 @@ exported targets after each module installs
 (`tools/reconcile-cmake-target-deps.sh`, run via kde-builder's
 `make-install-prefix`), which adds the missing `find_dependency` before
 the next module configures.
+
+## 7. KIO's split copy source omits the direct `QUrl` include
+
+KIO commit `8f3af2189` moved the Unix copy implementation into
+`src/kioworkers/file/file_unix_copy.cpp`. The new translation unit uses
+`QUrl` by value and in a nested-name specifier, but includes only the local
+`file.h`, `stat_unix.h`, and unrelated Qt headers. It therefore sees only the
+forward declaration from `qmetatype.h` and fails with an incomplete return
+type when `kio_file` is compiled. `Qt6::Network` is already linked by KIO;
+this is a source include contract failure, not a missing package.
+
+**Suggested fix:** add the direct Qt header to every newly split translation
+unit that uses a Qt value type, rather than relying on an aggregate header's
+transitive declarations.
+
+**Worked around here** with the generic idempotent
+`_se_ensure_direct_include()` contract in
+`contrib/konsole/project-include.cmake`. It applies before KIO's target is
+declared, fails if the expected source shape disappears, and is covered by a
+configure-only regression that checks insertion and reconfigure idempotence.

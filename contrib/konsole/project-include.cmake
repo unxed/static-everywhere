@@ -119,6 +119,52 @@ message(STATUS "static-everywhere: implicit include dirs set to /usr/include "
 # konsole-only guards below so it reaches the dependency modules.
 include("${CMAKE_CURRENT_LIST_DIR}/export-static-helpers.cmake")
 
+# A source file that is split out of a larger translation unit can stop
+# receiving a Qt class definition through an accidental transitive include.
+# Keep this repair generic: it is an idempotent source/header contract, not a
+# compiler-wide forced include or a workaround for one diagnostic spelling.
+# The anchor makes an upstream source reshuffle fail loudly instead of
+# silently writing the header in an arbitrary place.
+function(_se_ensure_direct_include source_file header anchor)
+    if(NOT EXISTS "${source_file}")
+        message(FATAL_ERROR
+                "static-everywhere: expected source file for direct include "
+                "contract does not exist: ${source_file}")
+    endif()
+    file(READ "${source_file}" _se_source)
+    string(REGEX MATCH
+           "#[ \\t]*include[ \\t]*[<\"]([^>\"]*/)?${header}[>\"]"
+           _se_direct_include "${_se_source}")
+    if(_se_direct_include)
+        return()
+    endif()
+    string(FIND "${_se_source}" "${anchor}" _se_anchor_pos)
+    if(_se_anchor_pos LESS 0)
+        message(FATAL_ERROR
+                "static-everywhere: direct include contract for ${header} "
+                "lost its insertion anchor in ${source_file}")
+    endif()
+    string(REPLACE "${anchor}" "${anchor}\n#include <${header}>"
+           _se_source "${_se_source}")
+    file(WRITE "${source_file}" "${_se_source}")
+    message(STATUS
+            "static-everywhere: added direct Qt include <${header}> to "
+            "${source_file}")
+endfunction()
+
+# KIO's new file_unix_copy.cpp uses QUrl by value. At 8f3af2189 the file was
+# split from file_unix.cpp without carrying its direct Qt include, so the
+# forward declaration from qmetatype.h is insufficient. Apply the same
+# source/header contract above to every checkout of this source shape before
+# KIO adds the target; future split files can use the helper without another
+# diagnostic-specific branch.
+if(PROJECT_NAME STREQUAL "KIO")
+    _se_ensure_direct_include(
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/kioworkers/file/file_unix_copy.cpp"
+        "QUrl"
+        "#include \"file.h\"")
+endif()
+
 # Define KF6::Notifications before anything includes an export that names
 # it.
 #

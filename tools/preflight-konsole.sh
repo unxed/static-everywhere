@@ -25,7 +25,8 @@ bash -n "$REPO_ROOT/tools/build-konsole.sh" "$REPO_ROOT/tools/preflight-konsole.
     "$REPO_ROOT/tools/test-konsole-host-docbook-tools.sh" \
     "$REPO_ROOT/tools/test-konsole-static-qt-plugins.sh" \
     "$REPO_ROOT/tools/test-konsole-deferred-recipe-file.sh" \
-    "$REPO_ROOT/tools/test-konsole-icu-consistency.sh"
+    "$REPO_ROOT/tools/test-konsole-icu-consistency.sh" \
+    "$REPO_ROOT/tools/test-konsole-direct-qt-includes.sh"
 pass 'Konsole shell scripts parse'
 
 python3 "$REPO_ROOT/tools/test-konsole-dependency-contract.py"
@@ -60,6 +61,9 @@ pass 'deferred recipe files retain their absolute path'
 
 bash "$REPO_ROOT/tools/test-konsole-icu-consistency.sh"
 pass 'ICU consistency probe carries concrete package paths into try_compile'
+
+bash "$REPO_ROOT/tools/test-konsole-direct-qt-includes.sh"
+pass 'split KDE sources receive direct Qt includes through the source contract'
 
 for tool in msgmerge msgfmt flex bison; do
     command -v "$tool" >/dev/null 2>&1 || fail "Gettext tool is missing: $tool"

@@ -314,3 +314,23 @@ The same audit enumerated the complete host edge (`libxcb-res`, `libXfixes`,
 `libxcb-glx`, `libEGL`, `librt`, `libutil` and the dynamic loader) instead of
 discovering those names one at a time in later runs; they are explicit parts
 of the hybrid X11/EGL and glibc host contract.
+
+## Run 66: KIO split source omitted a direct Qt include
+
+Run `34039464605` at `6e738aaab73a4a28967e86b1bddc7ffadf544004` passed the
+entire fast preflight and then stopped before Konsole at KIO project 29/38.
+The diagnostic artifact was `konsole-zig-build-diagnostic-logs`, ID
+`9993285611`, SHA-256 digest
+`sha256:f1eba5a4a3b557ac1ce1152c1ebda10d926c75a1020b91339496bfd98d588ed`.
+
+KIO had updated to `8f3af2189`, whose new
+`src/kioworkers/file/file_unix_copy.cpp` uses `QUrl` by value without
+including `<QUrl>`. The compiler consequently reported an incomplete `QUrl`
+type even though KIO already links Qt Network. No Konsole executable was
+produced because the dependency graph stopped before the application build.
+
+The fix repairs the class of split-translation-unit include omissions through
+one idempotent CMake source/include contract and a configure-only regression;
+it is not a one-line diagnostic suppression. The next hosted run must prove
+that KIO gets past this compile stage and that the later artifact stages still
+produce the portable binary.

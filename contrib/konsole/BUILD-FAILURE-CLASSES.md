@@ -42,6 +42,7 @@ Legend: **P** = caught by preflight locally · **C** = caught by CI only ·
 | 2.8 | Code generator segfault (host tool built by us) | meinproc6 | P | tool excluded; forward scan proves nothing requires it |
 | 2.9 | Language standard vs input language | `-std=c++17` with C input | P | 2.6 |
 | 2.10 | Missing define a static library's headers need | `U_STATIC_IMPLEMENTATION` for static ICU | P | defined for konsole in the project hook; asserted |
+| 2.11 | Split translation unit relies on a transitive Qt forward declaration | KIO `file_unix_copy.cpp` after the copy-code split | P | generic idempotent direct-source-include contract plus CMake regression |
 
 ## 3. Link-time
 
