@@ -170,7 +170,7 @@ conan_args=(
     --build='harfbuzz/*' --build='icu/*' --build='libffi/*'
     --build='libiconv/*' --build='libpng/*' --build='md4c/*'
     --build='pcre2/*' --build='hunspell/*' --build='qt/*' --build='xkbcommon/*'
-    --build='xz_utils/*' --build='zlib/*'
+    --build='xz_utils/*' --build='zlib/*' --build='zstd/*'
     -s:h build_type=Release -s:h compiler.cppstd=gnu20
     -s:b build_type=Release -s:b compiler.cppstd=gnu20
     -o:h 'qt/*:shared=False' -o:h 'qt/*:opengl=desktop'
@@ -203,16 +203,15 @@ run_env PATH="$CONAN_VENV/bin:$PATH" \
 run_env PATH="$CONAN_VENV/bin:$PATH" CONAN_HOME="$CONAN_HOME" \
     conan cache clean '*' --build --temp
 
-if [[ $PRINT_PLAN -eq 1 ]]; then
-    # shellcheck disable=SC2016  # variables belong to the printed inner shell
-    quote_cmd bash -c 'pc_dirs=$(find "$CONAN_HOME/p/b" -type f -name "*.pc" -printf "%h\\n" 2>/dev/null | sort -u | paste -sd: -); export PKG_CONFIG_PATH="$pc_dirs:/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/lib/pkgconfig:/usr/share/pkgconfig:${PKG_CONFIG_PATH:-}"; pkg-config --modversion xkbcommon'
-else
-    pc_dirs=$(find "$CONAN_HOME/p/b" -type f -name '*.pc' -printf '%h\n' 2>/dev/null | sort -u | paste -sd: -)
-    export PKG_CONFIG_PATH="$pc_dirs:/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/lib/pkgconfig:/usr/share/pkgconfig:${PKG_CONFIG_PATH:-}"
-    pkg-config --modversion xkbcommon || {
-        printf 'warning: Conan xkbcommon .pc file was not found; do not accept a host xkbcommon fallback silently\n' >&2
-    }
-fi
+# Keep generated Conan providers first, with host X11/GL metadata as the
+# explicit fallback. Do not inherit an unrelated graph or a sysroot that
+# rewrites absolute Conan package paths. CMakeToolchain prepends QT_OUT too.
+export PKG_CONFIG_LIBDIR=/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/lib/pkgconfig:/usr/share/pkgconfig
+export PKG_CONFIG_PATH="$QT_OUT:$PKG_CONFIG_LIBDIR"
+export PKG_CONFIG_SYSROOT_DIR=
+run_env PKG_CONFIG_PATH="$PKG_CONFIG_PATH" PKG_CONFIG_LIBDIR="$PKG_CONFIG_LIBDIR" \
+    PKG_CONFIG_SYSROOT_DIR= python3 \
+    "$REPO_ROOT/contrib/konsole/qt-host/dependency_contract.py" "$QT_OUT"
 
 # Where Conan unpacked the Qt package.
 #

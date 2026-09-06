@@ -20,6 +20,11 @@ bzip2 1.0.8 - -
 xz_utils 5.8.3 - -
 zlib 1.3.2 - -
 libmount 2.39.2 - -
+openssl 3.6.4 - -
+zstd 1.5.7 - -
+xkbcommon 1.5.0 - -
+# zstd joins the explicit source rebuild list, using the Zig 0.13.0
+# compiler and x86_64-linux-gnu.2.27 target below, not a native cache binary.
 kde-builder 0e661248c9da227dc5c129949cf7a403eb6d4d7e - https://invent.kde.org/sdk/kde-builder.git
 conan 2.29.1 - -
 cmake 3.31.6 - -

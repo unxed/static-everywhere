@@ -27,6 +27,9 @@ bash -n "$REPO_ROOT/tools/build-konsole.sh" "$REPO_ROOT/tools/preflight-konsole.
     "$REPO_ROOT/tools/test-konsole-icu-consistency.sh"
 pass 'Konsole shell scripts parse'
 
+python3 "$REPO_ROOT/tools/test-konsole-dependency-contract.py"
+pass 'Conan metadata rejects missing public headers and host pkg-config substitutions'
+
 bash "$REPO_ROOT/tools/test-konsole-cmake-package-prefixes-regression.sh"
 pass 'Conan CMake package prefixes are available to CONFIG-mode find_package'
 
@@ -108,8 +111,8 @@ for needle in \
     'SONNET_USE_QML=OFF' \
     'WITH_BZIP2=ON' \
     'WITH_LIBLZMA=ON' \
-    'WITH_OPENSSL=OFF' \
-    'WITH_LIBZSTD=OFF' \
+    'WITH_OPENSSL=ON' \
+    'WITH_LIBZSTD=ON' \
     'UDEV_DISABLED=ON' \
     'ATTICA_STATIC_BUILD=ON' \
     'CMAKE_DISABLE_FIND_PACKAGE_ACL=ON' \
@@ -257,7 +260,7 @@ done < "$REPO_ROOT/contrib/konsole/host-perl-modules.txt"
 pass 'workflow installs declared host Perl build modules'
 
 for needle in \
-    'exports = "qt_cmake_components.py"' \
+    'exports = "qt_cmake_components.py", "dependency_contract.py"' \
     'self.dependencies["qt"].cpp_info.components' \
     'component_shim_names(' \
     'component_config(module)' \
@@ -271,6 +274,11 @@ for needle in \
     '"zlib/1.3.2"' \
     '"libxml2/2.15.3"' \
     '"libmount/2.39.2"' \
+    '"openssl/3.6.4"' \
+    '"zstd/1.5.7"' \
+    '"xkbcommon/1.5.0"' \
+    'PkgConfigDeps(self).generate()' \
+    'record_contract(self.generators_folder, headers)' \
     'cmake_deps.set_property' \
     '"libmount::libmount"' \
     '"cmake_target_aliases"' \

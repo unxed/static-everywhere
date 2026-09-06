@@ -24,7 +24,7 @@ jobs:
           sudo apt-get update -qq
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq \
             libgl-dev libegl-dev libx11-dev libxcb1-dev libxcb-xkb-dev \
-            python3-lxml python3-yaml perl liburi-perl gettext flex bison libmount-dev libcanberra-dev \
+            python3-lxml python3-yaml python3-venv pkg-config perl liburi-perl gettext flex bison libmount-dev libcanberra-dev \
             libdbus-1-dev libxml2-dev libxml2-utils libxslt1-dev xsltproc \
             docbook-xml docbook-xsl
 
@@ -90,6 +90,13 @@ jobs:
       - name: Fast Konsole invariant checks
         run: ./tools/preflight-konsole.sh
 
+      - name: Verify Conan CMake and pkg-config metadata together
+        run: |
+          CONAN_VERSION=$(awk '$1 == "conan" { print $2 }' contrib/konsole/deps.lock)
+          python3 -m venv /tmp/konsole-metadata-venv
+          /tmp/konsole-metadata-venv/bin/pip install "conan==$CONAN_VERSION"
+          PATH="/tmp/konsole-metadata-venv/bin:$PATH" python3 tools/test-konsole-conan-generators.py
+
       - name: Scan Konsole sources for newer glibc symbols
         run: ./tools/glibc-source-scan.py konsole-src
 
@@ -126,7 +133,7 @@ jobs:
           # stages headers from, so apt and the stage cannot drift apart.
           sudo apt-get install --no-install-recommends -y \
             $(grep -vE '^\s*(#|$)' contrib/konsole/host-dev-packages.txt | tr '\n' ' ') \
-            bison ccache docbook-xml docbook-xsl flex gettext imagemagick liburi-perl libxml2-utils perl python3-dbus python3-lxml python3-setproctitle python3-yaml x11-apps x11-utils xdotool xkb-data xsltproc xvfb
+            bison ccache docbook-xml docbook-xsl flex gettext imagemagick liburi-perl libxml2-utils perl pkg-config python3-dbus python3-lxml python3-setproctitle python3-yaml x11-apps x11-utils xdotool xkb-data xsltproc xvfb
 
       - name: Verify KDE build-time Python modules
         run: ./tools/test-konsole-host-python-modules.sh
@@ -344,6 +351,7 @@ jobs:
                -o -name 'CMakeCXXCompiler.cmake' -o -name 'CMakeCCompiler.cmake' \
                -o -name 'build.ninja' -o -name '.ninja_log' \
                -o -name 'conan_toolchain.cmake' -o -name '*-data.cmake' \
+               -o -name '*.pc' -o -name 'dependency-contract.json' \
                -o -name 'CMakePresets.json' -o -name 'compile_commands.json' \) \
             2>/dev/null > /tmp/konsole-text-candidates
           # A ceiling independent of the allowlist above. The allowlist is

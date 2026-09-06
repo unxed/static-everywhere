@@ -4,6 +4,36 @@ This file records the two pre-CI checks requested for the Konsole showcase.
 The hosted build and graphical launch are intentionally not called a success
 until the GitHub Actions job produces them.
 
+## Run 64: one Conan provider graph for CMake and pkg-config
+
+Run `34004127821` at `15b3307` failed in KArchive on `zstd.h` and
+`openssl/evp.h`. Its diagnostics ZIP SHA-256 is
+`c34bd05d96fb2fa1b83ad3059eeacc133790cb1fdc0d8b1b00f2c3af6a71b584`.
+The cache records host LibZstd include/version metadata but a Conan archive;
+the OpenSSL target was exposed through a transitive, headerless requirement.
+
+Source review: KArchive `fe0e77af6fec72698999247f3468b984fc011af0`,
+top-level and `src/CMakeLists.txt`, and Zstd `v1.5.7`'s
+`build/cmake/{CMakeLists.txt,lib/CMakeLists.txt}`. The KArchive revision is
+the pre-run upstream snapshot, not an asserted CI source SHA: frameworks
+currently track `latest-kf6`. Also inspected Conan `2.29.1` PkgConfigDeps and
+the CCI Zstd/xkbcommon recipes: both remove installed upstream `.pc` files.
+Zstd exports a static, PIC library and pthread closure; no standalone Zstd
+program is needed by KArchive. It is rebuilt with the same pinned Zig target.
+
+The fix generates both metadata formats from Conan's resolved graph, promotes
+the three public header consumers to direct requirements, and removes cache
+directory guessing. Before KDE starts, the contract checks every generated
+pkg-config provider and its Requires closure, plus the declared public-header
+paths against their package roots. It fails rather than warning on host
+fallback. Host X11/GL lookup remains explicitly available.
+
+CI preflight exercises eight negative/positive metadata fixtures, including
+a new arbitrary provider, downloaded cache layout and spaces in paths. A
+separate integration test uses the pinned Conan to package empty fixtures
+and compares actual CMakeDeps/PkgConfigDeps component headers without compiling
+code. These gates do not prove the full build or graphical runtime succeeds.
+
 ## Pass 1: f4 qt inventory
 
 The complete f4 reference was read before writing this recipe:
@@ -29,7 +59,7 @@ The load-bearing decisions were classified before adapting them:
 | CMake ABI workarounds for Zig | carried: pointer size, multiarch, implicit includes and RPATH |
 | compile glibc compatibility shim before Conan | carried, with global shared/executable link flags |
 | rebuild target packages despite Conan binary availability | carried for the reduced Qt graph |
-| `PKG_CONFIG_PATH` with system multiarch paths | carried for host xcb discovery, with Conan `.pc` paths preferred during KDE build |
+| `PKG_CONFIG_PATH` with system multiarch paths | host xcb fallback retained, but KDE uses PkgConfigDeps from the same graph as CMakeDeps; never scans the Conan cache for `.pc` files |
 | fontconfig HTTP 418 workaround | carried verbatim from f4's upstream builder |
 | source-download backup and no `conan cache clean --source` | carried |
 | ccache sloppiness/base directory/size and explicit cache save | carried |
@@ -86,9 +116,12 @@ that are not safe with a Widgets-only, no-QtWayland target:
   upstream feature variable, so the generated `Qt6GuiConfig.cmake` adapter
   derives it from those targets. Static Qt/KF6 selection remains protected by
   Conan prefix ordering and the final graph assertion.
-- KArchive defaults BZip2, LZMA, OpenSSL and Zstd to required. BZip2, LZMA and
-  Zlib are direct Conan requirements because KArchive compiles sources that
-  include their headers; the recipe disables the unused OpenSSL/Zstd paths.
+- KArchive's `WITH_*` switches select REQUIRED versus RECOMMENDED; OFF does
+  **not** disable the corresponding backend. All five compression/crypto
+  inputs (BZip2, LZMA, Zlib, OpenSSL, Zstd) are direct Conan requirements.
+  OpenSSL and Zstd are explicitly required; their public headers must survive
+  Conan's dependency traits. Konsole's own xkbcommon header consumer is also
+  a direct requirement.
 - KDocTools' `src/CMakeLists.txt` adds `${LIBXML2_INCLUDE_DIR}` and builds
   `meinproc6` from sources that include libxml2 headers. Libxml2 is therefore
   a direct Conan requirement even though Qt already brings it transitively;
