@@ -27,7 +27,8 @@ bash -n "$REPO_ROOT/tools/build-konsole.sh" "$REPO_ROOT/tools/preflight-konsole.
     "$REPO_ROOT/tools/test-konsole-deferred-recipe-file.sh" \
     "$REPO_ROOT/tools/test-konsole-icu-consistency.sh" \
     "$REPO_ROOT/tools/test-konsole-direct-qt-includes.sh" \
-    "$REPO_ROOT/tools/test-optional-gl-cxx-only.sh"
+    "$REPO_ROOT/tools/test-optional-gl-cxx-only.sh" \
+    "$REPO_ROOT/tools/test-konsole-host-runtime-contract.sh"
 pass 'Konsole shell scripts parse'
 
 python3 "$REPO_ROOT/tools/test-konsole-dependency-contract.py"
@@ -68,6 +69,9 @@ pass 'split KDE sources receive direct Qt includes through the source contract'
 
 bash "$REPO_ROOT/tools/test-optional-gl-cxx-only.sh"
 pass 'optional-GL forwarding covers executable, shared and MODULE link boundaries'
+
+bash "$REPO_ROOT/tools/test-konsole-host-runtime-contract.sh"
+pass 'host runtime SONAMEs have one authoritative contract'
 
 for tool in msgmerge msgfmt flex bison; do
     command -v "$tool" >/dev/null 2>&1 || fail "Gettext tool is missing: $tool"
@@ -207,14 +211,18 @@ pass 'folded cmake-options scalar is free of comments and shlex-safe'
 
 grep -Fq 'libGL.so*' "$REPO_ROOT/tools/verify-konsole-artifact.sh" || \
     fail 'artifact verifier does not reject a hard libGL dependency'
-grep -Fq 'libcanberra.so.0' "$REPO_ROOT/tools/verify-konsole-artifact.sh" || \
-    fail 'artifact verifier does not allow the declared Canberra runtime dependency'
+HOST_RUNTIME_CONTRACT="$REPO_ROOT/contrib/konsole/host-runtime-sonames.txt"
+for contract_consumer in "$REPO_ROOT/tools/verify-konsole-artifact.sh" \
+                         "$REPO_ROOT/tools/build-konsole.sh"; do
+    grep -Fq 'host-runtime-sonames.txt' "$contract_consumer" || \
+        fail "host runtime contract is not consumed by $contract_consumer"
+done
+grep -Fxq 'libcanberra.so.0' "$HOST_RUNTIME_CONTRACT" || \
+    fail 'host runtime contract does not allow the declared Canberra dependency'
 for host_soname in libxcb-res.so.0 libxcb-glx.so.0 libEGL.so.1 libXfixes.so.3 \
                    librt.so.1 libutil.so.1 ld-linux-x86-64.so.2; do
-    grep -Fq "$host_soname" "$REPO_ROOT/tools/verify-konsole-artifact.sh" || \
-        fail "artifact verifier is missing audited host runtime ABI: $host_soname"
-    grep -Fq "$host_soname" "$REPO_ROOT/tools/build-konsole.sh" || \
-        fail "onebin audit contract is missing host runtime ABI: $host_soname"
+    grep -Fxq "$host_soname" "$HOST_RUNTIME_CONTRACT" || \
+        fail "host runtime contract is missing audited host ABI: $host_soname"
 done
 pass 'artifact verifier rejects a hard libGL dependency'
 

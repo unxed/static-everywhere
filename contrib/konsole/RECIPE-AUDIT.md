@@ -357,3 +357,20 @@ The existing CXX-only miniature regression now builds one executable, one
 shared library and one MODULE, checks that each exports a forwarded GL symbol,
 and rejects `libGL` in each `DT_NEEDED` list. This guards the mechanism rather
 than allowlisting the one observed soname.
+
+## Run 68: artifact verifier drifted from the host ABI contract
+
+Run `34057485004` at `c8db751a878294badb6965600b86d1acc53bf938` built all 38
+projects successfully and installed Konsole, but the post-build artifact
+verifier rejected `libxcb-cursor.so.0` as undeclared. The onebin audit already
+allowed that host library, and the host package contract already installed
+`libxcb-cursor-dev`; only the verifier's duplicated allowlist was stale.
+
+The fix removes that class of drift rather than adding one more exception:
+`contrib/konsole/host-runtime-sonames.txt` is now the single explicit hybrid
+runtime SONAME contract. Both `build-konsole.sh` and
+`verify-konsole-artifact.sh` parse it, reject malformed entries and forbid
+`libGL` there. `test-konsole-host-runtime-contract.sh` is run by preflight and
+asserts that the list is non-empty, duplicate-free, contains the required X11,
+EGL and Canberra boundary, and is consumed by both paths. The build still
+rejects any host SONAME outside that file.

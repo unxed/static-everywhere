@@ -1,0 +1,34 @@
+# Runtime SONAMEs intentionally left on the host for the hybrid Konsole
+# profile. Qt/KF6 and the application remain in the built install prefix.
+# Keep this an explicit list: libGL is deliberately absent because the
+# optional-GL forwarder must remove it from every loadable target.
+libc.so.6
+libdl.so.2
+libpthread.so.0
+libm.so.6
+libgcc_s.so.1
+librt.so.1
+libutil.so.1
+ld-linux-x86-64.so.2
+libX11.so.6
+libX11-xcb.so.1
+libXfixes.so.3
+libxcb.so.1
+libxcb-cursor.so.0
+libxcb-icccm.so.4
+libxcb-image.so.0
+libxcb-keysyms.so.1
+libxcb-randr.so.0
+libxcb-render.so.0
+libxcb-render-util.so.0
+libxcb-shape.so.0
+libxcb-shm.so.0
+libxcb-sync.so.1
+libxcb-xfixes.so.0
+libxcb-xkb.so.1
+libxcb-res.so.0
+libxcb-glx.so.0
+libEGL.so.1
+libICE.so.6
+libSM.so.6
+libcanberra.so.0

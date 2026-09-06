@@ -73,6 +73,34 @@ QT_PACKAGE_ROOT=
 # shellcheck disable=SC1091
 source "$REPO_ROOT/contrib/konsole/qt-package-root.sh"
 
+KONSOLE_HOST_RUNTIME_CONTRACT="$REPO_ROOT/contrib/konsole/host-runtime-sonames.txt"
+declare -a KONSOLE_HOST_RUNTIME_ALLOW_FLAGS=()
+declare -A _seen_host_runtime_sonames=()
+while IFS= read -r _soname || [[ -n $_soname ]]; do
+    [[ -z $_soname || $_soname == \#* ]] && continue
+    [[ $_soname =~ ^[A-Za-z0-9._+-]+$ ]] || {
+        printf 'error: invalid host runtime SONAME: %s\n' "$_soname" >&2
+        exit 1
+    }
+    case $_soname in
+        libGL.so*|libGLX.so*|libOpenGL.so*)
+            printf 'error: libGL is forbidden in the Konsole host runtime contract\n' >&2
+            exit 1
+            ;;
+    esac
+    [[ -z ${_seen_host_runtime_sonames[$_soname]:-} ]] || {
+        printf 'error: duplicate host runtime SONAME: %s\n' "$_soname" >&2
+        exit 1
+    }
+    _seen_host_runtime_sonames[$_soname]=1
+    KONSOLE_HOST_RUNTIME_ALLOW_FLAGS+=(--allow "$_soname")
+done < "$KONSOLE_HOST_RUNTIME_CONTRACT"
+(( ${#KONSOLE_HOST_RUNTIME_ALLOW_FLAGS[@]} > 0 )) || {
+    printf 'error: host runtime contract is empty: %s\n' "$KONSOLE_HOST_RUNTIME_CONTRACT" >&2
+    exit 1
+}
+unset _seen_host_runtime_sonames
+
 quote_cmd() {
     printf '+ '
     printf '%q ' "$@"
@@ -290,35 +318,13 @@ if [[ $PRINT_PLAN -eq 1 ]]; then
     quote_cmd "$REPO_ROOT/tools/verify-konsole-artifact.sh" "$KONSOLE_BIN" "$KDE_INSTALL_DIR"
     quote_cmd "$REPO_ROOT/tools/audit-with-hygiene-waivers.sh" "$ONEBIN_BIN" \
         --profile hybrid --glibc-max "$GLIBC_BASELINE" \
-        --allow libc.so.6 --allow libdl.so.2 --allow libpthread.so.0 \
-        --allow librt.so.1 --allow libutil.so.1 --allow ld-linux-x86-64.so.2 \
-        --allow libX11.so.6 --allow libX11-xcb.so.1 --allow libXfixes.so.3 \
-        --allow libxcb.so.1 --allow libxcb-res.so.0 --allow libxcb-glx.so.0 \
-        --allow libEGL.so.1 \
-        --allow libxcb-cursor.so.0 --allow libxcb-icccm.so.4 \
-        --allow libxcb-image.so.0 --allow libxcb-keysyms.so.1 \
-        --allow libxcb-randr.so.0 --allow libxcb-render.so.0 \
-        --allow libxcb-render-util.so.0 --allow libxcb-shape.so.0 \
-        --allow libxcb-shm.so.0 --allow libxcb-sync.so.1 \
-        --allow libxcb-xfixes.so.0 --allow libxcb-xkb.so.1 \
-        --allow libICE.so.6 --allow libSM.so.6 --allow libcanberra.so.0 --level 1 --strict "$KONSOLE_BIN"
+        "${KONSOLE_HOST_RUNTIME_ALLOW_FLAGS[@]}" --level 1 --strict "$KONSOLE_BIN"
 else
     [[ -x $KONSOLE_BIN ]] || { printf 'error: kde-builder did not install %s\n' "$KONSOLE_BIN" >&2; exit 1; }
     "$REPO_ROOT/tools/verify-konsole-artifact.sh" "$KONSOLE_BIN" "$KDE_INSTALL_DIR" | tee "$OUT_ABS/konsole-audit.txt"
     audit_args=(
         --profile hybrid --glibc-max "$GLIBC_BASELINE"
-        --allow libc.so.6 --allow libdl.so.2 --allow libpthread.so.0
-        --allow librt.so.1 --allow libutil.so.1 --allow ld-linux-x86-64.so.2
-        --allow libX11.so.6 --allow libX11-xcb.so.1 --allow libXfixes.so.3
-        --allow libxcb.so.1 --allow libxcb-res.so.0 --allow libxcb-glx.so.0
-        --allow libEGL.so.1
-        --allow libxcb-cursor.so.0 --allow libxcb-icccm.so.4
-        --allow libxcb-image.so.0 --allow libxcb-keysyms.so.1
-        --allow libxcb-randr.so.0 --allow libxcb-render.so.0
-        --allow libxcb-render-util.so.0 --allow libxcb-shape.so.0
-        --allow libxcb-shm.so.0 --allow libxcb-sync.so.1
-        --allow libxcb-xfixes.so.0 --allow libxcb-xkb.so.1
-        --allow libICE.so.6 --allow libSM.so.6 --allow libcanberra.so.0 --level 1 --strict "$KONSOLE_BIN"
+        "${KONSOLE_HOST_RUNTIME_ALLOW_FLAGS[@]}" --level 1 --strict "$KONSOLE_BIN"
     )
     "$REPO_ROOT/tools/audit-with-hygiene-waivers.sh" "$ONEBIN_BIN" "${audit_args[@]}" \
         | tee "$OUT_ABS/konsole-onebin-audit.txt"

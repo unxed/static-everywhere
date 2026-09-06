@@ -64,7 +64,7 @@ Legend: **P** = caught by preflight locally · **C** = caught by CI only ·
 
 | # | Class | Status | Guard |
 |---|-------|--------|-------|
-| 4.1 | Dynamic dependency leaked into "static" binary or an internal runtime library is omitted | P/C | recursive ELF closure rejects host Qt/KF6/OpenGL leaks; the Konsole bundle carries every install-prefix `.so` and uses `$ORIGIN/../lib` |
+| 4.1 | Dynamic dependency leaked into "static" binary or an internal runtime library is omitted | P/C | recursive ELF closure rejects host Qt/KF6/OpenGL leaks; the Konsole bundle carries every install-prefix `.so` and uses `$ORIGIN/../lib`; host SONAMEs come from one shared explicit contract |
 | 4.2 | Host-loaded library ABI (X11/GL) | by design | hybrid profile contract |
 | 4.3 | Missing runtime data (ICU data, QPA plugins, KF6 plugins in MODULE form) | C (made observable) | The smoke run on the runner sees every build-time path -- Conan cache (ICU `.dat`, fontconfig's `res/etc`, Qt plugin prefix) and the install tree -- so it passes for binaries broken elsewhere. A second smoke run copies only the portable runtime bundle, hides the Conan cache and build install tree, and disables `LD_LIBRARY_PATH`; warnings naming a compiled-in path fail it. Pre-checked from recipes/code: ICU `data_packaging` default `archive` would leave konsole's unchecked `ubidi_*` calls with no data -- now `static`; fontconfig falls back to `/usr/share/fonts` with a warning (degraded, not fatal, recorded); QPA xcb is imported; KF6 MODULE plugins are bundled |
 

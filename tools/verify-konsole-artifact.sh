@@ -7,12 +7,34 @@ if [[ ($# -ne 1 && $# -ne 2) || ! -x $1 ]]; then
 fi
 
 binary=$1
+SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+HOST_RUNTIME_CONTRACT="$SCRIPT_DIR/../contrib/konsole/host-runtime-sonames.txt"
 # shellcheck disable=SC1007  # keep cd silent even when the caller exports CDPATH
 prefix=${2:-$(CDPATH= cd -- "$(dirname -- "$binary")/.." && pwd)}
 # shellcheck disable=SC1007  # keep cd silent even when the caller exports CDPATH
 prefix=$(CDPATH= cd -- "$prefix" && pwd)
 declare -A audited_objects=()
 declare -A internal_objects=()
+declare -A allowed_host_sonames=()
+
+while IFS= read -r soname || [[ -n $soname ]]; do
+    [[ -z $soname || $soname == \#* ]] && continue
+    [[ $soname =~ ^[A-Za-z0-9._+-]+$ ]] || {
+        printf 'error: invalid host runtime SONAME: %s\n' "$soname" >&2
+        exit 1
+    }
+    case $soname in
+        libGL.so*|libGLX.so*|libOpenGL.so*)
+            printf 'error: OpenGL SONAME is forbidden in the host runtime contract: %s\n' "$soname" >&2
+            exit 1
+            ;;
+    esac
+    allowed_host_sonames[$soname]=1
+done < "$HOST_RUNTIME_CONTRACT"
+(( ${#allowed_host_sonames[@]} > 0 )) || {
+    printf 'error: host runtime contract is empty: %s\n' "$HOST_RUNTIME_CONTRACT" >&2
+    exit 1
+}
 
 find_internal_library() {
     local soname=$1
@@ -46,22 +68,10 @@ audit_needed_closure() {
             audit_needed_closure "$internal"
             continue
         fi
-        case $soname in
-            libc.so.6|libdl.so.2|libpthread.so.0|libm.so.6|libgcc_s.so.1|\
-            librt.so.1|libutil.so.1|ld-linux-x86-64.so.2|\
-            libX11.so.6|libX11-xcb.so.1|libXfixes.so.3|libxcb.so.1|\
-            libxcb-icccm.so.4|libxcb-image.so.0|libxcb-keysyms.so.1|\
-            libxcb-randr.so.0|libxcb-render.so.0|libxcb-render-util.so.0|\
-            libxcb-shape.so.0|libxcb-shm.so.0|libxcb-sync.so.1|\
-            libxcb-xfixes.so.0|libxcb-xkb.so.1|libxcb-res.so.0|\
-            libxcb-glx.so.0|libEGL.so.1|libICE.so.6|libSM.so.6|\
-            libcanberra.so.0)
-                ;;
-            *)
-                printf 'error: undeclared dynamic dependency: %s\n' "$soname" >&2
-                exit 1
-                ;;
-        esac
+        [[ -n ${allowed_host_sonames[$soname]:-} ]] || {
+            printf 'error: undeclared dynamic dependency: %s\n' "$soname" >&2
+            exit 1
+        }
     done <<< "$needed"
 }
 
