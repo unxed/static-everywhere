@@ -26,11 +26,12 @@ PROBE=$(mktemp -d); trap 'rm -rf "$PROBE"' EXIT
 printf 'int main(void){ return 0; }\n' >"$PROBE/m.c"
 cp "$PROBE/m.c" "$PROBE/m.cpp"
 printf 'int f(void){ return 1; }\n' >"$PROBE/s.c"
+"$CC" -target x86_64-linux-gnu.2.27 -O2 -fPIC -c "$REPO_ROOT/contrib/f4-qt/compat/glibc-shims.c" -o "$PROBE/shim.o"
 
 # Every -DCMAKE_<X>_FLAGS=<value> and -DCMAKE_<X>_LINKER_FLAGS=<value> in
 # the template, with placeholders neutralised.
 mapfile -t flagsets < <(
-    sed -E 's/@TARGET_TRIPLE@/x86_64-linux-gnu.2.28/g; s/@[A-Z_]+@/x/g' \
+    sed -E -e "s|@GLIBC_SHIM_OBJ@|$PROBE/shim.o|g" -e 's/@TARGET_TRIPLE@/x86_64-linux-gnu.2.28/g; s/@[A-Z_]+@/x/g' \
         "$REPO_ROOT/contrib/konsole/kde-builder.yaml.in" \
     | grep -oE -- '-DCMAKE_(C|CXX|EXE_LINKER|SHARED_LINKER|MODULE_LINKER)_FLAGS(_INIT)?=[^[:space:]]+' \
     | sort -u)

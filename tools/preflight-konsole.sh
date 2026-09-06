@@ -155,6 +155,7 @@ sed -e "s|@KDE_SOURCE_DIR@|$REPO_ROOT/.konsole-preflight-source|g" \
     -e "s|@PROJECT_INCLUDE@|$REPO_ROOT/contrib/konsole/project-include.cmake|g" \
     -e "s|@INSTALL_PREFIX_CMD@|$REPO_ROOT/tools/kde-install-and-reconcile.sh|g" \
     -e 's|@TARGET_TRIPLE@|x86_64-linux-gnu.2.27|g' \
+    -e 's|@GLIBC_SHIM_OBJ@|/tmp/compat-glibc-shims.o|g' \
     -e "s|@QT_PACKAGE_ROOT@|$REPO_ROOT/.konsole-preflight-qt|g" \
     -e "s|@KONSOLE_REF@|$(awk '$1 == "konsole" { print $2 }' "$REPO_ROOT/contrib/konsole/deps.lock")|g" \
     "$REPO_ROOT/contrib/konsole/kde-builder.yaml.in" >"$RENDERED"
