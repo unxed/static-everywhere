@@ -33,6 +33,40 @@ if(NOT PROJECT_IS_TOP_LEVEL)
     return()
 endif()
 
+# A Qt target can be consumed by an executable, a shared library, or a
+# MODULE.  The optional library boundary has to hold at every one of those
+# loadable link boundaries.  It is not enough to make the final executable
+# safe: a shared library that embeds static Qt can acquire its own DT_NEEDED
+# on libGL and the loader resolves that dependency before the executable (or
+# its fallback constructor) runs.
+function(_se_remove_system_gl_dependency target)
+    if(NOT TARGET "${target}")
+        return()
+    endif()
+
+    get_target_property(_links "${target}" INTERFACE_LINK_LIBRARIES)
+    if(_links STREQUAL "_links-NOTFOUND")
+        return()
+    endif()
+
+    set(_filtered "")
+    foreach(_link IN LISTS _links)
+        string(TOLOWER "${_link}" _lower_link)
+        if(_lower_link MATCHES "(^|::)(opengl|wrapopengl)::gl([^a-z0-9_]|$)" OR
+           _lower_link MATCHES "(^|/)libgl[.]so([.]([0-9]+))?([^a-z0-9_]|$)" OR
+           _lower_link STREQUAL "gl" OR
+           _lower_link MATCHES "(^|[;$<>])[-]lgl([^a-z0-9_]|$)")
+            message(STATUS
+                "static-everywhere: removed system libGL link item '${_link}' "
+                "from ${target}; the generated forwarder supplies its symbols")
+        else()
+            list(APPEND _filtered "${_link}")
+        endif()
+    endforeach()
+    set_property(TARGET "${target}" PROPERTY INTERFACE_LINK_LIBRARIES
+                 "${_filtered}")
+endfunction()
+
 function(_static_everywhere_optional_gl)
     if(NOT TARGET Qt6::Gui)
         message(FATAL_ERROR
@@ -84,17 +118,40 @@ function(_static_everywhere_optional_gl)
     set_source_files_properties("${_gen}" "${_se_fallback}"
         PROPERTIES LANGUAGE CXX)
 
-    # Executables only, exactly as the plugin import unit: a registration
-    # or a symbol definition compiled into an intermediate static library
-    # ends up duplicated in every consumer, and once produced a ninja
-    # dependency cycle. See import-qt-static-plugins.cmake.
-    set_property(TARGET Qt6::Gui APPEND PROPERTY INTERFACE_SOURCES
+    # The generated definitions must be present in every loadable consumer
+    # of Qt6::Gui.  Static libraries are deliberately excluded: they do not
+    # create a loader boundary, and attaching the same definitions there
+    # would duplicate them in every final consumer.  Executables alone were
+    # insufficient for Konsole's libkonsoleapp SHARED target.
+    set(_se_loadable_sources
         "$<$<STREQUAL:$<TARGET_PROPERTY:TYPE>,EXECUTABLE>:${_gen}>"
-        "$<$<STREQUAL:$<TARGET_PROPERTY:TYPE>,EXECUTABLE>:${_se_fallback}>")
+        "$<$<STREQUAL:$<TARGET_PROPERTY:TYPE>,SHARED_LIBRARY>:${_gen}>"
+        "$<$<STREQUAL:$<TARGET_PROPERTY:TYPE>,MODULE_LIBRARY>:${_gen}>"
+        "$<$<STREQUAL:$<TARGET_PROPERTY:TYPE>,EXECUTABLE>:${_se_fallback}>"
+        "$<$<STREQUAL:$<TARGET_PROPERTY:TYPE>,SHARED_LIBRARY>:${_se_fallback}>"
+        "$<$<STREQUAL:$<TARGET_PROPERTY:TYPE>,MODULE_LIBRARY>:${_se_fallback}>")
+    set_property(TARGET Qt6::Gui APPEND PROPERTY INTERFACE_SOURCES
+        ${_se_loadable_sources})
+
+    # The forwarder and the fallback use dlopen/dlsym.  Carry the platform's
+    # loader library through the same interface so shared and module targets
+    # are link-complete, not merely source-complete.
+    set_property(TARGET Qt6::Gui APPEND PROPERTY INTERFACE_LINK_LIBRARIES
+                 "${CMAKE_DL_LIBS}")
+
+    # Conan's static Qt targets may expose the host GL library as a transitive
+    # link item.  Once the forwarder supplies every GL symbol, retaining that
+    # item would recreate DT_NEEDED on shared/module consumers on linkers that
+    # do not default to --as-needed.  Remove the system edge from every Qt
+    # target that can carry it; Qt6::OpenGL remains a static Qt archive and is
+    # intentionally not removed.
+    foreach(_qt_target Qt6::Gui Qt6::Widgets Qt6::Quick)
+        _se_remove_system_gl_dependency("${_qt_target}")
+    endforeach()
 
     message(STATUS
-        "static-everywhere: libGL is now optional; software rendering is "
-        "selected automatically when it is absent")
+        "static-everywhere: libGL is now optional at executable/shared/module "
+        "boundaries; software rendering is selected automatically when it is absent")
 endfunction()
 
 cmake_language(DEFER DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"

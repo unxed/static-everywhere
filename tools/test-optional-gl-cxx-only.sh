@@ -66,10 +66,23 @@ endfunction()
 cmake_language(DEFER DIRECTORY "\${CMAKE_CURRENT_SOURCE_DIR}"
                CALL _check_optional_gl_source_languages)
 
+add_library(OpenGL::GL UNKNOWN IMPORTED)
+set_target_properties(OpenGL::GL PROPERTIES
+  IMPORTED_LOCATION "$LIBGL")
+set_property(TARGET Qt6::Gui PROPERTY INTERFACE_LINK_LIBRARIES OpenGL::GL)
+
 add_executable(optional-gl-probe main.cpp)
-target_link_libraries(optional-gl-probe PRIVATE Qt6::Gui \${CMAKE_DL_LIBS})
+target_link_libraries(optional-gl-probe PRIVATE Qt6::Gui)
+add_library(optional-gl-shared SHARED shared.cpp)
+target_link_libraries(optional-gl-shared PRIVATE Qt6::Gui)
+target_link_options(optional-gl-shared PRIVATE -Wl,--no-as-needed)
+add_library(optional-gl-module MODULE module.cpp)
+target_link_libraries(optional-gl-module PRIVATE Qt6::Gui)
+target_link_options(optional-gl-module PRIVATE -Wl,--no-as-needed)
 CMAKE
 printf '%s\n' 'int main(void) { return 0; }' >"$PROBE/src/main.cpp"
+printf '%s\n' 'int optional_gl_shared(void) { return 0; }' >"$PROBE/src/shared.cpp"
+printf '%s\n' 'int optional_gl_module(void) { return 0; }' >"$PROBE/src/module.cpp"
 
 cmake -S "$PROBE/src" -B "$PROBE/build" -G Ninja \
     >"$PROBE/configure.log" 2>&1 \
@@ -77,5 +90,32 @@ cmake -S "$PROBE/src" -B "$PROBE/build" -G Ninja \
 cmake --build "$PROBE/build" \
     >"$PROBE/build.log" 2>&1 \
     || { sed 's/^/  /' "$PROBE/build.log" >&2; exit 1; }
+
+loadable_count=0
+while IFS= read -r loadable; do
+  [ -n "$loadable" ] || continue
+  loadable_count=$((loadable_count + 1))
+  needed=$(readelf -d "$loadable" 2>/dev/null \
+    | grep -oE '\[lib[^]]*\]' | tr -d '[]' | tr '\n' ' ')
+  case "$needed" in
+    *libGL*)
+      printf 'loadable optional-GL consumer still depends on libGL: %s -> %s\n' \
+        "$loadable" "$needed" >&2
+      exit 1
+      ;;
+  esac
+  nm -D --defined-only "$loadable" | grep -Eq '[[:space:]]glColor4f$' || {
+    printf 'loadable optional-GL consumer lacks the generated forwarder: %s\n' \
+      "$loadable" >&2
+    exit 1
+  }
+done < <(find "$PROBE/build" -type f \
+  \( -name 'liboptional-gl-shared.so' -o -name 'liboptional-gl-module.so' \) \
+  -print | sort)
+[ "$loadable_count" -eq 2 ] || {
+  printf 'expected both shared and MODULE optional-GL consumers, got %s\n' \
+    "$loadable_count" >&2
+  exit 1
+}
 
 printf 'optional GL hook: CXX-only configure and build: pass\n'

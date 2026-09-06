@@ -251,7 +251,7 @@ GitHub workflow dispatch:
    concrete QPA targets are present.
 7. A miniature CMake project with fake static qxcb/GL plugin archives
    configured and built successfully. It exercised the Itanium symbol parser,
-   `.prl` closure, executable-only `INTERFACE_SOURCES`, optional-GL CXX
+   `.prl` closure, loadable-target `INTERFACE_SOURCES`, optional-GL CXX
    compilation and static-graph assertion. The Konsole-specific probe also
    verifies that its registration unit exists before CMake validates consumer
    sources, that all three QPA imports are present, that repeated imports are
@@ -334,3 +334,26 @@ one idempotent CMake source/include contract and a configure-only regression;
 it is not a one-line diagnostic suppression. The next hosted run must prove
 that KIO gets past this compile stage and that the later artifact stages still
 produce the portable binary.
+
+## Run 67: optional-GL forwarding stopped at the executable boundary
+
+Run `34047753271` at `544d182130f90fb716861afa5f523cc2c6b6d922` built the
+complete Qt/KF6 graph and installed Konsole, but the artifact contract rejected
+the loadable closure because `libkonsoleapp.so.26.08.0` had
+`DT_NEEDED libGL.so.1`. The executable itself had no `libGL` dependency, which
+made the earlier executable-only optional-GL regression pass while leaving the
+real shared application library unsafe. The pinned Konsole CMake at
+`v26.08.0` (`9a304001aad60b7a3a39bca39ce3a3764ec058d5`) declares
+`konsoleapp` as `SHARED` and links it to static Qt through the same graph as the
+executable; its build files therefore expose the whole failure class.
+
+The fix moves the contract to every loadable consumer of `Qt6::Gui`:
+executables, SHARED libraries and MODULEs receive the generated forwarder and
+render-backend constructor, carry `CMAKE_DL_LIBS`, and have transitive system
+`OpenGL::GL`/`libGL` link items removed so a linker without `--as-needed` cannot
+recreate `DT_NEEDED`. Static libraries remain source-free because they are not
+loader boundaries and would multiply the definitions into every consumer.
+The existing CXX-only miniature regression now builds one executable, one
+shared library and one MODULE, checks that each exports a forwarded GL symbol,
+and rejects `libGL` in each `DT_NEEDED` list. This guards the mechanism rather
+than allowlisting the one observed soname.
