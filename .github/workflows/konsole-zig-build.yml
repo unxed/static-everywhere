@@ -208,9 +208,9 @@ jobs:
           mkdir -p out/konsole/xdg-runtime
           chmod 700 out/konsole/xdg-runtime
           export XDG_RUNTIME_DIR="$PWD/out/konsole/xdg-runtime"
-          export KONSOLE_INSTALL_DIR="$PWD/out/konsole/kde-install"
+          export KONSOLE_INSTALL_DIR="$PWD/out/konsole/konsole-runtime"
           ./tools/run-konsole-smoke.sh \
-            "$PWD/out/konsole/kde-install/bin/konsole" \
+            "$PWD/out/konsole/konsole-runtime/konsole" \
             "$PWD/out/konsole/smoke"
 
       - name: Run the X11 smoke test as a user's machine would see it
@@ -218,18 +218,19 @@ jobs:
         # is broken everywhere else: paths compiled in at build time -- the
         # Conan cache (ICU data, fontconfig's config dir, Qt's plugin prefix)
         # and the install tree (KF6 plugins, share/) -- all exist here. Hide
-        # them, copy the executable somewhere neutral, and run it again.
+        # them, copy the complete bundle somewhere neutral, and run it again.
         # This is the runtime class (BUILD-FAILURE-CLASSES.md 4.3) made
-        # observable before a user observes it.
+        # observable before a user observes it: only the copied bundle remains.
         run: |
           set -euo pipefail
           neutral=$(mktemp -d)
-          cp out/konsole/kde-install/bin/konsole "$neutral/konsole"
+          cp -a out/konsole/konsole-runtime "$neutral/runtime"
           mv "$HOME/.conan2/p" "$HOME/.conan2/p.hidden"
           mv out/konsole/kde-install out/konsole/kde-install.hidden
           trap 'mv "$HOME/.conan2/p.hidden" "$HOME/.conan2/p"; mv out/konsole/kde-install.hidden out/konsole/kde-install' EXIT
-          KONSOLE_INSTALL_DIR=/nonexistent ./tools/run-konsole-smoke.sh \
-            "$neutral/konsole" "$PWD/out/konsole/smoke-isolated"
+          KONSOLE_INSTALL_DIR="$neutral/runtime" KONSOLE_SMOKE_DISABLE_LD_LIBRARY_PATH=1 \
+            ./tools/run-konsole-smoke.sh \
+            "$neutral/runtime/bin/konsole" "$PWD/out/konsole/smoke-isolated"
           # Warnings that mean a compiled-in path was needed and is gone:
           if grep -qiE 'Cannot load default config file|u_init|ICU data|could not find the Qt platform plugin' \
               out/konsole/smoke-isolated/konsole.log 2>/dev/null; then
@@ -423,7 +424,7 @@ jobs:
         with:
           name: konsole-zig-build
           path: |
-            out/konsole/kde-install/bin/konsole
+            out/konsole/konsole-runtime
             out/konsole/kde-install/bin/konsole.audit.txt
             out/konsole/konsole-audit.txt
             out/konsole/konsole-onebin-audit.txt

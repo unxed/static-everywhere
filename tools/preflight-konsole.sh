@@ -12,6 +12,7 @@ pass() { printf 'PASS: %s\n' "$1"; }
 
 bash -n "$REPO_ROOT/tools/build-konsole.sh" "$REPO_ROOT/tools/preflight-konsole.sh" \
     "$REPO_ROOT/tools/run-konsole-smoke.sh" "$REPO_ROOT/tools/verify-konsole-artifact.sh" \
+    "$REPO_ROOT/tools/package-konsole-runtime.sh" "$REPO_ROOT/contrib/konsole/konsole-launcher.sh" \
     "$REPO_ROOT/tools/preflight-konsole-kde-builder-pretend.sh" \
     "$REPO_ROOT/contrib/konsole/qt-package-root.sh" "$REPO_ROOT/tools/test-konsole-qt-package-root.sh" \
     "$REPO_ROOT/tools/test-konsole-cmake-find-mode.sh" \
@@ -131,6 +132,13 @@ for needle in \
         fail "plan/config is missing: $needle"
     fi
 done
+grep -Fq 'set(CMAKE_INSTALL_RPATH "\$ORIGIN/../lib")' "$REPO_ROOT/contrib/konsole/project-include.cmake" || \
+    fail 'Konsole install RPATH does not point to its own sibling lib directory'
+grep -Fq 'package-konsole-runtime.sh' "$REPO_ROOT/tools/build-konsole.sh" || \
+    fail 'build plan does not create the portable Konsole runtime bundle'
+grep -Fq 'konsole-runtime' "$REPO_ROOT/.github/workflows/konsole-zig-build.yml" || \
+    fail 'workflow does not smoke-test and upload the portable runtime bundle'
+pass 'Konsole internal shared-library RPATH and portable bundle are in the plan'
 pass 'Zig baseline, static Qt, cache, hook and artifact gates are in the plan'
 
 if grep -Eq 'go( |$)|setup-go|go build|go test' "$PLAN"; then
@@ -193,6 +201,13 @@ grep -Fq 'libGL.so*' "$REPO_ROOT/tools/verify-konsole-artifact.sh" || \
     fail 'artifact verifier does not reject a hard libGL dependency'
 grep -Fq 'libcanberra.so.0' "$REPO_ROOT/tools/verify-konsole-artifact.sh" || \
     fail 'artifact verifier does not allow the declared Canberra runtime dependency'
+for host_soname in libxcb-res.so.0 libxcb-glx.so.0 libEGL.so.1 libXfixes.so.3 \
+                   librt.so.1 libutil.so.1 ld-linux-x86-64.so.2; do
+    grep -Fq "$host_soname" "$REPO_ROOT/tools/verify-konsole-artifact.sh" || \
+        fail "artifact verifier is missing audited host runtime ABI: $host_soname"
+    grep -Fq "$host_soname" "$REPO_ROOT/tools/build-konsole.sh" || \
+        fail "onebin audit contract is missing host runtime ABI: $host_soname"
+done
 pass 'artifact verifier rejects a hard libGL dependency'
 
 for needle in \
@@ -631,10 +646,13 @@ pass 'ICU data is compiled into the static archive (self-contained off the runne
 
 # The runtime class is only observable when every build-time path is
 # hidden: the workflow must run the smoke test a second time that way.
-if ! grep -q 'KONSOLE_INSTALL_DIR=/nonexistent' "$REPO_ROOT/.github/workflows/konsole-zig-build.yml" \
+if ! grep -q 'KONSOLE_INSTALL_DIR="\$neutral/runtime"' "$REPO_ROOT/.github/workflows/konsole-zig-build.yml" \
    || ! grep -q 'conan2/p.hidden' "$REPO_ROOT/.github/workflows/konsole-zig-build.yml"; then
-    fail "the workflow has no isolated smoke run; a binary that only works on the runner would pass"
+    fail "the workflow has no isolated portable-bundle smoke run; a binary that only works on the runner would pass"
 fi
-pass 'the workflow runs an isolated smoke test with build-time paths hidden'
+pass 'the workflow runs an isolated portable-bundle smoke test with build-time paths hidden'
+grep -Fq 'KONSOLE_SMOKE_DISABLE_LD_LIBRARY_PATH=1' "$REPO_ROOT/.github/workflows/konsole-zig-build.yml" || \
+    fail 'the isolated smoke test still masks missing origin-relative runtime libraries'
+pass 'the isolated smoke test exercises the binary without LD_LIBRARY_PATH'
 
 printf 'Konsole preflight: PASS\n'

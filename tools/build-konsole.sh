@@ -287,11 +287,14 @@ run_env GIT_CONFIG_GLOBAL="$GIT_CONFIG_GLOBAL" PYTHONPATH="$KDE_BUILDER" \
 
 KONSOLE_BIN="$KDE_INSTALL_DIR/bin/konsole"
 if [[ $PRINT_PLAN -eq 1 ]]; then
-    quote_cmd "$REPO_ROOT/tools/verify-konsole-artifact.sh" "$KONSOLE_BIN"
+    quote_cmd "$REPO_ROOT/tools/verify-konsole-artifact.sh" "$KONSOLE_BIN" "$KDE_INSTALL_DIR"
     quote_cmd "$REPO_ROOT/tools/audit-with-hygiene-waivers.sh" "$ONEBIN_BIN" \
         --profile hybrid --glibc-max "$GLIBC_BASELINE" \
         --allow libc.so.6 --allow libdl.so.2 --allow libpthread.so.0 \
-        --allow libX11.so.6 --allow libX11-xcb.so.1 --allow libxcb.so.1 \
+        --allow librt.so.1 --allow libutil.so.1 --allow ld-linux-x86-64.so.2 \
+        --allow libX11.so.6 --allow libX11-xcb.so.1 --allow libXfixes.so.3 \
+        --allow libxcb.so.1 --allow libxcb-res.so.0 --allow libxcb-glx.so.0 \
+        --allow libEGL.so.1 \
         --allow libxcb-cursor.so.0 --allow libxcb-icccm.so.4 \
         --allow libxcb-image.so.0 --allow libxcb-keysyms.so.1 \
         --allow libxcb-randr.so.0 --allow libxcb-render.so.0 \
@@ -301,11 +304,14 @@ if [[ $PRINT_PLAN -eq 1 ]]; then
         --allow libICE.so.6 --allow libSM.so.6 --allow libcanberra.so.0 --level 1 --strict "$KONSOLE_BIN"
 else
     [[ -x $KONSOLE_BIN ]] || { printf 'error: kde-builder did not install %s\n' "$KONSOLE_BIN" >&2; exit 1; }
-    "$REPO_ROOT/tools/verify-konsole-artifact.sh" "$KONSOLE_BIN" | tee "$OUT_ABS/konsole-audit.txt"
+    "$REPO_ROOT/tools/verify-konsole-artifact.sh" "$KONSOLE_BIN" "$KDE_INSTALL_DIR" | tee "$OUT_ABS/konsole-audit.txt"
     audit_args=(
         --profile hybrid --glibc-max "$GLIBC_BASELINE"
         --allow libc.so.6 --allow libdl.so.2 --allow libpthread.so.0
-        --allow libX11.so.6 --allow libX11-xcb.so.1 --allow libxcb.so.1
+        --allow librt.so.1 --allow libutil.so.1 --allow ld-linux-x86-64.so.2
+        --allow libX11.so.6 --allow libX11-xcb.so.1 --allow libXfixes.so.3
+        --allow libxcb.so.1 --allow libxcb-res.so.0 --allow libxcb-glx.so.0
+        --allow libEGL.so.1
         --allow libxcb-cursor.so.0 --allow libxcb-icccm.so.4
         --allow libxcb-image.so.0 --allow libxcb-keysyms.so.1
         --allow libxcb-randr.so.0 --allow libxcb-render.so.0
@@ -316,5 +322,10 @@ else
     )
     "$REPO_ROOT/tools/audit-with-hygiene-waivers.sh" "$ONEBIN_BIN" "${audit_args[@]}" \
         | tee "$OUT_ABS/konsole-onebin-audit.txt"
+fi
+if [[ $PRINT_PLAN -eq 1 ]]; then
+    quote_cmd "$REPO_ROOT/tools/package-konsole-runtime.sh" "$KDE_INSTALL_DIR" "$OUT_ABS/konsole-runtime"
+else
+    "$REPO_ROOT/tools/package-konsole-runtime.sh" "$KDE_INSTALL_DIR" "$OUT_ABS/konsole-runtime"
 fi
 printf 'Konsole build output: %s\n' "$OUT_ABS"

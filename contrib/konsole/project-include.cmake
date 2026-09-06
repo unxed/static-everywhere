@@ -192,6 +192,22 @@ if(NOT PROJECT_NAME STREQUAL "konsole")
 endif()
 
 get_filename_component(_SE_REPO_ROOT "${CMAKE_CURRENT_LIST_DIR}/../.." ABSOLUTE)
+
+# Konsole deliberately keeps its application facade as a shared library:
+# the executable and the installed KPart both use the same implementation.
+# The global recipe disables RPATH for KDE frameworks, but that policy cannot
+# be applied to this application's own relocatable runtime: without an
+# origin-relative install RPATH, bin/konsole needs a manually prepared
+# LD_LIBRARY_PATH to find lib/libkonsoleapp.so. Keep the system boundary
+# dynamic (X11/OpenGL/Canberra); only the library shipped beside the
+# application is made relocatable.
+set(CMAKE_SKIP_RPATH OFF CACHE BOOL "" FORCE)
+set(CMAKE_SKIP_INSTALL_RPATH OFF CACHE BOOL "" FORCE)
+set(CMAKE_BUILD_RPATH_USE_ORIGIN ON)
+set(CMAKE_INSTALL_RPATH "\$ORIGIN/../lib")
+set(CMAKE_INSTALL_RPATH_USE_LINK_PATH OFF)
+message(STATUS "static-everywhere: Konsole runtime RPATH is $ORIGIN/../lib")
+
 include("${CMAKE_CURRENT_LIST_DIR}/import-static-qt-plugins.cmake")
 
 # This is deliberately the f4 implementation, not a new GL policy. It

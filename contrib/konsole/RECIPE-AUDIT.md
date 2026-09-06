@@ -290,3 +290,27 @@ made until both gates pass.
 The remaining proof is necessarily hosted: the full Conan Qt graph, the
 source-built KF6 dependency closure, the final onebin audit, and a Konsole
 window captured from Xvfb.
+
+## Run 65: build succeeded, artifact audit was too narrow
+
+Run `34010516240` at `cb703b6` built all 38 projects and installed Konsole,
+but the post-build audit rejected `libkonsoleapp.so.26.08.0` as an
+undeclared dependency. The pinned Konsole source explicitly declares
+`konsoleapp` as `SHARED`, installs it under `lib/`, and links the executable
+to it; this is an application-owned runtime library, not a host KDE/Qt
+dependency. The old checker only inspected the executable and had no model of
+the install prefix.
+
+The runtime contract now walks the complete `DT_NEEDED` closure, recursively
+audits internal libraries found in the supplied install prefix, and keeps the
+host allowlist only for X11/GL-adjacent system ABI. The build also restores an
+origin-relative RPATH for the Konsole application and creates a portable
+bundle containing the executable, all install-prefix shared objects, KDE
+modules and data. CI smoke-tests that bundle and uploads it, so downloading
+the artifact does not require manually setting `LD_LIBRARY_PATH` or
+`XDG_DATA_DIRS`.
+
+The same audit enumerated the complete host edge (`libxcb-res`, `libXfixes`,
+`libxcb-glx`, `libEGL`, `librt`, `libutil` and the dynamic loader) instead of
+discovering those names one at a time in later runs; they are explicit parts
+of the hybrid X11/EGL and glibc host contract.
