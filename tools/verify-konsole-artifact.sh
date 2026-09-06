@@ -7,7 +7,9 @@ if [[ ($# -ne 1 && $# -ne 2) || ! -x $1 ]]; then
 fi
 
 binary=$1
+# shellcheck disable=SC1007  # keep cd silent even when the caller exports CDPATH
 prefix=${2:-$(CDPATH= cd -- "$(dirname -- "$binary")/.." && pwd)}
+# shellcheck disable=SC1007  # keep cd silent even when the caller exports CDPATH
 prefix=$(CDPATH= cd -- "$prefix" && pwd)
 declare -A audited_objects=()
 declare -A internal_objects=()
@@ -68,7 +70,7 @@ audit_needed_closure "$binary"
 if (( ${#internal_objects[@]} > 0 )); then
     runtime_paths=$(readelf -d "$binary" \
         | sed -n 's/.*Library \(rpath\|runpath\): \[\([^]]*\)\].*/\2/p')
-    if ! grep -Fq '$ORIGIN/../lib' <<< "$runtime_paths"; then
+    if ! grep -Fq "\$ORIGIN/../lib" <<< "$runtime_paths"; then
         printf 'error: internal runtime libraries require an origin-relative ../lib RPATH; got: %s\n' \
             "${runtime_paths:-<none>}" >&2
         exit 1
