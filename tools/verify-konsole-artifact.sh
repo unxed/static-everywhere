@@ -7,6 +7,7 @@ if [[ ($# -ne 1 && $# -ne 2) || ! -x $1 ]]; then
 fi
 
 binary=$1
+# shellcheck disable=SC1007  # keep cd silent even when the caller exports CDPATH
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 HOST_RUNTIME_CONTRACT="$SCRIPT_DIR/../contrib/konsole/host-runtime-sonames.txt"
 # shellcheck disable=SC1007  # keep cd silent even when the caller exports CDPATH
