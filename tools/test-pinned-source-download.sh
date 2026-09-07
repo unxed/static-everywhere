@@ -59,8 +59,8 @@ status=$?
 set -e
 [ "${status}" -ne 0 ]
 [ ! -e "${archive}" ]
-if find "${PROBE}/cache" -maxdepth 1 -name 'example.tar.gz.download.*' \
-    -print -quit | grep -q .; then
+if { find "${PROBE}/cache" -maxdepth 1 -name 'example.tar.gz.download.*' \
+    -print -quit || true; } | grep -q .; then
     echo 'failed transfer left a temporary archive behind' >&2
     exit 1
 fi

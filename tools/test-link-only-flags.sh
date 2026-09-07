@@ -60,7 +60,7 @@ printf 'void _start(void){}\n' >"$PROBE/free.c"
          sed 's/^/  /' "$PROBE/link.log" >&2; exit 1; }
 
 if command -v readelf >/dev/null 2>&1; then
-    if readelf -d "$PROBE/free" 2>/dev/null | grep -q 'Shared library'; then
+    if { readelf -d "$PROBE/free" 2>/dev/null || true; } | grep -q 'Shared library'; then
         printf '-nostdlib was dropped from the LINK as well: the binary has\n' >&2
         printf 'shared library dependencies it explicitly asked not to have\n' >&2
         exit 1

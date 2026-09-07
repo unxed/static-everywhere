@@ -272,7 +272,7 @@ done
 }
 [ -d "$SRC_ABS" ] || { printf 'build-gnome-terminal.sh: source directory not found: %s\n' "$SRC_ABS" >&2; exit 1; }
 [ -d "$DEPS_ABS" ] || { printf 'build-gnome-terminal.sh: dependency prefix not found: %s\n' "$DEPS_ABS" >&2; exit 1; }
-if ! find "$DEPS_RUNTIME_ROOT" -type f -path '*/pkgconfig/gtk+-3.0.pc' -print -quit | grep -q .; then
+if ! { find "$DEPS_RUNTIME_ROOT" -type f -path '*/pkgconfig/gtk+-3.0.pc' -print -quit || true; } | grep -q .; then
     printf 'build-gnome-terminal.sh: static GTK3 pkg-config file not found under %s\n' "$DEPS_ABS" >&2
     exit 1
 fi

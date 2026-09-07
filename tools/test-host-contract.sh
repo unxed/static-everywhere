@@ -47,7 +47,7 @@ printf 'extern void *XOpenDisplay(const char *);\nint main(void){ return XOpenDi
 "$ZIGCC" -target x86_64-linux-gnu.2.27 -pie "$PROBE/x.c" -o "$PROBE/xapp" -lX11 \
     2>"$PROBE/link.log"
 
-if ! readelf -d "$PROBE/xapp" 2>/dev/null | grep -Fq 'libX11.so.6'; then
+if ! { readelf -d "$PROBE/xapp" 2>/dev/null || true; } | grep -Fq 'libX11.so.6'; then
     printf 'the probe did not end up depending on libX11 -- it proves nothing\n' >&2
     exit 1
 fi

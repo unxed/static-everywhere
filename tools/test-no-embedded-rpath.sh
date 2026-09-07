@@ -61,14 +61,14 @@ build() {  # $1 = build dir, $2... = extra cmake args
 # Negative control: the probe must reproduce the defect when the setting
 # is absent, or it proves nothing when the setting is present.
 build "$PROBE/without"
-if ! runpath_of "$PROBE/without/app" | grep -Fq "$PROBE/ext"; then
+if ! { runpath_of "$PROBE/without/app" || true; } | grep -Fq "$PROBE/ext"; then
     printf 'the probe no longer reproduces the embedded dependency path\n' >&2
     printf '  RUNPATH was: %s\n' "$(runpath_of "$PROBE/without/app")" >&2
     exit 1
 fi
 
 build "$PROBE/with" -DCMAKE_SKIP_RPATH=ON
-if runpath_of "$PROBE/with/app" | grep -Fq "$PROBE/ext"; then
+if { runpath_of "$PROBE/with/app" || true; } | grep -Fq "$PROBE/ext"; then
     printf 'CMAKE_SKIP_RPATH did not remove the dependency directory\n' >&2
     printf '  RUNPATH was: %s\n' "$(runpath_of "$PROBE/with/app")" >&2
     exit 1

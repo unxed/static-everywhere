@@ -60,7 +60,7 @@ cmake --install "$PROBE/build" --prefix "$PROBE/install" \
 for binary in "$PROBE/install/bin/konsole" \
              "$PROBE/install/lib/libkonsoleapp.so" \
              "$PROBE/install/lib/libkonsolepart.so"; do
-    readelf -d "$binary" | grep -Fq '[$ORIGIN/../lib]' || {
+    { readelf -d "$binary" || true; } | grep -Fq '[$ORIGIN/../lib]' || {
         printf 'missing origin-relative install RPATH in %s\n' "$binary" >&2
         readelf -d "$binary" >&2
         exit 1

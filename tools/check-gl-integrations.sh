@@ -43,7 +43,7 @@ fi
 # the plugin metadata, which survives stripping because it is data.
 found=""
 for cls in QXcbGlxIntegrationPlugin QXcbEglIntegrationPlugin; do
-    if strings -a "$BIN" 2>/dev/null | grep -qF "$cls"; then
+    if { strings -a "$BIN" 2>/dev/null || true; } | grep -qF "$cls"; then
         found="$found $cls"
     fi
 done

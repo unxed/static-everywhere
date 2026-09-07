@@ -27,7 +27,7 @@ out=$("${REPO_ROOT}/onebin/toolchain/zig-cc" -target x86_64-linux-gnu.2.28 \
         -fno-pic -fno-pie -c "$PROBE/np.c" -o "$PROBE/np.o" 2>&1 || true)
 if [ -f "$PROBE/np.o" ]; then
     # zig now allows it: fall back to checking the object is still PIC-safe.
-    if readelf -r "$PROBE/np.o" | grep -qE 'R_X86_64_(32|32S)\b'; then
+    if { readelf -r "$PROBE/np.o" || true; } | grep -qE 'R_X86_64_(32|32S)\b'; then
         printf 'the toolchain produced a non-PIC object for x86_64-linux-gnu; a shared\n' >&2
         printf 'MODULE linking static archives built this way will fail with\n' >&2
         printf '"relocation R_X86_64_32 cannot be used when making a shared object"\n' >&2

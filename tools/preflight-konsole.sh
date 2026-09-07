@@ -703,13 +703,22 @@ pass 'the isolated smoke test exercises the binary without LD_LIBRARY_PATH'
 # (OB0060). kde-builder takes the prefix from install-dir only -- it
 # appends its own -DCMAKE_INSTALL_PREFIX after cmake-options -- so the
 # check is on install-dir and on DESTDIR reaching the install wrapper.
-grep -qE '^\s*install-dir:\s*"?/(opt|usr)' "$REPO_ROOT/contrib/konsole/kde-builder.yaml.in" \
-    || fail 'install-dir is not a neutral prefix; KDE will compile build paths into the binaries (OB0060)'
+# The RENDERED config, not the template: the template holds a placeholder,
+# and what matters is the value every renderer substitutes.
+grep -qE '^\s*install-dir:\s*"?/(opt|usr)' "$RENDERED" \
+    || fail 'install-dir does not render to a neutral prefix; KDE will compile build paths into the binaries (OB0060)'
 grep -q 'SE_DESTDIR' "$REPO_ROOT/tools/build-konsole.sh" \
     || fail 'the build does not pass SE_DESTDIR; a neutral prefix without DESTDIR would install outside the build tree'
 # shellcheck disable=SC2016  # a literal grep pattern, not an expansion
 grep -q 'DESTDIR="$SE_DESTDIR"' "$REPO_ROOT/tools/kde-install-and-reconcile.sh" \
     || fail 'the install wrapper does not export DESTDIR; the neutral prefix would be written for real'
 pass 'the KDE install prefix is neutral and staged through DESTDIR'
+
+# A large producer piped into grep -q under pipefail turns a MATCH into a
+# failure when the producer is still writing. It cost a red preflight that
+# read as a real defect (optional-GL "lacks the generated forwarder" for a
+# module that defines it).
+"$REPO_ROOT/tools/test-no-sigpipe-grep.sh" \
+    || { printf 'FAIL: an ungrouped large producer feeds grep -q under pipefail\n' >&2; exit 1; }
 
 printf 'Konsole preflight: PASS\n'

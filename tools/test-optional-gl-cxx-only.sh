@@ -104,7 +104,7 @@ while IFS= read -r loadable; do
       exit 1
       ;;
   esac
-  nm -D --defined-only "$loadable" | grep -Eq '[[:space:]]glColor4f$' || {
+  { nm -D --defined-only "$loadable" || true; } | grep -Eq '[[:space:]]glColor4f$' || {
     printf 'loadable optional-GL consumer lacks the generated forwarder: %s\n' \
       "$loadable" >&2
     exit 1

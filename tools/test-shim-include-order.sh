@@ -157,7 +157,7 @@ fi
 
 # And the shim still wins: the call must go to the stub, not to libc.
 if command -v nm >/dev/null 2>&1; then
-    nm -u "$PROBE/tu.o" 2>/dev/null | grep -q 'stub_dlopen' \
+    { nm -u "$PROBE/tu.o" 2>/dev/null || true; } | grep -q 'stub_dlopen' \
         || { printf 'the shim no longer redirects dlopen; ordering fixed the\n' >&2
              printf 'collision but defeated the point of the shim\n' >&2; exit 1; }
 fi
