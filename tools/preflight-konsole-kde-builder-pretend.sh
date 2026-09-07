@@ -31,7 +31,7 @@ trap 'rm -rf "$R"' EXIT
 sed \
     -e "s|@KDE_SOURCE_DIR@|$R/src|g" \
     -e "s|@KDE_BUILD_DIR@|$R/build|g" \
-    -e "s|@KDE_INSTALL_DIR@|$R/install|g" \
+    -e "s|@KDE_INSTALL_DIR@|/opt/static-everywhere|g" \
     -e "s|@KDE_LOG_DIR@|$R/log|g" \
     -e "s|@KDE_STATE_DIR@|$R/state|g" \
     -e "s|@KDE_JOBS@|2|g" \

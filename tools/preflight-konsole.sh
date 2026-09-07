@@ -189,7 +189,7 @@ pass 'kde-builder configuration does not opt into host Qt/KF6'
 workflow="$REPO_ROOT/.github/workflows/konsole-zig-build.yml"
 sed -e "s|@KDE_SOURCE_DIR@|$REPO_ROOT/.konsole-preflight-source|g" \
     -e "s|@KDE_BUILD_DIR@|$REPO_ROOT/.konsole-preflight-build|g" \
-    -e "s|@KDE_INSTALL_DIR@|$REPO_ROOT/.konsole-preflight-install|g" \
+    -e "s|@KDE_INSTALL_DIR@|/opt/static-everywhere|g" \
     -e "s|@KDE_LOG_DIR@|$REPO_ROOT/.konsole-preflight-logs|g" \
     -e "s|@KDE_STATE_DIR@|$REPO_ROOT/.konsole-preflight-state|g" \
     -e "s|@KDE_JOBS@|2|g" \
@@ -697,5 +697,19 @@ pass 'the workflow runs an isolated portable-bundle smoke test with build-time p
 grep -Fq 'KONSOLE_SMOKE_DISABLE_LD_LIBRARY_PATH=1' "$REPO_ROOT/.github/workflows/konsole-zig-build.yml" || \
     fail 'the isolated smoke test still masks missing origin-relative runtime libraries'
 pass 'the isolated smoke test exercises the binary without LD_LIBRARY_PATH'
+
+# The install prefix must be neutral and staged, or KDE compiles build
+# paths into every binary and the audit reports them one module at a time
+# (OB0060). kde-builder takes the prefix from install-dir only -- it
+# appends its own -DCMAKE_INSTALL_PREFIX after cmake-options -- so the
+# check is on install-dir and on DESTDIR reaching the install wrapper.
+grep -qE '^\s*install-dir:\s*"?/(opt|usr)' "$REPO_ROOT/contrib/konsole/kde-builder.yaml.in" \
+    || fail 'install-dir is not a neutral prefix; KDE will compile build paths into the binaries (OB0060)'
+grep -q 'SE_DESTDIR' "$REPO_ROOT/tools/build-konsole.sh" \
+    || fail 'the build does not pass SE_DESTDIR; a neutral prefix without DESTDIR would install outside the build tree'
+# shellcheck disable=SC2016  # a literal grep pattern, not an expansion
+grep -q 'DESTDIR="$SE_DESTDIR"' "$REPO_ROOT/tools/kde-install-and-reconcile.sh" \
+    || fail 'the install wrapper does not export DESTDIR; the neutral prefix would be written for real'
+pass 'the KDE install prefix is neutral and staged through DESTDIR'
 
 printf 'Konsole preflight: PASS\n'

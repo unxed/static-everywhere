@@ -58,7 +58,29 @@ fi
 
 KDE_SOURCE_DIR="$OUT_ABS/kde-source"
 KDE_BUILD_DIR="$OUT_ABS/kde-build"
-KDE_INSTALL_DIR="$OUT_ABS/kde-install"
+# The KDE install layout: a NEUTRAL prefix, staged through DESTDIR.
+#
+# KDE compiles KDE_INSTALL_FULL_* into its binaries -- the plugin dir, the
+# kdesu helper in libexec -- so with the prefix inside the build tree the
+# onebin audit reports them as embedded build paths (OB0060), one entry per
+# module, forever. -ffile-prefix-map cannot touch them: they are config
+# strings, not __FILE__.
+#
+# So the prefix is /opt/static-everywhere and the files are staged into
+# $KDE_STAGE_DIR by DESTDIR, which our make-install-prefix wrapper exports.
+# Nothing compiled in is ever a build path again, for any module.
+#
+# Verified before writing this: kde-builder appends its own
+# -DCMAKE_INSTALL_PREFIX from install-dir AFTER cmake-options, so the
+# prefix must come from install-dir and not from cmake-options; it has no
+# DESTDIR of its own; it never creates or writes install-dir; and it
+# derives only PATH/LD_LIBRARY_PATH/PKG_CONFIG_PATH from it, which we
+# override below. KDE's package configs are relocatable
+# (configure_package_config_file), so find_package resolves tools and
+# libraries to the staging tree -- checked on a two-project probe.
+KDE_INSTALL_PREFIX="/opt/static-everywhere"
+KDE_STAGE_DIR="$OUT_ABS/kde-install"
+KDE_INSTALL_DIR="$KDE_STAGE_DIR$KDE_INSTALL_PREFIX"
 KDE_LOG_DIR="$OUT_ABS/kde-logs"
 KDE_STATE_DIR="$OUT_ABS/kde-state"
 QT_OUT="$OUT_ABS/qt"
@@ -273,7 +295,7 @@ fi
 render_config() {
     sed -e "s|@KDE_SOURCE_DIR@|$KDE_SOURCE_DIR|g" \
         -e "s|@KDE_BUILD_DIR@|$KDE_BUILD_DIR|g" \
-        -e "s|@KDE_INSTALL_DIR@|$KDE_INSTALL_DIR|g" \
+        -e "s|@KDE_INSTALL_DIR@|$KDE_INSTALL_PREFIX|g" \
         -e "s|@KDE_LOG_DIR@|$KDE_LOG_DIR|g" \
         -e "s|@KDE_STATE_DIR@|$KDE_STATE_DIR|g" \
         -e "s|@KDE_JOBS@|$KDE_JOBS|g" \
@@ -313,6 +335,7 @@ run_env GIT_CONFIG_GLOBAL="$GIT_CONFIG_GLOBAL" PYTHONPATH="$KDE_BUILDER" \
     ONEBIN_HOST_INCLUDE_DIR="$HOST_INCLUDE_STAGE" \
     SE_RECONCILE_TOOL="$REPO_ROOT/tools/reconcile-cmake-target-deps.sh" \
     SE_RECONCILE_PREFIX="$KDE_INSTALL_DIR" \
+    SE_DESTDIR="$KDE_STAGE_DIR" \
     CC="$ZIGCC" CXX="$ZIGCXX" \
     PATH="$CONAN_VENV/bin:$PATH" python3 "$KDE_BUILDER/kde-builder" \
     --rc-file "$KDE_CONFIG" konsole

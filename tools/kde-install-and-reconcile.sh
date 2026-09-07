@@ -25,7 +25,17 @@
 set -euo pipefail
 
 # Do the install first: a reconcile before it would have nothing to fix.
-"$@"
+#
+# DESTDIR staging: the modules are configured with a neutral prefix
+# (/opt/static-everywhere) so nothing compiles a build path into a binary,
+# and the files land under $SE_DESTDIR. kde-builder has no DESTDIR of its
+# own -- verified in its source -- and this wrapper is the only place that
+# runs the install, so this is where it belongs.
+if [ -n "${SE_DESTDIR:-}" ]; then
+    DESTDIR="$SE_DESTDIR" "$@"
+else
+    "$@"
+fi
 install_status=$?
 
 # Then reconcile, if we were told where and how. Absence is not an error:
