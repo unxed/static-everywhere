@@ -87,3 +87,19 @@ documents a static Konsole/KF6 build. KDE TechBase's linker-debugging page
 (2012) prescribes exactly `VERBOSE=1` and `-Wl,-t`, neither of which this
 pipeline had. Conclusion: the static path is untested upstream; every
 static-only defect must be assumed present until proven absent. 3.6 is now proven absent by the toolchain; 1.11's remaining modules were scanned for static helpers (none).
+
+
+## Systemic review after ~20 red runs — what each fix should have been
+
+Read back, the konsole failures fall into four generators, not twenty bugs.
+Each entry names the *general* fix; the per-module patches were symptoms.
+
+| Generator | Symptoms it produced | Systemic fix | Status |
+|---|---|---|---|
+| **A. The compile driver did not describe the target** | ICU 74 vs 78 headers; `statx` undefined; host `/usr/include` shadowing | `--target` on every module compile (95dad58) **plus** the glibc shim on every module link (15b3307) **plus** the staged host contract. Together these make a module's environment identical to the Conan graph's | done |
+| **B. Conan metadata is not CMake metadata** | QtQmlIntegration; hunspell include dir; `Qt6::Quick -> OpenGL`, `QmlMeta`, Multimedia edges; `zstd.h`/`openssl/evp.h` not found in karchive; split KIO includes | One rule: **every Conan package's CMake *and* pkg-config metadata must be visible to every KDE module** (cb703b6 did this) and **every Qt inter-module edge must be diffed against Qt's own sources** (`scan-qt-module-edges.sh`). New packages must not need a new patch | done |
+| **C. The build tree is the install prefix** | `OB0060`: `kde-install/libexec/kf6/kdesu`, plugin dirs compiled into binaries | **Build with a neutral prefix and stage with DESTDIR**: `-DCMAKE_INSTALL_PREFIX=/usr` in `cmake-options`, `DESTDIR=$KDE_INSTALL_DIR` exported by `tools/kde-install-and-reconcile.sh` (kde-builder has no DESTDIR of its own — verified in its source), `CMAKE_PREFIX_PATH` and the smoke/artifact paths moved to `$KDE_INSTALL_DIR/usr`. Then no compiled-in path is ever a build path, for every module, permanently. **Caveat to check first:** kde-builder passes its own `-DCMAKE_INSTALL_PREFIX` from `install-dir`; confirm ours comes later on the command line, or set `install-dir` to the staged prefix instead | **open — next step** |
+| **D. A check that only runs in CI is not a check** | every one of the above cost 2–3 h to observe | Everything the build does must be runnable locally: `kde-builder --pretend` on the rendered config, the flag probe through the wrappers, the graph include scan, the Qt edge scan, the ICU probe. The rule: **if a failure can be produced by a command, that command belongs in the preflight** | done |
+
+The remaining red is generator C alone. It is one coordinated change, and it
+removes the whole `OB0060` class rather than each embedded path.
