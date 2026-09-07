@@ -9,6 +9,7 @@
 #include <stdint.h>
 #include "onebin/audit.h"
 #include "audit/audit.h"
+#include "util/limits.h"
 
 static void print_version(void) {
     printf("onebin %s\n", ONEBIN_VERSION);
