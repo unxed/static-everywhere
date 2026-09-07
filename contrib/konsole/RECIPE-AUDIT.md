@@ -292,6 +292,28 @@ not the final portable bundle: the next hosted run must verify that the
 explicit executable-link contract yields PIE and that the bundle then passes
 the isolated graphical smoke test.
 
+## Run 73: neutral install prefix left toolchain debug paths
+
+Run `34137857096` at `695fd24` built all 38 KDE projects and installed
+Konsole. The recursive artifact verifier passed, and the neutral-prefix
+change did its job: no physical `kde-install` path appeared among the
+unwaived hygiene findings. The strict onebin audit nevertheless stopped before
+packaging on four unwaived `OB0060` strings:
+
+```text
+/home/runner/.../zig-linux-x86_64-0.13.0/lib/libc/glibc/sysdeps/x86_64/crti.S
+/home/runner/.../zig-linux-x86_64-0.13.0/lib/libc/glibc/sysdeps/x86_64/crtn.S
+/home/runner/.../zig-linux-x86_64-0.13.0/lib/libc/glibc/sysdeps/x86_64/start-2.33.S
+/home/username
+```
+
+The same report contained `OB0062 debug info not stripped`. These are
+toolchain/debug metadata paths, not runtime install paths and not a missing
+dependency. The recipe now strips debug sections at every source-built KDE
+link boundary (executable, SHARED and MODULE), and the existing folded-YAML
+flag regression asserts the complete three-way linker contract before CI.
+This closes the class of debug-path leaks instead of waiving the four strings.
+
 ## Pass 2: reverse check of the Konsole recipe
 
 After the implementation was written, every item above was checked against

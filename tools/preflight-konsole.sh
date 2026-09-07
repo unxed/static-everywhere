@@ -222,11 +222,18 @@ assert "WITH_X11=ON" in cmake_options
 assert "-DCMAKE_C_FLAGS=--target=x86_64-linux-gnu.2.27" in cmake_options
 assert "-DCMAKE_CXX_FLAGS=--target=x86_64-linux-gnu.2.27" in cmake_options
 cmake_tokens = shlex.split(cmake_options)
-assert any(
-    shlex.split(token.split("=", 1)[1]) == ["-pie", "/tmp/compat-glibc-shims.o"]
-    for token in cmake_tokens
-    if token.startswith("-DCMAKE_EXE_LINKER_FLAGS=")
-)
+expected_link_flags = {
+    "-DCMAKE_EXE_LINKER_FLAGS=": ["-pie", "/tmp/compat-glibc-shims.o", "-Wl,--strip-debug"],
+    "-DCMAKE_SHARED_LINKER_FLAGS=": ["/tmp/compat-glibc-shims.o", "-Wl,--strip-debug"],
+    "-DCMAKE_MODULE_LINKER_FLAGS=": ["/tmp/compat-glibc-shims.o", "-Wl,--strip-debug"],
+}
+for prefix, expected in expected_link_flags.items():
+    actual = [
+        shlex.split(token.split("=", 1)[1])
+        for token in cmake_tokens
+        if token.startswith(prefix)
+    ]
+    assert actual == [expected], (prefix, actual)
 assert config["override konsole"]["revision"]
 assert "#" not in cmake_options
 workflow = yaml.safe_load(pathlib.Path(sys.argv[2]).read_text())
@@ -713,6 +720,8 @@ grep -q 'SE_DESTDIR' "$REPO_ROOT/tools/build-konsole.sh" \
 grep -q 'DESTDIR="$SE_DESTDIR"' "$REPO_ROOT/tools/kde-install-and-reconcile.sh" \
     || fail 'the install wrapper does not export DESTDIR; the neutral prefix would be written for real'
 pass 'the KDE install prefix is neutral and staged through DESTDIR'
+
+pass 'all source-built loadable targets strip debug path metadata at link time'
 
 # A large producer piped into grep -q under pipefail turns a MATCH into a
 # failure when the producer is still writing. It cost a red preflight that

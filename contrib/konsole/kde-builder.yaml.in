@@ -73,6 +73,10 @@ global:
   # "relocation R_X86_64_32 cannot be used when making a shared object".
   # KDECompilerSettings sets this ON already -- this pins it, since a class
   # that is merely believed absent is not a class that is guarded.
+  # Source-built KDE targets must not carry compiler/toolchain debug paths
+  # into the portable artifact. This applies to every loadable boundary,
+  # not only the final Konsole executable: static archives can contribute
+  # their debug sections to an executable, SHARED library or MODULE.
   # No -Wl,--trace / -t / -Map / --why-extract: zig 0.13 rejects every one
   # of them as "unsupported linker arg", and adding --trace broke the
   # first shared-object link in the graph (kiconthemes). Link tracing has
@@ -113,9 +117,9 @@ global:
     -DCMAKE_CXX_STANDARD_INCLUDE_DIRECTORIES=@QT_PACKAGE_ROOT@/include/QtQmlIntegration
     -DCMAKE_C_FLAGS=--target=@TARGET_TRIPLE@
     -DCMAKE_CXX_FLAGS=--target=@TARGET_TRIPLE@
-    -DCMAKE_EXE_LINKER_FLAGS="-pie @GLIBC_SHIM_OBJ@"
-    -DCMAKE_SHARED_LINKER_FLAGS=@GLIBC_SHIM_OBJ@
-    -DCMAKE_MODULE_LINKER_FLAGS=@GLIBC_SHIM_OBJ@
+    -DCMAKE_EXE_LINKER_FLAGS="-pie @GLIBC_SHIM_OBJ@ -Wl,--strip-debug"
+    -DCMAKE_SHARED_LINKER_FLAGS="@GLIBC_SHIM_OBJ@ -Wl,--strip-debug"
+    -DCMAKE_MODULE_LINKER_FLAGS="@GLIBC_SHIM_OBJ@ -Wl,--strip-debug"
     -DBUILD_WITH_QML=OFF
     -DKCOREADDONS_USE_QML=OFF
     -DKICONTHEMES_USE_QTQUICK=OFF
