@@ -93,6 +93,25 @@ onebin's safe 512 MiB default remains unchanged for ordinary callers. A CLI
 regression proves a non-default cap is enforced, and Konsole preflight checks
 that the recipe and auditor both carry the contract. This is a bounded size
 tier for large static artifacts, not an exception for one filename.
+
+## Run 71: the root audit did not know the install-prefix closure
+
+Run `34093006298` at `aac2678` built and installed all 38 KDE projects and
+Konsole. The recursive artifact verifier passed, but the separate onebin
+audit rejected `libkonsoleapp.so.26.08.0` as `OB0010`: it audited only the
+executable, so an application-owned shared library looked like an undeclared
+host dependency. The failure was the whole class of root-only audits becoming
+stale as the application gains loadable targets, not a reason to allowlist that
+one versioned filename.
+
+The wrapper now accepts an install prefix, derives allowances from every
+internal `.so` and `.so.*` basename (and any declared SONAME), and passes
+those names to onebin without leaking the wrapper-only option. The existing
+recursive verifier still walks each internal library's complete `DT_NEEDED`
+closure and rejects any host Qt/KF6/OpenGL escape. A fixture regression uses
+an arbitrary versioned library name, proving the prefix-derived contract
+rather than special-casing Konsole's current SONAME.
+
 CMake's global
 prefix exclusion is explicitly cleared because KGuiAddons and KWindowSystem
 use the `FindX11`/`FindXCB` MODULEs to discover those host headers and

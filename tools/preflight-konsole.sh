@@ -29,7 +29,8 @@ bash -n "$REPO_ROOT/tools/build-konsole.sh" "$REPO_ROOT/tools/preflight-konsole.
     "$REPO_ROOT/tools/test-konsole-icu-consistency.sh" \
     "$REPO_ROOT/tools/test-konsole-direct-qt-includes.sh" \
     "$REPO_ROOT/tools/test-optional-gl-cxx-only.sh" \
-    "$REPO_ROOT/tools/test-konsole-host-runtime-contract.sh"
+    "$REPO_ROOT/tools/test-konsole-host-runtime-contract.sh" \
+    "$REPO_ROOT/tools/test-audit-internal-prefix.sh"
 pass 'Konsole shell scripts parse'
 
 python3 "$REPO_ROOT/tools/test-konsole-dependency-contract.py"
@@ -76,6 +77,9 @@ pass 'optional-GL forwarding covers executable, shared and MODULE link boundarie
 
 bash "$REPO_ROOT/tools/test-konsole-host-runtime-contract.sh"
 pass 'host runtime SONAMEs have one authoritative contract'
+
+bash "$REPO_ROOT/tools/test-audit-internal-prefix.sh"
+pass 'internal shared-library audit allowlist is derived from the runtime prefix'
 
 for tool in msgmerge msgfmt flex bison; do
     command -v "$tool" >/dev/null 2>&1 || fail "Gettext tool is missing: $tool"
@@ -139,6 +143,7 @@ for needle in \
     'CMAKE_PROJECT_INCLUDE' \
     'verify-konsole-artifact.sh' \
     'audit-with-hygiene-waivers.sh' \
+    '--allow-internal-prefix' \
     '--max-file' \
     '1073741824' \
     'BUILD_KSECRETD=OFF' \

@@ -321,12 +321,14 @@ KONSOLE_BIN="$KDE_INSTALL_DIR/bin/konsole"
 if [[ $PRINT_PLAN -eq 1 ]]; then
     quote_cmd "$REPO_ROOT/tools/verify-konsole-artifact.sh" "$KONSOLE_BIN" "$KDE_INSTALL_DIR"
     quote_cmd "$REPO_ROOT/tools/audit-with-hygiene-waivers.sh" "$ONEBIN_BIN" \
+        --allow-internal-prefix "$KDE_INSTALL_DIR" \
         --max-file "$KONSOLE_AUDIT_MAX_FILE" --profile hybrid --glibc-max "$GLIBC_BASELINE" \
         "${KONSOLE_HOST_RUNTIME_ALLOW_FLAGS[@]}" --level 1 --strict "$KONSOLE_BIN"
 else
     [[ -x $KONSOLE_BIN ]] || { printf 'error: kde-builder did not install %s\n' "$KONSOLE_BIN" >&2; exit 1; }
     "$REPO_ROOT/tools/verify-konsole-artifact.sh" "$KONSOLE_BIN" "$KDE_INSTALL_DIR" | tee "$OUT_ABS/konsole-audit.txt"
     audit_args=(
+        --allow-internal-prefix "$KDE_INSTALL_DIR"
         --max-file "$KONSOLE_AUDIT_MAX_FILE"
         --profile hybrid --glibc-max "$GLIBC_BASELINE"
         "${KONSOLE_HOST_RUNTIME_ALLOW_FLAGS[@]}" --level 1 --strict "$KONSOLE_BIN"

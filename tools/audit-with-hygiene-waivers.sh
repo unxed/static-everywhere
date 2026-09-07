@@ -40,9 +40,12 @@
 # 5. It is never silent: every tolerated run prints each waived path, its
 #    origin, and the reminder that this is a waiver.
 #
-# Usage: audit-with-hygiene-waivers.sh <onebin> [audit args... <file>]
-#   The first argument is the onebin binary; the rest are passed through,
-#   with --format json added. The audited FILE is the last argument.
+# Usage: audit-with-hygiene-waivers.sh <onebin> [--allow-internal-prefix DIR]
+#        [audit args... <file>]
+#   The first argument is the onebin binary. The optional wrapper-only prefix
+#   makes every loadable object below DIR available to onebin's DT_NEEDED
+#   allowlist; all other arguments are passed through, with --format json
+#   added. The audited FILE is the last remaining argument.
 
 set -uo pipefail
 
@@ -68,21 +71,102 @@ WAIVED_ORIGINS=(
 )
 
 if [ "$#" -lt 2 ]; then
-    printf 'usage: %s <onebin> [audit args... <file>]\n' "$0" >&2
+    printf 'usage: %s <onebin> [--allow-internal-prefix DIR] [audit args... <file>]\n' "$0" >&2
     exit 2
 fi
 
 ONEBIN="$1"; shift
+
+# This option belongs to the wrapper, not onebin. Keep it out of the audit
+# command line so a future onebin version cannot accidentally interpret a
+# recipe-only path option as an audit option.
+INTERNAL_PREFIX=
+declare -a AUDIT_ARGS=()
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --allow-internal-prefix)
+            [[ $# -ge 2 ]] || {
+                printf 'error: --allow-internal-prefix requires a directory\n' >&2
+                exit 2
+            }
+            [[ -z $INTERNAL_PREFIX ]] || {
+                printf 'error: --allow-internal-prefix may be specified only once\n' >&2
+                exit 2
+            }
+            INTERNAL_PREFIX=$2
+            shift 2
+            ;;
+        --allow-internal-prefix=*)
+            [[ -z $INTERNAL_PREFIX ]] || {
+                printf 'error: --allow-internal-prefix may be specified only once\n' >&2
+                exit 2
+            }
+            INTERNAL_PREFIX=${1#*=}
+            [[ -n $INTERNAL_PREFIX ]] || {
+                printf 'error: --allow-internal-prefix requires a directory\n' >&2
+                exit 2
+            }
+            shift
+            ;;
+        *)
+            AUDIT_ARGS+=("$1")
+            shift
+            ;;
+    esac
+done
+
+if [[ ${#AUDIT_ARGS[@]} -lt 1 ]]; then
+    printf 'error: an audit file is required\n' >&2
+    exit 2
+fi
+
+declare -a INTERNAL_ALLOW_FLAGS=()
+declare -A SEEN_INTERNAL_ALLOW=()
+if [[ -n $INTERNAL_PREFIX ]]; then
+    [[ -d $INTERNAL_PREFIX ]] || {
+        printf 'error: internal runtime prefix is not a directory: %s\n' "$INTERNAL_PREFIX" >&2
+        exit 2
+    }
+    command -v readelf >/dev/null 2>&1 || {
+        printf 'error: readelf is required to inspect the internal runtime prefix\n' >&2
+        exit 2
+    }
+
+    add_internal_allow() {
+        local soname=$1
+        [[ $soname =~ ^[A-Za-z0-9._+-]+$ ]] || return 0
+        [[ -n ${SEEN_INTERNAL_ALLOW[$soname]:-} ]] && return 0
+        SEEN_INTERNAL_ALLOW[$soname]=1
+        INTERNAL_ALLOW_FLAGS+=(--allow "$soname")
+    }
+
+    while IFS= read -r -d '' internal_object; do
+        internal_name=$(basename -- "$internal_object")
+        case $internal_name in
+            *.so|*.so.*)
+                add_internal_allow "$internal_name"
+                internal_soname=$(readelf -d "$internal_object" 2>/dev/null |
+                    sed -n 's/.*SONAME.*\[\([^]]*\)\].*/\1/p' | head -n 1)
+                [[ -z $internal_soname ]] || add_internal_allow "$internal_soname"
+                ;;
+        esac
+    done < <(find -P "$INTERNAL_PREFIX" \( -type f -o -type l \) -print0 2>/dev/null)
+
+    (( ${#INTERNAL_ALLOW_FLAGS[@]} > 0 )) || {
+        printf 'error: internal runtime prefix contains no loadable shared objects: %s\n' "$INTERNAL_PREFIX" >&2
+        exit 2
+    }
+fi
 
 OUT=$(mktemp)
 trap 'rm -f "$OUT"' EXIT
 
 # Run once, in JSON, so matching is on structured fields and not on the
 # shape of the human-readable output.
-"$ONEBIN" audit "$@" --format json >"$OUT" 2>/dev/null || true
+"$ONEBIN" audit "${INTERNAL_ALLOW_FLAGS[@]}" "${AUDIT_ARGS[@]}" --format json >"$OUT" 2>/dev/null || true
 
 # The audited file is the last positional argument to the wrapper.
-AUDITED_FILE="${!#}"
+AUDITED_FILE="${AUDIT_ARGS[${#AUDIT_ARGS[@]}-1]}"
 
 if ! python3 - "$OUT" "$AUDITED_FILE" "${WAIVED_ORIGINS[@]}" <<'PY'
 import json, sys

@@ -45,7 +45,7 @@ jobs:
           echo "$PWD/zig-linux-x86_64-0.13.0" >> "$GITHUB_PATH"
 
       - name: Build onebin for local checks
-        run: make -C onebin
+        run: make -C onebin test
 
       - name: Fetch the pinned Konsole source for the glibc scan
         run: |

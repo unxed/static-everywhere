@@ -28,6 +28,7 @@ Legend: **P** = caught by preflight locally · **C** = caught by CI only ·
 | 1.16 | CMake probe loses imported target generator expressions in `try_compile` | ICU probe used host headers and no archive | P | concrete FindICU paths plus Conan-shaped imported-target regression |
 | 1.17 | Source-module compile driver silently uses the host target | KDE module compile flags had no `-target`, while Conan/link flags did | P | rendered C/C++ flags pin the target for every kde-builder module |
 | 1.18 | Audit rejects a valid static ELF before packaging because it exceeds the default input cap | Konsole is 745 MiB after static Qt linking; `--max-file` was parsed but ignored | P | `onebin` forwards and enforces an explicit 1 GiB cap; CLI regression proves non-default caps are active |
+| 1.19 | Root-only audit mistakes an application-owned shared library for a host dependency | `libkonsoleapp.so.26.08.0` is installed beside the executable and is checked recursively by the artifact verifier | P | derive the onebin allowlist from every `.so` in the install prefix; the recursive artifact verifier remains authoritative for each internal library's closure |
 
 ## 2. Compile-time
 
