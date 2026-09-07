@@ -253,6 +253,7 @@ set(CMAKE_BUILD_RPATH_USE_ORIGIN ON)
 set(CMAKE_INSTALL_RPATH "\$ORIGIN/../lib")
 set(CMAKE_INSTALL_RPATH_USE_LINK_PATH OFF)
 message(STATUS "static-everywhere: Konsole runtime RPATH is $ORIGIN/../lib")
+include("${CMAKE_CURRENT_LIST_DIR}/runtime-rpath.cmake")
 
 include("${CMAKE_CURRENT_LIST_DIR}/import-static-qt-plugins.cmake")
 
@@ -349,6 +350,9 @@ function(_se_konsole_assert_static_graph)
     endforeach()
     message(STATUS "static-everywhere: Qt/KF6 graph is non-host and static")
 endfunction()
+
+cmake_language(DEFER DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+               CALL _se_konsole_set_runtime_rpath)
 
 cmake_language(DEFER DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
                CALL _se_konsole_assert_static_graph)

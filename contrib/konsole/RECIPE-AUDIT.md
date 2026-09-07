@@ -310,6 +310,21 @@ modules and data. CI smoke-tests that bundle and uploads it, so downloading
 the artifact does not require manually setting `LD_LIBRARY_PATH` or
 `XDG_DATA_DIRS`.
 
+Run 69 (2026-09-07): build `34066071126` compiled and installed all 38 KDE
+projects, but the artifact verifier correctly rejected the result because the
+installed Konsole executable had an absolute build/Conan RPATH instead of
+`$ORIGIN/../lib`. The previous fix only changed global `CMAKE_*` defaults from
+the early `CMAKE_PROJECT_INCLUDE` hook; KDE's later CMake settings could
+overwrite those defaults before target generation. The recipe now defers a
+walk of all application-owned EXECUTABLE, SHARED and MODULE targets and sets
+their five RPATH properties explicitly, including immediately before each
+`install(TARGETS ...)` rule because CMake snapshots those properties there.
+`test-konsole-runtime-rpath.sh`
+configures, builds and installs a miniature instance of all three target kinds
+with link-path RPATH defaults deliberately enabled, then checks each installed
+ELF for only the origin-relative path. This closes the class of target-level
+RPATH drift rather than special-casing `konsole` or `libkonsoleapp.so`.
+
 The same audit enumerated the complete host edge (`libxcb-res`, `libXfixes`,
 `libxcb-glx`, `libEGL`, `librt`, `libutil` and the dynamic loader) instead of
 discovering those names one at a time in later runs; they are explicit parts

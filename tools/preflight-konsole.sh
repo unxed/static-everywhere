@@ -25,6 +25,7 @@ bash -n "$REPO_ROOT/tools/build-konsole.sh" "$REPO_ROOT/tools/preflight-konsole.
     "$REPO_ROOT/tools/test-konsole-host-docbook-tools.sh" \
     "$REPO_ROOT/tools/test-konsole-static-qt-plugins.sh" \
     "$REPO_ROOT/tools/test-konsole-deferred-recipe-file.sh" \
+    "$REPO_ROOT/tools/test-konsole-runtime-rpath.sh" \
     "$REPO_ROOT/tools/test-konsole-icu-consistency.sh" \
     "$REPO_ROOT/tools/test-konsole-direct-qt-includes.sh" \
     "$REPO_ROOT/tools/test-optional-gl-cxx-only.sh" \
@@ -60,6 +61,9 @@ pass 'Konsole static Qt plugin imports are configure-time and Conan-safe'
 
 bash "$REPO_ROOT/tools/test-konsole-deferred-recipe-file.sh"
 pass 'deferred recipe files retain their absolute path'
+
+bash "$REPO_ROOT/tools/test-konsole-runtime-rpath.sh"
+pass 'all Konsole loadable targets receive an origin-relative install RPATH'
 
 bash "$REPO_ROOT/tools/test-konsole-icu-consistency.sh"
 pass 'ICU consistency probe carries concrete package paths into try_compile'
@@ -146,6 +150,10 @@ for needle in \
 done
 grep -Fq 'set(CMAKE_INSTALL_RPATH "\$ORIGIN/../lib")' "$REPO_ROOT/contrib/konsole/project-include.cmake" || \
     fail 'Konsole install RPATH does not point to its own sibling lib directory'
+grep -Fq 'CALL _se_konsole_set_runtime_rpath' "$REPO_ROOT/contrib/konsole/project-include.cmake" || \
+    fail 'Konsole target-level runtime RPATH callback is not deferred'
+grep -Fq 'INSTALL_RPATH "\$ORIGIN/../lib"' "$REPO_ROOT/contrib/konsole/runtime-rpath.cmake" || \
+    fail 'Konsole target-level runtime RPATH contract is missing'
 grep -Fq 'package-konsole-runtime.sh' "$REPO_ROOT/tools/build-konsole.sh" || \
     fail 'build plan does not create the portable Konsole runtime bundle'
 grep -Fq 'konsole-runtime' "$REPO_ROOT/.github/workflows/konsole-zig-build.yml" || \
