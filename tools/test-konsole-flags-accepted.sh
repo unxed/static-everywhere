@@ -29,19 +29,35 @@ printf 'int f(void){ return 1; }\n' >"$PROBE/s.c"
 "$CC" -target x86_64-linux-gnu.2.27 -O2 -fPIC -c "$REPO_ROOT/contrib/f4-qt/compat/glibc-shims.c" -o "$PROBE/shim.o"
 
 # Every -DCMAKE_<X>_FLAGS=<value> and -DCMAKE_<X>_LINKER_FLAGS=<value> in
-# the template, with placeholders neutralised.
+# the folded YAML scalar, with placeholders neutralised. Parse the scalar
+# with the same shlex rules as kde-builder; a grep over whitespace-separated
+# text would truncate a valid multi-flag value such as `-pie <shim>.o`.
 mapfile -t flagsets < <(
-    sed -E -e "s|@GLIBC_SHIM_OBJ@|$PROBE/shim.o|g" -e 's/@TARGET_TRIPLE@/x86_64-linux-gnu.2.28/g; s/@[A-Z_]+@/x/g' \
-        "$REPO_ROOT/contrib/konsole/kde-builder.yaml.in" \
-    | grep -oE -- '-DCMAKE_(C|CXX|EXE_LINKER|SHARED_LINKER|MODULE_LINKER)_FLAGS(_INIT)?=[^[:space:]]+' \
-    | sort -u)
+    python3 - "$REPO_ROOT/contrib/konsole/kde-builder.yaml.in" "$PROBE/shim.o" <<'PY'
+import pathlib
+import re
+import shlex
+import sys
+import yaml
+
+path, shim = sys.argv[1:]
+text = pathlib.Path(path).read_text().replace("@GLIBC_SHIM_OBJ@", shim)
+text = re.sub(r"@[A-Z_]+@", "x", text)
+config = yaml.safe_load(text)
+pattern = re.compile(
+    r"^-DCMAKE_(?:C|CXX|EXE_LINKER|SHARED_LINKER|MODULE_LINKER)_FLAGS(?:_INIT)?="
+)
+for token in sorted(set(shlex.split(config["global"]["cmake-options"]))):
+    if pattern.match(token):
+        print(token)
+PY
+)
 
 status=0
 for entry in "${flagsets[@]}"; do
     var=${entry%%=*}; var=${var#-D}
     value=${entry#*=}
-    # shellcheck disable=SC2206  # the value is a flag list by definition
-    flags=($value)
+    read -r -a flags <<<"$value"
     case "$var" in
         CMAKE_C_FLAGS*)      out=$("$CC"  -target x86_64-linux-gnu.2.28 "${flags[@]}" -c "$PROBE/m.c"   -o "$PROBE/o.o" 2>&1) || status=1 ;;
         CMAKE_CXX_FLAGS*)    out=$("$CXX" -target x86_64-linux-gnu.2.28 "${flags[@]}" -c "$PROBE/m.cpp" -o "$PROBE/o.o" 2>&1) || status=1 ;;

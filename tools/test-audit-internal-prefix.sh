@@ -19,8 +19,9 @@ export CAPTURE
 cat >"$TMP/fake-onebin" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
+RPATH_SUBJECT=${FAKE_RPATH_SUBJECT:-'$ORIGIN/../lib'}
 printf '%s\n' "$*" >"$CAPTURE"
-printf '%s\n' '{"result":"fail","counts":{"error":0,"warn":1,"info":0},"findings":[{"id":"OB0060","severity":"warn","subject":"/tmp/libheif/example"}]}'
+printf '%s\n' "{\"result\":\"fail\",\"counts\":{\"error\":0,\"warn\":2,\"info\":0},\"findings\":[{\"id\":\"OB0060\",\"severity\":\"warn\",\"subject\":\"/tmp/libheif/example\"},{\"id\":\"OB0041\",\"severity\":\"warn\",\"subject\":\"$RPATH_SUBJECT\"}]}"
 EOF
 chmod +x "$TMP/fake-onebin"
 
@@ -41,4 +42,12 @@ grep -Fq -- '--max-file 1000000' "$CAPTURE" || {
     exit 1
 }
 
-printf 'audit internal-prefix regression: PASS\n'
+if FAKE_RPATH_SUBJECT='$ORIGIN/unexpected' \
+    "$REPO_ROOT/tools/audit-with-hygiene-waivers.sh" "$TMP/fake-onebin" \
+    --allow-internal-prefix "$TMP/prefix" \
+    --max-file 1000000 "$TMP/prefix/bin/konsole" >/dev/null; then
+    printf 'FAIL: arbitrary OB0041 RPATH was accepted\n' >&2
+    exit 1
+fi
+
+printf 'audit internal-prefix and RPATH-contract regressions: PASS\n'

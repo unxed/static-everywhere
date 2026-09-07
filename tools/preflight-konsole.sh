@@ -141,6 +141,7 @@ for needle in \
     'CMAKE_DISABLE_FIND_PACKAGE_UTEMPTER=ON' \
     'CMAKE_DISABLE_FIND_PACKAGE_UDev=ON' \
     'CMAKE_PROJECT_INCLUDE' \
+    'CMAKE_EXE_LINKER_FLAGS="-pie' \
     'verify-konsole-artifact.sh' \
     'audit-with-hygiene-waivers.sh' \
     '--allow-internal-prefix' \
@@ -220,9 +221,14 @@ assert "CMAKE_IGNORE_PREFIX_PATH=/usr" not in cmake_options
 assert "WITH_X11=ON" in cmake_options
 assert "-DCMAKE_C_FLAGS=--target=x86_64-linux-gnu.2.27" in cmake_options
 assert "-DCMAKE_CXX_FLAGS=--target=x86_64-linux-gnu.2.27" in cmake_options
+cmake_tokens = shlex.split(cmake_options)
+assert any(
+    shlex.split(token.split("=", 1)[1]) == ["-pie", "/tmp/compat-glibc-shims.o"]
+    for token in cmake_tokens
+    if token.startswith("-DCMAKE_EXE_LINKER_FLAGS=")
+)
 assert config["override konsole"]["revision"]
 assert "#" not in cmake_options
-shlex.split(cmake_options)
 workflow = yaml.safe_load(pathlib.Path(sys.argv[2]).read_text())
 assert set(workflow["jobs"]) == {"preflight", "build"}
 print("YAML config/workflow parse: PASS")

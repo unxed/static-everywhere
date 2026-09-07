@@ -79,7 +79,8 @@ global:
   # to be done on demand by replaying the FAILED command from build.log
   # with a real ld.lld. The preflight now runs every -Wl, flag in this
   # file through the wrapper before a build can.
-  # The glibc baseline shim on every link. With the real -target (2.27) the
+  # The glibc baseline shim and explicit PIE on every executable link. With
+  # the real -target (2.27) the
   # KDE modules see statx() in zig's headers but not in its 2.27 stub:
   # kconfig_compiler_kf6 failed with "undefined symbol: statx". The Conan
   # graph already links compat-glibc-shims.o through tools.build:*linkflags;
@@ -112,7 +113,7 @@ global:
     -DCMAKE_CXX_STANDARD_INCLUDE_DIRECTORIES=@QT_PACKAGE_ROOT@/include/QtQmlIntegration
     -DCMAKE_C_FLAGS=--target=@TARGET_TRIPLE@
     -DCMAKE_CXX_FLAGS=--target=@TARGET_TRIPLE@
-    -DCMAKE_EXE_LINKER_FLAGS=@GLIBC_SHIM_OBJ@
+    -DCMAKE_EXE_LINKER_FLAGS="-pie @GLIBC_SHIM_OBJ@"
     -DCMAKE_SHARED_LINKER_FLAGS=@GLIBC_SHIM_OBJ@
     -DCMAKE_MODULE_LINKER_FLAGS=@GLIBC_SHIM_OBJ@
     -DBUILD_WITH_QML=OFF

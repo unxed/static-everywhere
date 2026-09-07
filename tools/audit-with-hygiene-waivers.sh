@@ -21,8 +21,9 @@
 #
 # What makes this a waiver and not a suppression
 # ----------------------------------------------
-# 1. It is keyed to OB0060 alone. Every other finding, and every error,
-#    still fails the audit under --strict.
+# 1. It is keyed to OB0060/OB0061, with one separate exact contract for
+#    OB0041 below. Every other finding, and every error, still fails the
+#    audit under --strict.
 # 2. It matches by ORIGIN substring, not by exact path. Conan package
 #    directories carry per-build hashes and temp paths carry random
 #    suffixes; pinning exact strings would rot on the first dependency
@@ -239,10 +240,20 @@ ob0061_waivable = bool(ob0061) and ob0061_all_load_paths()
 ob0061_waived = ob0061 if ob0061_waivable else []
 ob0061_unwaived = [] if ob0061_waivable else ob0061
 
+# OB0041 warns about an origin-relative RPATH. This is the deliberate
+# portable-bundle contract for Konsole: bin/konsole must find its internal
+# libraries in the sibling lib directory without LD_LIBRARY_PATH. Accept the
+# exact contract only; an arbitrary origin-relative path is still a recipe
+# mistake and must fail.
+ob0041 = [f for f in findings if f.get("id") == "OB0041"]
+ob0041_accepted = [f for f in ob0041
+                   if f.get("subject") == "$ORIGIN/../lib"]
+ob0041_unaccepted = [f for f in ob0041 if f not in ob0041_accepted]
+
 other_warns = [
     f for f in findings
     if f.get("severity") == "warn"
-    and f.get("id") not in ("OB0060", "OB0061")
+    and f.get("id") not in ("OB0041", "OB0060", "OB0061")
 ]
 
 def origin_of(path):
@@ -272,8 +283,14 @@ if errors > 0:
         print(f"  {f.get('id','?')}  {f.get('subject','') or f.get('message','')}",
               file=sys.stderr)
     sys.exit(1)
+if ob0041_unaccepted:
+    print("OB0041 RPATH warnings must be exactly $ORIGIN/../lib:",
+          file=sys.stderr)
+    for f in ob0041_unaccepted:
+        print(f"  {f.get('subject','')}", file=sys.stderr)
+    sys.exit(1)
 if other_warns:
-    print("audit reports warnings other than OB0060/OB0061; not waivable here:",
+    print("audit reports warnings outside the allowed contracts; not waivable here:",
           file=sys.stderr)
     for f in other_warns:
         print(f"  {f['id']}  {f.get('subject','')}", file=sys.stderr)
@@ -337,6 +354,11 @@ if ob0061_waived:
     for f in ob0061_waived:
         subj = f["subject"]
         print(f"  {subj[:100]}")
+if ob0041_accepted:
+    print("")
+    print("OB0041 accepted for the exact portable-bundle RPATH contract:")
+    for f in ob0041_accepted:
+        print(f"  {f.get('subject','')}")
 print("")
 print("This is a waiver, not a pass. When a dependency stops embedding")
 print("its paths, this wrapper fails with STALE WAIVER and the matching")

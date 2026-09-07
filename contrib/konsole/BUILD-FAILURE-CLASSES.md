@@ -61,6 +61,7 @@ Legend: **P** = caught by preflight locally · **C** = caught by CI only ·
 | 3.9 | `-o -` / stdout output mishandled by driver | stray `-` file | P | wrapper |
 | 3.10 | Whole-archive / plugin registration missing at runtime | QPA plugins | P | user's `9299262` |
 | 3.11 | Optional host-library forwarder attached only to executables | `libkonsoleapp.so` retained `libGL.so.1` while `konsole` itself passed | P/C | loadable-target forwarder contract covers executable, SHARED and MODULE consumers; CXX-only miniature build audits all three |
+| 3.12 | Executable link loses PIE because flags reach only package builds | Konsole installed as ET_EXEC (`OB0054`) | P/C | explicit `-pie` plus the glibc shim in the shared kde-builder executable-link contract; YAML/shlex and wrapper-link regression |
 
 ## 4. Runtime (post-link, in the artifact)
 

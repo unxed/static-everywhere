@@ -263,6 +263,35 @@ architectural blocker to adding it later: the recipe will need QtWayland,
 Wayland protocol development inputs, and a compositor-backed runtime smoke
 test rather than treating the current X11 result as equivalent.
 
+## Run 72: the final audit exposed two intentional-contract gaps
+
+Run `34107053382` at `9b983de` built all 38 KDE projects and installed
+Konsole. The recursive artifact verifier passed: the executable's internal
+`libkonsoleapp.so.26.08.0` closure was complete and the host X11/Canberra/
+EGL contract contained no Qt/KF6 or hard `libGL` escape. The build stopped in
+the strict onebin audit before packaging, with `OB0041 $ORIGIN/../lib` and
+`OB0054` (the installed executable was `ET_EXEC`).
+
+The first finding is required by the portable runtime contract already
+tested by `test-konsole-runtime-rpath.sh`: `bin/konsole` must find the
+install-prefix libraries in its sibling `lib/` directory without
+`LD_LIBRARY_PATH`. The hygiene wrapper now accepts only that exact
+`$ORIGIN/../lib` value; arbitrary origin-relative RPATHs remain fatal, with a
+positive/negative fixture in `test-audit-internal-prefix.sh`.
+
+The second finding was a class-level propagation gap. Conan received `-pie`
+for its package builds, but kde-builder configures every KDE source module
+separately, so the application executable did not inherit it. The common
+KDE-builder CMake contract now passes `-pie` together with the glibc shim for
+every executable target. The flag regression parses the folded YAML scalar
+with the same `shlex` rules as kde-builder and sends the complete value
+through the Zig wrapper; preflight asserts that the shim was not lost.
+
+This run proved the source-built dependency graph and artifact closure, but
+not the final portable bundle: the next hosted run must verify that the
+explicit executable-link contract yields PIE and that the bundle then passes
+the isolated graphical smoke test.
+
 ## Pass 2: reverse check of the Konsole recipe
 
 After the implementation was written, every item above was checked against
