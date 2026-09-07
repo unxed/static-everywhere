@@ -132,13 +132,11 @@
   option per-invocation, not per-file, and a single baseline file is the
   only reading that lets `--baseline` (loaded once, applied per file)
   round-trip against it.
-- **`--max-file` is accepted and validated but not yet wired to
-  `ob_audit_options`** — `ob_audit_file` still enforces the fixed
-  `ONEBIN_MAX_FILE` (512 MiB) regardless of this flag. Flagged rather than
-  silently dropped: the option parses and rejects negative values, so
-  scripts using it don't get a usage error, but the value has no effect
-  yet. Needs a `max_file` field on `ob_audit_options` plumbed through to
-  the `OB0092` size check in `audit/audit.c`.
+- **`--max-file` is a bounded per-invocation override** — the CLI passes it
+  through both audit paths, and the single file-reading layer enforces it
+  before allocating the input buffer. `ob_audit_options_init()` keeps the
+  safe 512 MiB default; callers that need to inspect a larger static ELF must
+  select a deliberate higher cap rather than weakening the default.
 - **`tests/t_cli.c` spawns the plain (non-sanitizer) `build/onebin`**
   regardless of which `make test*` target is running — `make test-asan`/
   `test-ubsan` still exercise every check function directly through the

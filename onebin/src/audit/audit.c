@@ -19,6 +19,7 @@
 void ob_audit_options_init(ob_audit_options *opts) {
     memset(opts, 0, sizeof(*opts));
     opts->level = OB_LEVEL_1;
+    opts->max_file = ONEBIN_MAX_FILE;
 }
 
 static const char *machine_name(uint16_t m, char *buf, size_t bufsz) {
@@ -131,11 +132,17 @@ ob_audit_status ob_audit_file(const ob_audit_options *opts, ob_report *out) {
         return fatal(out, "OB0091", "io.nottype", opts->file_path,
                      "not a regular file");
     }
-    if ((uint64_t)st.st_size > (uint64_t)ONEBIN_MAX_FILE) {
+    uint64_t max_file = opts->max_file;
+    /* The parser allocates a size_t-sized buffer.  On a narrower host, do
+     * not let an otherwise valid uint64_t cap wrap that conversion. */
+    if (max_file > (uint64_t)SIZE_MAX) {
+        max_file = (uint64_t)SIZE_MAX;
+    }
+    if ((uint64_t)st.st_size > max_file) {
         fclose(f);
         char msg[128];
-        snprintf(msg, sizeof(msg), "%lld bytes exceeds the %u byte limit",
-                 (long long)st.st_size, (unsigned)ONEBIN_MAX_FILE);
+        snprintf(msg, sizeof(msg), "%lld bytes exceeds the %llu byte limit",
+                 (long long)st.st_size, (unsigned long long)max_file);
         return fatal(out, "OB0092", "io.toolarge", opts->file_path, msg);
     }
 

@@ -9,6 +9,10 @@ ONEBIN_BIN="$REPO_ROOT/onebin/build/onebin"
 ZIGCC="$REPO_ROOT/onebin/toolchain/zig-cc"
 ZIGCXX="$REPO_ROOT/onebin/toolchain/zig-c++"
 GLIBC_BASELINE=2.27
+# onebin defaults to a 512 MiB input cap.  Static Qt applications can be
+# larger while still being valid audit inputs, so the recipe opts into a
+# bounded 1 GiB tier explicitly; the auditor enforces this value.
+KONSOLE_AUDIT_MAX_FILE=1073741824
 KONSOLE_REF=264ecd0808f752a10204f954dfc1f87f7aba9ea8
 KDE_BUILDER_REF=0e661248c9da227dc5c129949cf7a403eb6d4d7e
 OUT=./out/konsole
@@ -317,12 +321,13 @@ KONSOLE_BIN="$KDE_INSTALL_DIR/bin/konsole"
 if [[ $PRINT_PLAN -eq 1 ]]; then
     quote_cmd "$REPO_ROOT/tools/verify-konsole-artifact.sh" "$KONSOLE_BIN" "$KDE_INSTALL_DIR"
     quote_cmd "$REPO_ROOT/tools/audit-with-hygiene-waivers.sh" "$ONEBIN_BIN" \
-        --profile hybrid --glibc-max "$GLIBC_BASELINE" \
+        --max-file "$KONSOLE_AUDIT_MAX_FILE" --profile hybrid --glibc-max "$GLIBC_BASELINE" \
         "${KONSOLE_HOST_RUNTIME_ALLOW_FLAGS[@]}" --level 1 --strict "$KONSOLE_BIN"
 else
     [[ -x $KONSOLE_BIN ]] || { printf 'error: kde-builder did not install %s\n' "$KONSOLE_BIN" >&2; exit 1; }
     "$REPO_ROOT/tools/verify-konsole-artifact.sh" "$KONSOLE_BIN" "$KDE_INSTALL_DIR" | tee "$OUT_ABS/konsole-audit.txt"
     audit_args=(
+        --max-file "$KONSOLE_AUDIT_MAX_FILE"
         --profile hybrid --glibc-max "$GLIBC_BASELINE"
         "${KONSOLE_HOST_RUNTIME_ALLOW_FLAGS[@]}" --level 1 --strict "$KONSOLE_BIN"
     )

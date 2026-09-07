@@ -27,6 +27,7 @@ Legend: **P** = caught by preflight locally · **C** = caught by CI only ·
 | 1.15 | Deferred callback resolves a recipe file in the dependency source tree | ICU consistency probe | P | captured absolute path helper plus `test-konsole-deferred-recipe-file.sh` |
 | 1.16 | CMake probe loses imported target generator expressions in `try_compile` | ICU probe used host headers and no archive | P | concrete FindICU paths plus Conan-shaped imported-target regression |
 | 1.17 | Source-module compile driver silently uses the host target | KDE module compile flags had no `-target`, while Conan/link flags did | P | rendered C/C++ flags pin the target for every kde-builder module |
+| 1.18 | Audit rejects a valid static ELF before packaging because it exceeds the default input cap | Konsole is 745 MiB after static Qt linking; `--max-file` was parsed but ignored | P | `onebin` forwards and enforces an explicit 1 GiB cap; CLI regression proves non-default caps are active |
 
 ## 2. Compile-time
 

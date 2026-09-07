@@ -75,6 +75,24 @@ the OpenGL ABI are host-owned; Qt, KF6 and the application are built in the CI
 source graph. Build-only host tools and data (gettext, Flex/Bison, DocBook,
 XML/XSLT and Perl) are checked separately and are not part of the application
 runtime contract.
+
+## Run 70: the audit input cap was a no-op
+
+Run `34075544222` at `ec30dda` built and installed all 38 KDE projects and
+Konsole, but the final onebin audit stopped before packaging with `OB0092`:
+the static Qt executable was 745,362,240 bytes, over onebin's 512 MiB default.
+The existing `--max-file` option was accepted by the CLI but discarded before
+`ob_audit_file`, so the recipe had no way to select a larger, still-bounded
+input tier. That is the class of failure here: a valid large static ELF is
+rejected before the artifact stage, making a successful build look like a
+missing binary.
+
+The fix wires the option through both CLI audit paths and enforces it in the
+single file-reading layer. Konsole explicitly selects a 1 GiB cap, while
+onebin's safe 512 MiB default remains unchanged for ordinary callers. A CLI
+regression proves a non-default cap is enforced, and Konsole preflight checks
+that the recipe and auditor both carry the contract. This is a bounded size
+tier for large static artifacts, not an exception for one filename.
 CMake's global
 prefix exclusion is explicitly cleared because KGuiAddons and KWindowSystem
 use the `FindX11`/`FindXCB` MODULEs to discover those host headers and

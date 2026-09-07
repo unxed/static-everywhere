@@ -139,6 +139,8 @@ for needle in \
     'CMAKE_PROJECT_INCLUDE' \
     'verify-konsole-artifact.sh' \
     'audit-with-hygiene-waivers.sh' \
+    '--max-file' \
+    '1073741824' \
     'BUILD_KSECRETD=OFF' \
     'BUILD_KWALLETD=OFF' \
     'BUILD_KWALLET_QUERY=OFF' \
@@ -160,6 +162,12 @@ grep -Fq 'konsole-runtime' "$REPO_ROOT/.github/workflows/konsole-zig-build.yml" 
     fail 'workflow does not smoke-test and upload the portable runtime bundle'
 pass 'Konsole internal shared-library RPATH and portable bundle are in the plan'
 pass 'Zig baseline, static Qt, cache, hook and artifact gates are in the plan'
+
+grep -Fq 'max_file = max_file' "$REPO_ROOT/onebin/src/main.c" || \
+    fail 'onebin audit does not forward the configured per-file size cap'
+grep -Fq 'opts->max_file' "$REPO_ROOT/onebin/src/audit/audit.c" || \
+    fail 'onebin audit does not enforce the configured per-file size cap'
+pass 'large static ELF audit cap is explicit and wired end-to-end'
 
 if grep -Eq 'go( |$)|setup-go|go build|go test' "$PLAN"; then
     fail 'Konsole plan unexpectedly contains a Go step'
