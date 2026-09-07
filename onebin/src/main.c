@@ -4,8 +4,12 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <errno.h>
+#include <inttypes.h>
+#include <stdint.h>
 #include "onebin/audit.h"
 #include "audit/audit.h"
+#include "util/limits.h"
 
 static void print_version(void) {
     printf("onebin %s\n", ONEBIN_VERSION);
@@ -52,6 +56,20 @@ static void print_audit_usage(FILE *out) {
     );
 }
 
+static int parse_max_file(const char *text, uint64_t *out) {
+    if (!text || *text == '\0' || *text == '-') {
+        return -1;
+    }
+    char *end = NULL;
+    errno = 0;
+    uintmax_t value = strtoumax(text, &end, 10);
+    if (errno == ERANGE || end == text || *end != '\0' || value > UINT64_MAX) {
+        return -1;
+    }
+    *out = (uint64_t)value;
+    return 0;
+}
+
 int main(int argc, char **argv) {
     if (argc < 2) {
         print_usage(stderr);
@@ -79,9 +97,8 @@ int main(int argc, char **argv) {
             return 2;
         }
 
-        /* Second increment: --format, --level, --profile, --glibc-max,
-         * --strict, --quiet, --verbose, --no-color now parse. Still not
-         * implemented: --allow, --baseline, --write-baseline, --max-file. */
+        /* All options documented by print_audit_usage are parsed here and
+         * passed through to every per-file audit invocation below. */
         int use_json = 0, quiet = 0, verbose = 0, strict = 0, no_color = 0;
         ob_level level = OB_LEVEL_1;
         int profile_forced = 0;
@@ -89,7 +106,7 @@ int main(int argc, char **argv) {
         const char *glibc_max = NULL;
         const char *baseline_path = NULL;
         const char *write_baseline_path = NULL;
-        long max_file = -1;
+        uint64_t max_file = ONEBIN_MAX_FILE;
         const char **allow = malloc((size_t)argc * sizeof(char *));
         if (!allow) {
             fprintf(stderr, "error: out of memory\n");
@@ -153,8 +170,11 @@ int main(int argc, char **argv) {
                 write_baseline_path = argv[++i];
             } else if (strcmp(argv[i], "--max-file") == 0) {
                 if (i + 1 >= argc) { fprintf(stderr, "error: --max-file requires an argument\n"); free(files); free(allow); return 2; }
-                max_file = atol(argv[++i]);
-                if (max_file < 0) { fprintf(stderr, "error: --max-file must be non-negative\n"); free(files); free(allow); return 2; }
+                if (parse_max_file(argv[++i], &max_file) != 0) {
+                    fprintf(stderr, "error: --max-file must be a non-negative integer\n");
+                    free(files); free(allow);
+                    return 2;
+                }
             } else if (strcmp(argv[i], "--strict") == 0) {
                 strict = 1;
             } else if (strcmp(argv[i], "--quiet") == 0) {
@@ -171,9 +191,6 @@ int main(int argc, char **argv) {
                 files[nfiles++] = argv[i];
             }
         }
-        (void)max_file; /* accepted for grammar compatibility; per-file cap
-                          * enforcement stays at ONEBIN_MAX_FILE until
-                          * ob_audit_options grows a max_file field */
         if (nfiles == 0) {
             fprintf(stderr, "error: 'audit' requires at least one file path\n");
             free(files); free(allow);
@@ -204,6 +221,7 @@ int main(int argc, char **argv) {
                 opts.glibc_max = glibc_max;
                 opts.strict = strict;
                 opts.allow = allow; opts.nallow = (size_t)nallow;
+                opts.max_file = max_file;
                 if (profile_forced) { opts.profile_forced = 1; opts.profile = profile; }
 
                 ob_report r;
@@ -244,6 +262,7 @@ int main(int argc, char **argv) {
             opts.glibc_max = glibc_max;
             opts.strict = strict;
             opts.allow = allow; opts.nallow = (size_t)nallow;
+            opts.max_file = max_file;
             if (have_baseline) opts.baseline = &bl;
             if (profile_forced) {
                 opts.profile_forced = 1;

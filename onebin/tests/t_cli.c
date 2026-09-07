@@ -125,6 +125,24 @@ TEST(cli_exit_2_on_not_elf) {
     unlink(path);
 }
 
+TEST(cli_max_file_override_is_enforced) {
+    char path[128];
+    snprintf(path, sizeof(path), "/tmp/onebin_t_cli_large_%d", (int)getpid());
+    FILE *f = fopen(path, "wb");
+    ASSERT_NOT_NULL(f);
+    for (int i = 0; i < 200; i++) {
+        ASSERT_EQ_INT(fputc('x', f), 'x');
+    }
+    fclose(f);
+
+    char args[256];
+    snprintf(args, sizeof(args), "audit --max-file 100 %s", path);
+    run_result r = run(args);
+    ASSERT_EQ_INT(r.exit_code, 2);
+    ASSERT_TRUE(strstr(r.out, "OB0092") != NULL);
+    unlink(path);
+}
+
 /* ------------------------------------------------------------- per-flag */
 
 TEST(cli_format_json) {

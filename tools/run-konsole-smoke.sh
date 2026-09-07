@@ -50,7 +50,11 @@ export QT_QPA_PLATFORM=xcb
 # happened and nothing about why. (BUILD-FAILURE-CLASSES.md 4.3.)
 export QT_DEBUG_PLUGINS=1
 export QT_LOGGING_RULES="qt.core.plugin*=true;kf.*=true"
-export LD_LIBRARY_PATH="$install_dir/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+if [[ ${KONSOLE_SMOKE_DISABLE_LD_LIBRARY_PATH:-0} == 1 ]]; then
+    unset LD_LIBRARY_PATH
+else
+    export LD_LIBRARY_PATH="$install_dir/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+fi
 export LIBGL_ALWAYS_SOFTWARE=1
 export SE_RENDER_DEBUG_FILE="$render_log"
 

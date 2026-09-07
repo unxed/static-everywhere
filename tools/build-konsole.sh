@@ -9,6 +9,10 @@ ONEBIN_BIN="$REPO_ROOT/onebin/build/onebin"
 ZIGCC="$REPO_ROOT/onebin/toolchain/zig-cc"
 ZIGCXX="$REPO_ROOT/onebin/toolchain/zig-c++"
 GLIBC_BASELINE=2.27
+# onebin defaults to a 512 MiB input cap.  Static Qt applications can be
+# larger while still being valid audit inputs, so the recipe opts into a
+# bounded 1 GiB tier explicitly; the auditor enforces this value.
+KONSOLE_AUDIT_MAX_FILE=1073741824
 KONSOLE_REF=264ecd0808f752a10204f954dfc1f87f7aba9ea8
 KDE_BUILDER_REF=0e661248c9da227dc5c129949cf7a403eb6d4d7e
 OUT=./out/konsole
@@ -72,6 +76,34 @@ QT_PACKAGE_ROOT=
 # architecture names are not stable parts of CMakeDeps filenames.
 # shellcheck disable=SC1091
 source "$REPO_ROOT/contrib/konsole/qt-package-root.sh"
+
+KONSOLE_HOST_RUNTIME_CONTRACT="$REPO_ROOT/contrib/konsole/host-runtime-sonames.txt"
+declare -a KONSOLE_HOST_RUNTIME_ALLOW_FLAGS=()
+declare -A _seen_host_runtime_sonames=()
+while IFS= read -r _soname || [[ -n $_soname ]]; do
+    [[ -z $_soname || $_soname == \#* ]] && continue
+    [[ $_soname =~ ^[A-Za-z0-9._+-]+$ ]] || {
+        printf 'error: invalid host runtime SONAME: %s\n' "$_soname" >&2
+        exit 1
+    }
+    case $_soname in
+        libGL.so*|libGLX.so*|libOpenGL.so*)
+            printf 'error: libGL is forbidden in the Konsole host runtime contract\n' >&2
+            exit 1
+            ;;
+    esac
+    [[ -z ${_seen_host_runtime_sonames[$_soname]:-} ]] || {
+        printf 'error: duplicate host runtime SONAME: %s\n' "$_soname" >&2
+        exit 1
+    }
+    _seen_host_runtime_sonames[$_soname]=1
+    KONSOLE_HOST_RUNTIME_ALLOW_FLAGS+=(--allow "$_soname")
+done < "$KONSOLE_HOST_RUNTIME_CONTRACT"
+(( ${#KONSOLE_HOST_RUNTIME_ALLOW_FLAGS[@]} > 0 )) || {
+    printf 'error: host runtime contract is empty: %s\n' "$KONSOLE_HOST_RUNTIME_CONTRACT" >&2
+    exit 1
+}
+unset _seen_host_runtime_sonames
 
 quote_cmd() {
     printf '+ '
@@ -170,7 +202,7 @@ conan_args=(
     --build='harfbuzz/*' --build='icu/*' --build='libffi/*'
     --build='libiconv/*' --build='libpng/*' --build='md4c/*'
     --build='pcre2/*' --build='hunspell/*' --build='qt/*' --build='xkbcommon/*'
-    --build='xz_utils/*' --build='zlib/*'
+    --build='xz_utils/*' --build='zlib/*' --build='zstd/*'
     -s:h build_type=Release -s:h compiler.cppstd=gnu20
     -s:b build_type=Release -s:b compiler.cppstd=gnu20
     -o:h 'qt/*:shared=False' -o:h 'qt/*:opengl=desktop'
@@ -203,16 +235,15 @@ run_env PATH="$CONAN_VENV/bin:$PATH" \
 run_env PATH="$CONAN_VENV/bin:$PATH" CONAN_HOME="$CONAN_HOME" \
     conan cache clean '*' --build --temp
 
-if [[ $PRINT_PLAN -eq 1 ]]; then
-    # shellcheck disable=SC2016  # variables belong to the printed inner shell
-    quote_cmd bash -c 'pc_dirs=$(find "$CONAN_HOME/p/b" -type f -name "*.pc" -printf "%h\\n" 2>/dev/null | sort -u | paste -sd: -); export PKG_CONFIG_PATH="$pc_dirs:/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/lib/pkgconfig:/usr/share/pkgconfig:${PKG_CONFIG_PATH:-}"; pkg-config --modversion xkbcommon'
-else
-    pc_dirs=$(find "$CONAN_HOME/p/b" -type f -name '*.pc' -printf '%h\n' 2>/dev/null | sort -u | paste -sd: -)
-    export PKG_CONFIG_PATH="$pc_dirs:/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/lib/pkgconfig:/usr/share/pkgconfig:${PKG_CONFIG_PATH:-}"
-    pkg-config --modversion xkbcommon || {
-        printf 'warning: Conan xkbcommon .pc file was not found; do not accept a host xkbcommon fallback silently\n' >&2
-    }
-fi
+# Keep generated Conan providers first, with host X11/GL metadata as the
+# explicit fallback. Do not inherit an unrelated graph or a sysroot that
+# rewrites absolute Conan package paths. CMakeToolchain prepends QT_OUT too.
+export PKG_CONFIG_LIBDIR=/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/lib/pkgconfig:/usr/share/pkgconfig
+export PKG_CONFIG_PATH="$QT_OUT:$PKG_CONFIG_LIBDIR"
+export PKG_CONFIG_SYSROOT_DIR=
+run_env PKG_CONFIG_PATH="$PKG_CONFIG_PATH" PKG_CONFIG_LIBDIR="$PKG_CONFIG_LIBDIR" \
+    PKG_CONFIG_SYSROOT_DIR= python3 \
+    "$REPO_ROOT/contrib/konsole/qt-host/dependency_contract.py" "$QT_OUT"
 
 # Where Conan unpacked the Qt package.
 #
@@ -288,34 +319,26 @@ run_env GIT_CONFIG_GLOBAL="$GIT_CONFIG_GLOBAL" PYTHONPATH="$KDE_BUILDER" \
 
 KONSOLE_BIN="$KDE_INSTALL_DIR/bin/konsole"
 if [[ $PRINT_PLAN -eq 1 ]]; then
-    quote_cmd "$REPO_ROOT/tools/verify-konsole-artifact.sh" "$KONSOLE_BIN"
+    quote_cmd "$REPO_ROOT/tools/verify-konsole-artifact.sh" "$KONSOLE_BIN" "$KDE_INSTALL_DIR"
     quote_cmd "$REPO_ROOT/tools/audit-with-hygiene-waivers.sh" "$ONEBIN_BIN" \
-        --profile hybrid --glibc-max "$GLIBC_BASELINE" \
-        --allow libc.so.6 --allow libdl.so.2 --allow libpthread.so.0 \
-        --allow libX11.so.6 --allow libX11-xcb.so.1 --allow libxcb.so.1 \
-        --allow libxcb-cursor.so.0 --allow libxcb-icccm.so.4 \
-        --allow libxcb-image.so.0 --allow libxcb-keysyms.so.1 \
-        --allow libxcb-randr.so.0 --allow libxcb-render.so.0 \
-        --allow libxcb-render-util.so.0 --allow libxcb-shape.so.0 \
-        --allow libxcb-shm.so.0 --allow libxcb-sync.so.1 \
-        --allow libxcb-xfixes.so.0 --allow libxcb-xkb.so.1 \
-        --allow libICE.so.6 --allow libSM.so.6 --allow libcanberra.so.0 --level 1 --strict "$KONSOLE_BIN"
+        --allow-internal-prefix "$KDE_INSTALL_DIR" \
+        --max-file "$KONSOLE_AUDIT_MAX_FILE" --profile hybrid --glibc-max "$GLIBC_BASELINE" \
+        "${KONSOLE_HOST_RUNTIME_ALLOW_FLAGS[@]}" --level 1 --strict "$KONSOLE_BIN"
 else
     [[ -x $KONSOLE_BIN ]] || { printf 'error: kde-builder did not install %s\n' "$KONSOLE_BIN" >&2; exit 1; }
-    "$REPO_ROOT/tools/verify-konsole-artifact.sh" "$KONSOLE_BIN" | tee "$OUT_ABS/konsole-audit.txt"
+    "$REPO_ROOT/tools/verify-konsole-artifact.sh" "$KONSOLE_BIN" "$KDE_INSTALL_DIR" | tee "$OUT_ABS/konsole-audit.txt"
     audit_args=(
+        --allow-internal-prefix "$KDE_INSTALL_DIR"
+        --max-file "$KONSOLE_AUDIT_MAX_FILE"
         --profile hybrid --glibc-max "$GLIBC_BASELINE"
-        --allow libc.so.6 --allow libdl.so.2 --allow libpthread.so.0
-        --allow libX11.so.6 --allow libX11-xcb.so.1 --allow libxcb.so.1
-        --allow libxcb-cursor.so.0 --allow libxcb-icccm.so.4
-        --allow libxcb-image.so.0 --allow libxcb-keysyms.so.1
-        --allow libxcb-randr.so.0 --allow libxcb-render.so.0
-        --allow libxcb-render-util.so.0 --allow libxcb-shape.so.0
-        --allow libxcb-shm.so.0 --allow libxcb-sync.so.1
-        --allow libxcb-xfixes.so.0 --allow libxcb-xkb.so.1
-        --allow libICE.so.6 --allow libSM.so.6 --allow libcanberra.so.0 --level 1 --strict "$KONSOLE_BIN"
+        "${KONSOLE_HOST_RUNTIME_ALLOW_FLAGS[@]}" --level 1 --strict "$KONSOLE_BIN"
     )
     "$REPO_ROOT/tools/audit-with-hygiene-waivers.sh" "$ONEBIN_BIN" "${audit_args[@]}" \
         | tee "$OUT_ABS/konsole-onebin-audit.txt"
+fi
+if [[ $PRINT_PLAN -eq 1 ]]; then
+    quote_cmd "$REPO_ROOT/tools/package-konsole-runtime.sh" "$KDE_INSTALL_DIR" "$OUT_ABS/konsole-runtime"
+else
+    "$REPO_ROOT/tools/package-konsole-runtime.sh" "$KDE_INSTALL_DIR" "$OUT_ABS/konsole-runtime"
 fi
 printf 'Konsole build output: %s\n' "$OUT_ABS"

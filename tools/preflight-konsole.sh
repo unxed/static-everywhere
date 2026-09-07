@@ -12,6 +12,7 @@ pass() { printf 'PASS: %s\n' "$1"; }
 
 bash -n "$REPO_ROOT/tools/build-konsole.sh" "$REPO_ROOT/tools/preflight-konsole.sh" \
     "$REPO_ROOT/tools/run-konsole-smoke.sh" "$REPO_ROOT/tools/verify-konsole-artifact.sh" \
+    "$REPO_ROOT/tools/package-konsole-runtime.sh" "$REPO_ROOT/contrib/konsole/konsole-launcher.sh" \
     "$REPO_ROOT/tools/preflight-konsole-kde-builder-pretend.sh" \
     "$REPO_ROOT/contrib/konsole/qt-package-root.sh" "$REPO_ROOT/tools/test-konsole-qt-package-root.sh" \
     "$REPO_ROOT/tools/test-konsole-cmake-find-mode.sh" \
@@ -24,8 +25,16 @@ bash -n "$REPO_ROOT/tools/build-konsole.sh" "$REPO_ROOT/tools/preflight-konsole.
     "$REPO_ROOT/tools/test-konsole-host-docbook-tools.sh" \
     "$REPO_ROOT/tools/test-konsole-static-qt-plugins.sh" \
     "$REPO_ROOT/tools/test-konsole-deferred-recipe-file.sh" \
-    "$REPO_ROOT/tools/test-konsole-icu-consistency.sh"
+    "$REPO_ROOT/tools/test-konsole-runtime-rpath.sh" \
+    "$REPO_ROOT/tools/test-konsole-icu-consistency.sh" \
+    "$REPO_ROOT/tools/test-konsole-direct-qt-includes.sh" \
+    "$REPO_ROOT/tools/test-optional-gl-cxx-only.sh" \
+    "$REPO_ROOT/tools/test-konsole-host-runtime-contract.sh" \
+    "$REPO_ROOT/tools/test-audit-internal-prefix.sh"
 pass 'Konsole shell scripts parse'
+
+python3 "$REPO_ROOT/tools/test-konsole-dependency-contract.py"
+pass 'Conan metadata rejects missing public headers and host pkg-config substitutions'
 
 bash "$REPO_ROOT/tools/test-konsole-cmake-package-prefixes-regression.sh"
 pass 'Conan CMake package prefixes are available to CONFIG-mode find_package'
@@ -54,8 +63,23 @@ pass 'Konsole static Qt plugin imports are configure-time and Conan-safe'
 bash "$REPO_ROOT/tools/test-konsole-deferred-recipe-file.sh"
 pass 'deferred recipe files retain their absolute path'
 
+bash "$REPO_ROOT/tools/test-konsole-runtime-rpath.sh"
+pass 'all Konsole loadable targets receive an origin-relative install RPATH'
+
 bash "$REPO_ROOT/tools/test-konsole-icu-consistency.sh"
 pass 'ICU consistency probe carries concrete package paths into try_compile'
+
+bash "$REPO_ROOT/tools/test-konsole-direct-qt-includes.sh"
+pass 'split KDE sources receive direct Qt includes through the source contract'
+
+bash "$REPO_ROOT/tools/test-optional-gl-cxx-only.sh"
+pass 'optional-GL forwarding covers executable, shared and MODULE link boundaries'
+
+bash "$REPO_ROOT/tools/test-konsole-host-runtime-contract.sh"
+pass 'host runtime SONAMEs have one authoritative contract'
+
+bash "$REPO_ROOT/tools/test-audit-internal-prefix.sh"
+pass 'internal shared-library audit allowlist is derived from the runtime prefix'
 
 for tool in msgmerge msgfmt flex bison; do
     command -v "$tool" >/dev/null 2>&1 || fail "Gettext tool is missing: $tool"
@@ -108,8 +132,8 @@ for needle in \
     'SONNET_USE_QML=OFF' \
     'WITH_BZIP2=ON' \
     'WITH_LIBLZMA=ON' \
-    'WITH_OPENSSL=OFF' \
-    'WITH_LIBZSTD=OFF' \
+    'WITH_OPENSSL=ON' \
+    'WITH_LIBZSTD=ON' \
     'UDEV_DISABLED=ON' \
     'ATTICA_STATIC_BUILD=ON' \
     'CMAKE_DISABLE_FIND_PACKAGE_ACL=ON' \
@@ -117,8 +141,12 @@ for needle in \
     'CMAKE_DISABLE_FIND_PACKAGE_UTEMPTER=ON' \
     'CMAKE_DISABLE_FIND_PACKAGE_UDev=ON' \
     'CMAKE_PROJECT_INCLUDE' \
+    'CMAKE_EXE_LINKER_FLAGS="-pie' \
     'verify-konsole-artifact.sh' \
     'audit-with-hygiene-waivers.sh' \
+    '--allow-internal-prefix' \
+    '--max-file' \
+    '1073741824' \
     'BUILD_KSECRETD=OFF' \
     'BUILD_KWALLETD=OFF' \
     'BUILD_KWALLET_QUERY=OFF' \
@@ -128,7 +156,24 @@ for needle in \
         fail "plan/config is missing: $needle"
     fi
 done
+grep -Fq 'set(CMAKE_INSTALL_RPATH "\$ORIGIN/../lib")' "$REPO_ROOT/contrib/konsole/project-include.cmake" || \
+    fail 'Konsole install RPATH does not point to its own sibling lib directory'
+grep -Fq 'CALL _se_konsole_set_runtime_rpath' "$REPO_ROOT/contrib/konsole/project-include.cmake" || \
+    fail 'Konsole target-level runtime RPATH callback is not deferred'
+grep -Fq 'INSTALL_RPATH "\$ORIGIN/../lib"' "$REPO_ROOT/contrib/konsole/runtime-rpath.cmake" || \
+    fail 'Konsole target-level runtime RPATH contract is missing'
+grep -Fq 'package-konsole-runtime.sh' "$REPO_ROOT/tools/build-konsole.sh" || \
+    fail 'build plan does not create the portable Konsole runtime bundle'
+grep -Fq 'konsole-runtime' "$REPO_ROOT/.github/workflows/konsole-zig-build.yml" || \
+    fail 'workflow does not smoke-test and upload the portable runtime bundle'
+pass 'Konsole internal shared-library RPATH and portable bundle are in the plan'
 pass 'Zig baseline, static Qt, cache, hook and artifact gates are in the plan'
+
+grep -Fq 'max_file = max_file' "$REPO_ROOT/onebin/src/main.c" || \
+    fail 'onebin audit does not forward the configured per-file size cap'
+grep -Fq 'opts->max_file' "$REPO_ROOT/onebin/src/audit/audit.c" || \
+    fail 'onebin audit does not enforce the configured per-file size cap'
+pass 'large static ELF audit cap is explicit and wired end-to-end'
 
 if grep -Eq 'go( |$)|setup-go|go build|go test' "$PLAN"; then
     fail 'Konsole plan unexpectedly contains a Go step'
@@ -176,9 +221,14 @@ assert "CMAKE_IGNORE_PREFIX_PATH=/usr" not in cmake_options
 assert "WITH_X11=ON" in cmake_options
 assert "-DCMAKE_C_FLAGS=--target=x86_64-linux-gnu.2.27" in cmake_options
 assert "-DCMAKE_CXX_FLAGS=--target=x86_64-linux-gnu.2.27" in cmake_options
+cmake_tokens = shlex.split(cmake_options)
+assert any(
+    shlex.split(token.split("=", 1)[1]) == ["-pie", "/tmp/compat-glibc-shims.o"]
+    for token in cmake_tokens
+    if token.startswith("-DCMAKE_EXE_LINKER_FLAGS=")
+)
 assert config["override konsole"]["revision"]
 assert "#" not in cmake_options
-shlex.split(cmake_options)
 workflow = yaml.safe_load(pathlib.Path(sys.argv[2]).read_text())
 assert set(workflow["jobs"]) == {"preflight", "build"}
 print("YAML config/workflow parse: PASS")
@@ -188,8 +238,19 @@ pass 'folded cmake-options scalar is free of comments and shlex-safe'
 
 grep -Fq 'libGL.so*' "$REPO_ROOT/tools/verify-konsole-artifact.sh" || \
     fail 'artifact verifier does not reject a hard libGL dependency'
-grep -Fq 'libcanberra.so.0' "$REPO_ROOT/tools/verify-konsole-artifact.sh" || \
-    fail 'artifact verifier does not allow the declared Canberra runtime dependency'
+HOST_RUNTIME_CONTRACT="$REPO_ROOT/contrib/konsole/host-runtime-sonames.txt"
+for contract_consumer in "$REPO_ROOT/tools/verify-konsole-artifact.sh" \
+                         "$REPO_ROOT/tools/build-konsole.sh"; do
+    grep -Fq 'host-runtime-sonames.txt' "$contract_consumer" || \
+        fail "host runtime contract is not consumed by $contract_consumer"
+done
+grep -Fxq 'libcanberra.so.0' "$HOST_RUNTIME_CONTRACT" || \
+    fail 'host runtime contract does not allow the declared Canberra dependency'
+for host_soname in libxcb-res.so.0 libxcb-glx.so.0 libEGL.so.1 libXfixes.so.3 \
+                   librt.so.1 libutil.so.1 ld-linux-x86-64.so.2; do
+    grep -Fxq "$host_soname" "$HOST_RUNTIME_CONTRACT" || \
+        fail "host runtime contract is missing audited host ABI: $host_soname"
+done
 pass 'artifact verifier rejects a hard libGL dependency'
 
 for needle in \
@@ -257,7 +318,7 @@ done < "$REPO_ROOT/contrib/konsole/host-perl-modules.txt"
 pass 'workflow installs declared host Perl build modules'
 
 for needle in \
-    'exports = "qt_cmake_components.py"' \
+    'exports = "qt_cmake_components.py", "dependency_contract.py"' \
     'self.dependencies["qt"].cpp_info.components' \
     'component_shim_names(' \
     'component_config(module)' \
@@ -271,6 +332,11 @@ for needle in \
     '"zlib/1.3.2"' \
     '"libxml2/2.15.3"' \
     '"libmount/2.39.2"' \
+    '"openssl/3.6.4"' \
+    '"zstd/1.5.7"' \
+    '"xkbcommon/1.5.0"' \
+    'PkgConfigDeps(self).generate()' \
+    'record_contract(self.generators_folder, headers)' \
     'cmake_deps.set_property' \
     '"libmount::libmount"' \
     '"cmake_target_aliases"' \
@@ -623,10 +689,13 @@ pass 'ICU data is compiled into the static archive (self-contained off the runne
 
 # The runtime class is only observable when every build-time path is
 # hidden: the workflow must run the smoke test a second time that way.
-if ! grep -q 'KONSOLE_INSTALL_DIR=/nonexistent' "$REPO_ROOT/.github/workflows/konsole-zig-build.yml" \
+if ! grep -q 'KONSOLE_INSTALL_DIR="\$neutral/runtime"' "$REPO_ROOT/.github/workflows/konsole-zig-build.yml" \
    || ! grep -q 'conan2/p.hidden' "$REPO_ROOT/.github/workflows/konsole-zig-build.yml"; then
-    fail "the workflow has no isolated smoke run; a binary that only works on the runner would pass"
+    fail "the workflow has no isolated portable-bundle smoke run; a binary that only works on the runner would pass"
 fi
-pass 'the workflow runs an isolated smoke test with build-time paths hidden'
+pass 'the workflow runs an isolated portable-bundle smoke test with build-time paths hidden'
+grep -Fq 'KONSOLE_SMOKE_DISABLE_LD_LIBRARY_PATH=1' "$REPO_ROOT/.github/workflows/konsole-zig-build.yml" || \
+    fail 'the isolated smoke test still masks missing origin-relative runtime libraries'
+pass 'the isolated smoke test exercises the binary without LD_LIBRARY_PATH'
 
 printf 'Konsole preflight: PASS\n'

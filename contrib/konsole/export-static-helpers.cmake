@@ -127,6 +127,13 @@ if(NOT _se_install_wrapped)
                 endif()
                 if(TARGET "${_a}")
                     set_property(TARGET "${_a}" PROPERTY _se_installed TRUE)
+                    # The Konsole hook defines this only for its own
+                    # application. Run it before _install: CMake may snapshot
+                    # target RPATH properties while install(TARGETS) is
+                    # declared, before the end-of-directory deferred pass.
+                    if(COMMAND _se_konsole_set_runtime_rpath_for_target)
+                        _se_konsole_set_runtime_rpath_for_target("${_a}")
+                    endif()
                 endif()
                 math(EXPR _i "${_i} + 1")
             endwhile()

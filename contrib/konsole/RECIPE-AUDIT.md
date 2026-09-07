@@ -4,6 +4,36 @@ This file records the two pre-CI checks requested for the Konsole showcase.
 The hosted build and graphical launch are intentionally not called a success
 until the GitHub Actions job produces them.
 
+## Run 64: one Conan provider graph for CMake and pkg-config
+
+Run `34004127821` at `15b3307` failed in KArchive on `zstd.h` and
+`openssl/evp.h`. Its diagnostics ZIP SHA-256 is
+`c34bd05d96fb2fa1b83ad3059eeacc133790cb1fdc0d8b1b00f2c3af6a71b584`.
+The cache records host LibZstd include/version metadata but a Conan archive;
+the OpenSSL target was exposed through a transitive, headerless requirement.
+
+Source review: KArchive `fe0e77af6fec72698999247f3468b984fc011af0`,
+top-level and `src/CMakeLists.txt`, and Zstd `v1.5.7`'s
+`build/cmake/{CMakeLists.txt,lib/CMakeLists.txt}`. The KArchive revision is
+the pre-run upstream snapshot, not an asserted CI source SHA: frameworks
+currently track `latest-kf6`. Also inspected Conan `2.29.1` PkgConfigDeps and
+the CCI Zstd/xkbcommon recipes: both remove installed upstream `.pc` files.
+Zstd exports a static, PIC library and pthread closure; no standalone Zstd
+program is needed by KArchive. It is rebuilt with the same pinned Zig target.
+
+The fix generates both metadata formats from Conan's resolved graph, promotes
+the three public header consumers to direct requirements, and removes cache
+directory guessing. Before KDE starts, the contract checks every generated
+pkg-config provider and its Requires closure, plus the declared public-header
+paths against their package roots. It fails rather than warning on host
+fallback. Host X11/GL lookup remains explicitly available.
+
+CI preflight exercises eight negative/positive metadata fixtures, including
+a new arbitrary provider, downloaded cache layout and spaces in paths. A
+separate integration test uses the pinned Conan to package empty fixtures
+and compares actual CMakeDeps/PkgConfigDeps component headers without compiling
+code. These gates do not prove the full build or graphical runtime succeeds.
+
 ## Pass 1: f4 qt inventory
 
 The complete f4 reference was read before writing this recipe:
@@ -29,7 +59,7 @@ The load-bearing decisions were classified before adapting them:
 | CMake ABI workarounds for Zig | carried: pointer size, multiarch, implicit includes and RPATH |
 | compile glibc compatibility shim before Conan | carried, with global shared/executable link flags |
 | rebuild target packages despite Conan binary availability | carried for the reduced Qt graph |
-| `PKG_CONFIG_PATH` with system multiarch paths | carried for host xcb discovery, with Conan `.pc` paths preferred during KDE build |
+| `PKG_CONFIG_PATH` with system multiarch paths | host xcb fallback retained, but KDE uses PkgConfigDeps from the same graph as CMakeDeps; never scans the Conan cache for `.pc` files |
 | fontconfig HTTP 418 workaround | carried verbatim from f4's upstream builder |
 | source-download backup and no `conan cache clean --source` | carried |
 | ccache sloppiness/base directory/size and explicit cache save | carried |
@@ -45,6 +75,43 @@ the OpenGL ABI are host-owned; Qt, KF6 and the application are built in the CI
 source graph. Build-only host tools and data (gettext, Flex/Bison, DocBook,
 XML/XSLT and Perl) are checked separately and are not part of the application
 runtime contract.
+
+## Run 70: the audit input cap was a no-op
+
+Run `34075544222` at `ec30dda` built and installed all 38 KDE projects and
+Konsole, but the final onebin audit stopped before packaging with `OB0092`:
+the static Qt executable was 745,362,240 bytes, over onebin's 512 MiB default.
+The existing `--max-file` option was accepted by the CLI but discarded before
+`ob_audit_file`, so the recipe had no way to select a larger, still-bounded
+input tier. That is the class of failure here: a valid large static ELF is
+rejected before the artifact stage, making a successful build look like a
+missing binary.
+
+The fix wires the option through both CLI audit paths and enforces it in the
+single file-reading layer. Konsole explicitly selects a 1 GiB cap, while
+onebin's safe 512 MiB default remains unchanged for ordinary callers. A CLI
+regression proves a non-default cap is enforced, and Konsole preflight checks
+that the recipe and auditor both carry the contract. This is a bounded size
+tier for large static artifacts, not an exception for one filename.
+
+## Run 71: the root audit did not know the install-prefix closure
+
+Run `34093006298` at `aac2678` built and installed all 38 KDE projects and
+Konsole. The recursive artifact verifier passed, but the separate onebin
+audit rejected `libkonsoleapp.so.26.08.0` as `OB0010`: it audited only the
+executable, so an application-owned shared library looked like an undeclared
+host dependency. The failure was the whole class of root-only audits becoming
+stale as the application gains loadable targets, not a reason to allowlist that
+one versioned filename.
+
+The wrapper now accepts an install prefix, derives allowances from every
+internal `.so` and `.so.*` basename (and any declared SONAME), and passes
+those names to onebin without leaking the wrapper-only option. The existing
+recursive verifier still walks each internal library's complete `DT_NEEDED`
+closure and rejects any host Qt/KF6/OpenGL escape. A fixture regression uses
+an arbitrary versioned library name, proving the prefix-derived contract
+rather than special-casing Konsole's current SONAME.
+
 CMake's global
 prefix exclusion is explicitly cleared because KGuiAddons and KWindowSystem
 use the `FindX11`/`FindXCB` MODULEs to discover those host headers and
@@ -86,9 +153,12 @@ that are not safe with a Widgets-only, no-QtWayland target:
   upstream feature variable, so the generated `Qt6GuiConfig.cmake` adapter
   derives it from those targets. Static Qt/KF6 selection remains protected by
   Conan prefix ordering and the final graph assertion.
-- KArchive defaults BZip2, LZMA, OpenSSL and Zstd to required. BZip2, LZMA and
-  Zlib are direct Conan requirements because KArchive compiles sources that
-  include their headers; the recipe disables the unused OpenSSL/Zstd paths.
+- KArchive's `WITH_*` switches select REQUIRED versus RECOMMENDED; OFF does
+  **not** disable the corresponding backend. All five compression/crypto
+  inputs (BZip2, LZMA, Zlib, OpenSSL, Zstd) are direct Conan requirements.
+  OpenSSL and Zstd are explicitly required; their public headers must survive
+  Conan's dependency traits. Konsole's own xkbcommon header consumer is also
+  a direct requirement.
 - KDocTools' `src/CMakeLists.txt` adds `${LIBXML2_INCLUDE_DIR}` and builds
   `meinproc6` from sources that include libxml2 headers. Libxml2 is therefore
   a direct Conan requirement even though Qt already brings it transitively;
@@ -193,6 +263,35 @@ architectural blocker to adding it later: the recipe will need QtWayland,
 Wayland protocol development inputs, and a compositor-backed runtime smoke
 test rather than treating the current X11 result as equivalent.
 
+## Run 72: the final audit exposed two intentional-contract gaps
+
+Run `34107053382` at `9b983de` built all 38 KDE projects and installed
+Konsole. The recursive artifact verifier passed: the executable's internal
+`libkonsoleapp.so.26.08.0` closure was complete and the host X11/Canberra/
+EGL contract contained no Qt/KF6 or hard `libGL` escape. The build stopped in
+the strict onebin audit before packaging, with `OB0041 $ORIGIN/../lib` and
+`OB0054` (the installed executable was `ET_EXEC`).
+
+The first finding is required by the portable runtime contract already
+tested by `test-konsole-runtime-rpath.sh`: `bin/konsole` must find the
+install-prefix libraries in its sibling `lib/` directory without
+`LD_LIBRARY_PATH`. The hygiene wrapper now accepts only that exact
+`$ORIGIN/../lib` value; arbitrary origin-relative RPATHs remain fatal, with a
+positive/negative fixture in `test-audit-internal-prefix.sh`.
+
+The second finding was a class-level propagation gap. Conan received `-pie`
+for its package builds, but kde-builder configures every KDE source module
+separately, so the application executable did not inherit it. The common
+KDE-builder CMake contract now passes `-pie` together with the glibc shim for
+every executable target. The flag regression parses the folded YAML scalar
+with the same `shlex` rules as kde-builder and sends the complete value
+through the Zig wrapper; preflight asserts that the shim was not lost.
+
+This run proved the source-built dependency graph and artifact closure, but
+not the final portable bundle: the next hosted run must verify that the
+explicit executable-link contract yields PIE and that the bundle then passes
+the isolated graphical smoke test.
+
 ## Pass 2: reverse check of the Konsole recipe
 
 After the implementation was written, every item above was checked against
@@ -218,7 +317,7 @@ GitHub workflow dispatch:
    concrete QPA targets are present.
 7. A miniature CMake project with fake static qxcb/GL plugin archives
    configured and built successfully. It exercised the Itanium symbol parser,
-   `.prl` closure, executable-only `INTERFACE_SOURCES`, optional-GL CXX
+   `.prl` closure, loadable-target `INTERFACE_SOURCES`, optional-GL CXX
    compilation and static-graph assertion. The Konsole-specific probe also
    verifies that its registration unit exists before CMake validates consumer
    sources, that all three QPA imports are present, that repeated imports are
@@ -257,3 +356,102 @@ made until both gates pass.
 The remaining proof is necessarily hosted: the full Conan Qt graph, the
 source-built KF6 dependency closure, the final onebin audit, and a Konsole
 window captured from Xvfb.
+
+## Run 65: build succeeded, artifact audit was too narrow
+
+Run `34010516240` at `cb703b6` built all 38 projects and installed Konsole,
+but the post-build audit rejected `libkonsoleapp.so.26.08.0` as an
+undeclared dependency. The pinned Konsole source explicitly declares
+`konsoleapp` as `SHARED`, installs it under `lib/`, and links the executable
+to it; this is an application-owned runtime library, not a host KDE/Qt
+dependency. The old checker only inspected the executable and had no model of
+the install prefix.
+
+The runtime contract now walks the complete `DT_NEEDED` closure, recursively
+audits internal libraries found in the supplied install prefix, and keeps the
+host allowlist only for X11/GL-adjacent system ABI. The build also restores an
+origin-relative RPATH for the Konsole application and creates a portable
+bundle containing the executable, all install-prefix shared objects, KDE
+modules and data. CI smoke-tests that bundle and uploads it, so downloading
+the artifact does not require manually setting `LD_LIBRARY_PATH` or
+`XDG_DATA_DIRS`.
+
+Run 69 (2026-09-07): build `34066071126` compiled and installed all 38 KDE
+projects, but the artifact verifier correctly rejected the result because the
+installed Konsole executable had an absolute build/Conan RPATH instead of
+`$ORIGIN/../lib`. The previous fix only changed global `CMAKE_*` defaults from
+the early `CMAKE_PROJECT_INCLUDE` hook; KDE's later CMake settings could
+overwrite those defaults before target generation. The recipe now defers a
+walk of all application-owned EXECUTABLE, SHARED and MODULE targets and sets
+their five RPATH properties explicitly, including immediately before each
+`install(TARGETS ...)` rule because CMake snapshots those properties there.
+`test-konsole-runtime-rpath.sh`
+configures, builds and installs a miniature instance of all three target kinds
+with link-path RPATH defaults deliberately enabled, then checks each installed
+ELF for only the origin-relative path. This closes the class of target-level
+RPATH drift rather than special-casing `konsole` or `libkonsoleapp.so`.
+
+The same audit enumerated the complete host edge (`libxcb-res`, `libXfixes`,
+`libxcb-glx`, `libEGL`, `librt`, `libutil` and the dynamic loader) instead of
+discovering those names one at a time in later runs; they are explicit parts
+of the hybrid X11/EGL and glibc host contract.
+
+## Run 66: KIO split source omitted a direct Qt include
+
+Run `34039464605` at `6e738aaab73a4a28967e86b1bddc7ffadf544004` passed the
+entire fast preflight and then stopped before Konsole at KIO project 29/38.
+The diagnostic artifact was `konsole-zig-build-diagnostic-logs`, ID
+`9993285611`, SHA-256 digest
+`sha256:f1eba5a4a3b557ac1ce1152c1ebda10d926c75a1020b91339496bfd98d588ed`.
+
+KIO had updated to `8f3af2189`, whose new
+`src/kioworkers/file/file_unix_copy.cpp` uses `QUrl` by value without
+including `<QUrl>`. The compiler consequently reported an incomplete `QUrl`
+type even though KIO already links Qt Network. No Konsole executable was
+produced because the dependency graph stopped before the application build.
+
+The fix repairs the class of split-translation-unit include omissions through
+one idempotent CMake source/include contract and a configure-only regression;
+it is not a one-line diagnostic suppression. The next hosted run must prove
+that KIO gets past this compile stage and that the later artifact stages still
+produce the portable binary.
+
+## Run 67: optional-GL forwarding stopped at the executable boundary
+
+Run `34047753271` at `544d182130f90fb716861afa5f523cc2c6b6d922` built the
+complete Qt/KF6 graph and installed Konsole, but the artifact contract rejected
+the loadable closure because `libkonsoleapp.so.26.08.0` had
+`DT_NEEDED libGL.so.1`. The executable itself had no `libGL` dependency, which
+made the earlier executable-only optional-GL regression pass while leaving the
+real shared application library unsafe. The pinned Konsole CMake at
+`v26.08.0` (`9a304001aad60b7a3a39bca39ce3a3764ec058d5`) declares
+`konsoleapp` as `SHARED` and links it to static Qt through the same graph as the
+executable; its build files therefore expose the whole failure class.
+
+The fix moves the contract to every loadable consumer of `Qt6::Gui`:
+executables, SHARED libraries and MODULEs receive the generated forwarder and
+render-backend constructor, carry `CMAKE_DL_LIBS`, and have transitive system
+`OpenGL::GL`/`libGL` link items removed so a linker without `--as-needed` cannot
+recreate `DT_NEEDED`. Static libraries remain source-free because they are not
+loader boundaries and would multiply the definitions into every consumer.
+The existing CXX-only miniature regression now builds one executable, one
+shared library and one MODULE, checks that each exports a forwarded GL symbol,
+and rejects `libGL` in each `DT_NEEDED` list. This guards the mechanism rather
+than allowlisting the one observed soname.
+
+## Run 68: artifact verifier drifted from the host ABI contract
+
+Run `34057485004` at `c8db751a878294badb6965600b86d1acc53bf938` built all 38
+projects successfully and installed Konsole, but the post-build artifact
+verifier rejected `libxcb-cursor.so.0` as undeclared. The onebin audit already
+allowed that host library, and the host package contract already installed
+`libxcb-cursor-dev`; only the verifier's duplicated allowlist was stale.
+
+The fix removes that class of drift rather than adding one more exception:
+`contrib/konsole/host-runtime-sonames.txt` is now the single explicit hybrid
+runtime SONAME contract. Both `build-konsole.sh` and
+`verify-konsole-artifact.sh` parse it, reject malformed entries and forbid
+`libGL` there. `test-konsole-host-runtime-contract.sh` is run by preflight and
+asserts that the list is non-empty, duplicate-free, contains the required X11,
+EGL and Canberra boundary, and is consumed by both paths. The build still
+rejects any host SONAME outside that file.

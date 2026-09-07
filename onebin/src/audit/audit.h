@@ -12,6 +12,8 @@
 #ifndef AUDIT_AUDIT_H
 #define AUDIT_AUDIT_H
 
+#include <stdint.h>
+
 #include "audit/report.h"
 #include "audit/checks.h"
 
@@ -24,6 +26,7 @@ typedef struct {
     const char *glibc_max;       /* NULL -> OB_DEFAULT_GLIBC_MAX */
     const char *const *allow;    /* extra --allow sonames */
     size_t      nallow;
+    uint64_t    max_file;        /* 0 is a valid cap; init defaults it */
 
     ob_level    level;           /* default OB_LEVEL_1 */
     int         strict;          /* warnings also fail, for ob_report_finalize */

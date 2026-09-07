@@ -4,6 +4,9 @@ from conan import ConanFile
 from conan.errors import ConanInvalidConfiguration
 from conan.tools.cmake import CMakeDeps, CMakeToolchain
 from conan.tools.files import save
+from conan.tools.gnu import PkgConfigDeps
+
+from dependency_contract import public_headers, record_contract
 
 from qt_cmake_components import (
     component_config,
@@ -16,7 +19,7 @@ from qt_cmake_components import (
 class KonsoleQtHostConan(ConanFile):
     name = "static-everywhere-konsole-qt-host"
     version = "0.1"
-    exports = "qt_cmake_components.py"
+    exports = "qt_cmake_components.py", "dependency_contract.py"
     settings = "os", "compiler", "build_type", "arch"
 
     # This keeps the runtime surface focused on Widgets, X11 and OpenGL.
@@ -83,6 +86,11 @@ class KonsoleQtHostConan(ConanFile):
         "qt/*:with_zstd": False,
         "xkbcommon/*:with_x11": True,
         "xkbcommon/*:with_wayland": False,
+        "openssl/*:shared": False,
+        "zstd/*:shared": False,
+        "zstd/*:fPIC": True,
+        # KArchive calls the library, not the standalone compressor CLI.
+        "zstd/*:build_programs": False,
     }
 
     # Konsole's and the KDE frameworks' CMakeLists.txt files consume these
@@ -109,6 +117,14 @@ class KonsoleQtHostConan(ConanFile):
         # public header dependency visible to CMakeDeps.
         "libxml2/2.15.3",
         "libmount/2.39.2",
+        # WITH_OPENSSL/WITH_LIBZSTD in KArchive mean REQUIRED, not ENABLED.
+        # The backends are used whenever found, even when those options are
+        # OFF. Keep their public headers, not just Qt's transitive libraries.
+        "openssl/3.6.4",
+        "zstd/1.5.7",
+        # Konsole itself uses pkg_check_modules(XKBCOMMON ...) and includes
+        # xkbcommon headers. Qt's private dependency is not a public API edge.
+        "xkbcommon/1.5.0",
     )
 
     def _require_header_in_package(self, package: str, header: str) -> None:
@@ -135,6 +151,15 @@ class KonsoleQtHostConan(ConanFile):
         )
 
     def generate(self):
+        try:
+            headers = public_headers(self.dependencies, {
+                "openssl": {"libcrypto": ["openssl/evp.h"]},
+                "zstd": {"libzstd": ["zstd.h"]},
+                "xkbcommon": {"xkbcommon": ["xkbcommon/xkbcommon.h"]},
+            })
+        except ValueError as error:
+            raise ConanInvalidConfiguration(str(error)) from error
+
         cmake_deps = CMakeDeps(self)
 
         # Some KDE Frameworks use the upstream CMake target spelling while
@@ -153,6 +178,11 @@ class KonsoleQtHostConan(ConanFile):
             ["LibMount::LibMount"],
         )
         cmake_deps.generate()
+        # CCI removes upstream .pc files from several packages. Scanning p/b
+        # finds stale build metadata and misses downloaded packages entirely.
+        # Both consumers must use the same resolved cpp_info graph instead.
+        PkgConfigDeps(self).generate()
+        record_contract(self.generators_folder, headers)
 
         # Conan Center's Qt recipe intentionally removes the upstream
         # Qt6<Module>Config.cmake files and exports one component-aware

@@ -27,6 +27,8 @@ Legend: **P** = caught by preflight locally · **C** = caught by CI only ·
 | 1.15 | Deferred callback resolves a recipe file in the dependency source tree | ICU consistency probe | P | captured absolute path helper plus `test-konsole-deferred-recipe-file.sh` |
 | 1.16 | CMake probe loses imported target generator expressions in `try_compile` | ICU probe used host headers and no archive | P | concrete FindICU paths plus Conan-shaped imported-target regression |
 | 1.17 | Source-module compile driver silently uses the host target | KDE module compile flags had no `-target`, while Conan/link flags did | P | rendered C/C++ flags pin the target for every kde-builder module |
+| 1.18 | Audit rejects a valid static ELF before packaging because it exceeds the default input cap | Konsole is 745 MiB after static Qt linking; `--max-file` was parsed but ignored | P | `onebin` forwards and enforces an explicit 1 GiB cap; CLI regression proves non-default caps are active |
+| 1.19 | Root-only audit mistakes an application-owned shared library for a host dependency | `libkonsoleapp.so.26.08.0` is installed beside the executable and is checked recursively by the artifact verifier | P | derive the onebin allowlist from every `.so` in the install prefix; the recursive artifact verifier remains authoritative for each internal library's closure |
 
 ## 2. Compile-time
 
@@ -42,6 +44,7 @@ Legend: **P** = caught by preflight locally · **C** = caught by CI only ·
 | 2.8 | Code generator segfault (host tool built by us) | meinproc6 | P | tool excluded; forward scan proves nothing requires it |
 | 2.9 | Language standard vs input language | `-std=c++17` with C input | P | 2.6 |
 | 2.10 | Missing define a static library's headers need | `U_STATIC_IMPLEMENTATION` for static ICU | P | defined for konsole in the project hook; asserted |
+| 2.11 | Split translation unit relies on a transitive Qt forward declaration | KIO `file_unix_copy.cpp` after the copy-code split | P | generic idempotent direct-source-include contract plus CMake regression |
 
 ## 3. Link-time
 
@@ -57,14 +60,16 @@ Legend: **P** = caught by preflight locally · **C** = caught by CI only ·
 | 3.8 | Archive order (static libs before their users) | — | — | CMake handles for declared deps; undeclared ones are 3.1 |
 | 3.9 | `-o -` / stdout output mishandled by driver | stray `-` file | P | wrapper |
 | 3.10 | Whole-archive / plugin registration missing at runtime | QPA plugins | P | user's `9299262` |
+| 3.11 | Optional host-library forwarder attached only to executables | `libkonsoleapp.so` retained `libGL.so.1` while `konsole` itself passed | P/C | loadable-target forwarder contract covers executable, SHARED and MODULE consumers; CXX-only miniature build audits all three |
+| 3.12 | Executable link loses PIE because flags reach only package builds | Konsole installed as ET_EXEC (`OB0054`) | P/C | explicit `-pie` plus the glibc shim in the shared kde-builder executable-link contract; YAML/shlex and wrapper-link regression |
 
 ## 4. Runtime (post-link, in the artifact)
 
 | # | Class | Status | Guard |
 |---|-------|--------|-------|
-| 4.1 | Dynamic dependency leaked into "static" binary | P | onebin audit allow-list; libssl/libcrypto deliberately absent |
+| 4.1 | Dynamic dependency leaked into "static" binary or an internal runtime library is omitted | P/C | recursive ELF closure rejects host Qt/KF6/OpenGL leaks; every application-owned loadable target gets `$ORIGIN/../lib` through a deferred target-property callback, the Konsole bundle carries every install-prefix `.so`, and host SONAMEs come from one shared explicit contract |
 | 4.2 | Host-loaded library ABI (X11/GL) | by design | hybrid profile contract |
-| 4.3 | Missing runtime data (ICU data, QPA plugins, KF6 plugins in MODULE form) | C (made observable) | The smoke run on the runner sees every build-time path -- Conan cache (ICU `.dat`, fontconfig's `res/etc`, Qt plugin prefix) and the install tree -- so it passes for binaries broken elsewhere. A second smoke run hides the Conan cache and the install tree and runs a copied exe with `KONSOLE_INSTALL_DIR=/nonexistent`; warnings naming a compiled-in path fail it. Pre-checked from recipes/code: ICU `data_packaging` default `archive` would leave konsole's unchecked `ubidi_*` calls with no data -- now `static`; fontconfig falls back to `/usr/share/fonts` with a warning (degraded, not fatal, recorded); QPA xcb is imported; KF6 MODULE plugins are optional at runtime |
+| 4.3 | Missing runtime data (ICU data, QPA plugins, KF6 plugins in MODULE form) | C (made observable) | The smoke run on the runner sees every build-time path -- Conan cache (ICU `.dat`, fontconfig's `res/etc`, Qt plugin prefix) and the install tree -- so it passes for binaries broken elsewhere. A second smoke run copies only the portable runtime bundle, hides the Conan cache and build install tree, and disables `LD_LIBRARY_PATH`; warnings naming a compiled-in path fail it. Pre-checked from recipes/code: ICU `data_packaging` default `archive` would leave konsole's unchecked `ubidi_*` calls with no data -- now `static`; fontconfig falls back to `/usr/share/fonts` with a warning (degraded, not fatal, recorded); QPA xcb is imported; KF6 MODULE plugins are bundled |
 
 ## Diagnostic inventory — what each tool can emit, and what we collect
 
