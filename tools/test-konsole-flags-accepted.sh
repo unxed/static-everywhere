@@ -41,7 +41,9 @@ import sys
 import yaml
 
 path, shim = sys.argv[1:]
-text = pathlib.Path(path).read_text().replace("@GLIBC_SHIM_OBJ@", shim)
+text = pathlib.Path(path).read_text()
+text = text.replace("@GLIBC_SHIM_OBJ@", shim)
+text = text.replace("@TARGET_TRIPLE@", "x86_64-linux-gnu.2.28")
 text = re.sub(r"@[A-Z_]+@", "x", text)
 config = yaml.safe_load(text)
 pattern = re.compile(
