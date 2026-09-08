@@ -13,7 +13,7 @@ GLIBC_BASELINE=2.27
 # larger while still being valid audit inputs, so the recipe opts into a
 # bounded 1 GiB tier explicitly; the auditor enforces this value.
 KONSOLE_AUDIT_MAX_FILE=1073741824
-KONSOLE_REF=264ecd0808f752a10204f954dfc1f87f7aba9ea8
+KONSOLE_REF=
 KDE_BUILDER_REF=0e661248c9da227dc5c129949cf7a403eb6d4d7e
 OUT=./out/konsole
 KDE_BUILDER=
@@ -42,6 +42,15 @@ while [[ $# -gt 0 ]]; do
         *) printf 'error: unknown option: %s\n' "$1" >&2; usage >&2; exit 2 ;;
     esac
 done
+
+if [[ -z $KONSOLE_REF ]]; then
+    KONSOLE_REF=$(awk '$1 == "konsole" { print $2 }' \
+        "$REPO_ROOT/contrib/konsole/deps.lock")
+    [[ -n $KONSOLE_REF ]] || {
+        printf 'error: deps.lock has no Konsole revision\n' >&2
+        exit 1
+    }
+fi
 
 if [[ -z $KDE_BUILDER ]]; then
     printf 'error: --kde-builder is required\n' >&2

@@ -477,3 +477,21 @@ runtime SONAME contract. Both `build-konsole.sh` and
 asserts that the list is non-empty, duplicate-free, contains the required X11,
 EGL and Canberra boundary, and is consumed by both paths. The build still
 rejects any host SONAME outside that file.
+
+## Run 74: source example was mistaken for a build path
+
+Run `34169221813` at `322ea9b` built all 38 KDE projects and installed Konsole;
+the recursive artifact verifier passed. The remaining strict-audit finding was
+only `OB0060 /home/username`. Inspection of the exact source commit recorded in
+`deps.lock` showed that this string comes from
+`src/widgets/EditProfileGeneralPage.ui`, where it is the user-facing placeholder
+for “Initial directory”, not a compiler or install path. The runtime artifact
+was therefore not missing a dependency: the string scanner had no provenance
+information and classified an intentional absolute example as a build path.
+
+The recipe now carries a complete patch generated from that pinned checkout,
+replacing the example with `~`. The workflow checks the checkout SHA and the
+patch's forward applicability before the expensive build; the CMake project
+hook applies it idempotently and rejects both a moved source revision and an
+unexpected source shape. This closes the class of absolute home-directory
+examples in source UI placeholders without weakening the strict hygiene audit.

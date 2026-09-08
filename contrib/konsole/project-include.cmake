@@ -239,6 +239,57 @@ endif()
 
 get_filename_component(_SE_REPO_ROOT "${CMAKE_CURRENT_LIST_DIR}/../.." ABSOLUTE)
 
+# onebin's build-path check scans the final ELF's strings and cannot tell a
+# real build directory from a user-facing example. Keep absolute home paths
+# out of source UI placeholders for the whole class of such false positives;
+# the patch is generated from the exact commit in deps.lock and is checked by
+# the preflight before the expensive graph build starts.
+set(_SE_KONSOLE_SOURCE_PATCH
+    "${CMAKE_CURRENT_LIST_DIR}/patches/0001-use-portable-home-placeholder.patch")
+if(NOT EXISTS "${_SE_KONSOLE_SOURCE_PATCH}")
+    message(FATAL_ERROR
+        "static-everywhere: pinned Konsole source patch is missing: "
+        "${_SE_KONSOLE_SOURCE_PATCH}")
+endif()
+set(_SE_KONSOLE_UI_FILE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/widgets/EditProfileGeneralPage.ui")
+if(NOT EXISTS "${_SE_KONSOLE_UI_FILE}")
+    message(FATAL_ERROR
+        "static-everywhere: pinned Konsole UI source is missing: "
+        "${_SE_KONSOLE_UI_FILE}")
+endif()
+execute_process(
+    COMMAND git -C "${CMAKE_CURRENT_SOURCE_DIR}" apply
+            --check --whitespace=error "${_SE_KONSOLE_SOURCE_PATCH}"
+    RESULT_VARIABLE _SE_KONSOLE_PATCH_APPLIES
+    OUTPUT_QUIET ERROR_QUIET)
+if(_SE_KONSOLE_PATCH_APPLIES EQUAL 0)
+    execute_process(
+        COMMAND git -C "${CMAKE_CURRENT_SOURCE_DIR}" apply
+                --whitespace=error "${_SE_KONSOLE_SOURCE_PATCH}"
+        RESULT_VARIABLE _SE_KONSOLE_PATCH_RESULT
+        OUTPUT_QUIET ERROR_QUIET)
+    if(NOT _SE_KONSOLE_PATCH_RESULT EQUAL 0)
+        message(FATAL_ERROR
+            "static-everywhere: failed to apply the pinned Konsole source patch")
+    endif()
+    message(STATUS
+        "static-everywhere: applied portable source placeholders patch")
+else()
+    execute_process(
+        COMMAND git -C "${CMAKE_CURRENT_SOURCE_DIR}" apply
+                --reverse --check --whitespace=error "${_SE_KONSOLE_SOURCE_PATCH}"
+        RESULT_VARIABLE _SE_KONSOLE_PATCH_REVERSES
+        OUTPUT_QUIET ERROR_QUIET)
+    if(NOT _SE_KONSOLE_PATCH_REVERSES EQUAL 0)
+        message(FATAL_ERROR
+            "static-everywhere: pinned Konsole source patch applies neither "
+            "forward nor reverse; source revision or patch drifted")
+    endif()
+    message(STATUS
+        "static-everywhere: portable source placeholders patch already applied")
+endif()
+
 # Konsole deliberately keeps its application facade as a shared library:
 # the executable and the installed KPart both use the same implementation.
 # The global recipe disables RPATH for KDE frameworks, but that policy cannot

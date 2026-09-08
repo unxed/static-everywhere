@@ -166,6 +166,14 @@ grep -Fq 'package-konsole-runtime.sh' "$REPO_ROOT/tools/build-konsole.sh" || \
     fail 'build plan does not create the portable Konsole runtime bundle'
 grep -Fq 'konsole-runtime' "$REPO_ROOT/.github/workflows/konsole-zig-build.yml" || \
     fail 'workflow does not smoke-test and upload the portable runtime bundle'
+test -s "$REPO_ROOT/contrib/konsole/patches/0001-use-portable-home-placeholder.patch" || \
+    fail 'pinned Konsole source patch is missing'
+grep -Fq 'git -C "${CMAKE_CURRENT_SOURCE_DIR}" apply' \
+    "$REPO_ROOT/contrib/konsole/project-include.cmake" || \
+    fail 'Konsole source patch is not applied before configure'
+grep -Fq 'test-konsole-source-patch.sh' \
+    "$REPO_ROOT/.github/workflows/konsole-zig-build.yml" || \
+    fail 'workflow does not validate the source patch against the pinned checkout'
 pass 'Konsole internal shared-library RPATH and portable bundle are in the plan'
 pass 'Zig baseline, static Qt, cache, hook and artifact gates are in the plan'
 

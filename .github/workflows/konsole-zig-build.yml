@@ -68,6 +68,7 @@ jobs:
             echo "The tag moved, or the lock is stale. Re-pin deliberately." >&2
             exit 1
           fi
+          tools/test-konsole-source-patch.sh "$PWD/konsole-src"
 
       - name: Run kde-builder itself in pretend mode on the rendered config
         # The one check that would have caught most of the config-level
