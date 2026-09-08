@@ -495,3 +495,21 @@ patch's forward applicability before the expensive build; the CMake project
 hook applies it idempotently and rejects both a moved source revision and an
 unexpected source shape. This closes the class of absolute home-directory
 examples in source UI placeholders without weakening the strict hygiene audit.
+
+## Run 75: static startup called a GUI helper before `QApplication`
+
+Run `34223893815` at `5a6a807aef112d2a00155995a10b85a918cf0e42` built all 38
+projects, passed the artifact contract, and produced the portable runtime
+bundle. The graphical X11 smoke test then aborted before a window appeared:
+`KIconTheme::initTheme()` ran before `new QApplication(...)`; the log showed
+KDE probing `konsoleplugins` followed by `QWidget: Must construct a
+QApplication before a QWidget`. The second isolated smoke test was skipped
+because the first smoke test failed.
+
+The next recipe revision moves the icon-theme initialization after
+`QApplication` in a complete patch generated from the pinned Konsole checkout.
+The source patch hook now applies the whole ordered patch set, while the
+source-only preflight and the post-apply CMake check verify that every known
+GUI startup helper follows the application construction. This treats the
+failure as an initialization-order class, not as a special case for the one
+abort string.

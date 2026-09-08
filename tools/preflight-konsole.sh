@@ -166,11 +166,18 @@ grep -Fq 'package-konsole-runtime.sh' "$REPO_ROOT/tools/build-konsole.sh" || \
     fail 'build plan does not create the portable Konsole runtime bundle'
 grep -Fq 'konsole-runtime' "$REPO_ROOT/.github/workflows/konsole-zig-build.yml" || \
     fail 'workflow does not smoke-test and upload the portable runtime bundle'
-test -s "$REPO_ROOT/contrib/konsole/patches/0001-use-portable-home-placeholder.patch" || \
-    fail 'pinned Konsole source patch is missing'
+patch_count=$(find "$REPO_ROOT/contrib/konsole/patches" -maxdepth 1 \
+    -type f -name '*.patch' -print | wc -l)
+[[ $patch_count -gt 0 ]] || fail 'pinned Konsole source patch set is empty'
+grep -Fq 'file(GLOB _SE_KONSOLE_SOURCE_PATCHES' \
+    "$REPO_ROOT/contrib/konsole/project-include.cmake" || \
+    fail 'Konsole source patch hook does not apply the complete patch set'
 grep -Fq 'git -C "${CMAKE_CURRENT_SOURCE_DIR}" apply' \
     "$REPO_ROOT/contrib/konsole/project-include.cmake" || \
     fail 'Konsole source patch is not applied before configure'
+grep -Fq 'KIconTheme::initTheme()' \
+    "$REPO_ROOT/contrib/konsole/project-include.cmake" || \
+    fail 'Konsole GUI startup ordering invariant is missing'
 grep -Fq 'test-konsole-source-patch.sh' \
     "$REPO_ROOT/.github/workflows/konsole-zig-build.yml" || \
     fail 'workflow does not validate the source patch against the pinned checkout'

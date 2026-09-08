@@ -239,56 +239,93 @@ endif()
 
 get_filename_component(_SE_REPO_ROOT "${CMAKE_CURRENT_LIST_DIR}/../.." ABSOLUTE)
 
-# onebin's build-path check scans the final ELF's strings and cannot tell a
-# real build directory from a user-facing example. Keep absolute home paths
-# out of source UI placeholders for the whole class of such false positives;
-# the patch is generated from the exact commit in deps.lock and is checked by
-# the preflight before the expensive graph build starts.
-set(_SE_KONSOLE_SOURCE_PATCH
-    "${CMAKE_CURRENT_LIST_DIR}/patches/0001-use-portable-home-placeholder.patch")
-if(NOT EXISTS "${_SE_KONSOLE_SOURCE_PATCH}")
+# Source overlays are generated from the exact commit in deps.lock and are
+# checked by preflight before the expensive graph build starts. Apply every
+# overlay in lexical order, so adding a new source-level contract cannot be
+# forgotten in this hook. The reverse check makes the operation idempotent for
+# a cached kde-builder checkout.
+file(GLOB _SE_KONSOLE_SOURCE_PATCHES LIST_DIRECTORIES false
+    "${CMAKE_CURRENT_LIST_DIR}/patches/*.patch")
+list(SORT _SE_KONSOLE_SOURCE_PATCHES)
+if(NOT _SE_KONSOLE_SOURCE_PATCHES)
     message(FATAL_ERROR
-        "static-everywhere: pinned Konsole source patch is missing: "
-        "${_SE_KONSOLE_SOURCE_PATCH}")
+        "static-everywhere: no pinned Konsole source patches found")
 endif()
-set(_SE_KONSOLE_UI_FILE
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/widgets/EditProfileGeneralPage.ui")
-if(NOT EXISTS "${_SE_KONSOLE_UI_FILE}")
-    message(FATAL_ERROR
-        "static-everywhere: pinned Konsole UI source is missing: "
-        "${_SE_KONSOLE_UI_FILE}")
-endif()
-execute_process(
-    COMMAND git -C "${CMAKE_CURRENT_SOURCE_DIR}" apply
-            --check --whitespace=error "${_SE_KONSOLE_SOURCE_PATCH}"
-    RESULT_VARIABLE _SE_KONSOLE_PATCH_APPLIES
-    OUTPUT_QUIET ERROR_QUIET)
-if(_SE_KONSOLE_PATCH_APPLIES EQUAL 0)
+foreach(_se_konsole_source_patch IN LISTS _SE_KONSOLE_SOURCE_PATCHES)
+    get_filename_component(_se_konsole_source_patch_name
+        "${_se_konsole_source_patch}" NAME)
     execute_process(
         COMMAND git -C "${CMAKE_CURRENT_SOURCE_DIR}" apply
-                --whitespace=error "${_SE_KONSOLE_SOURCE_PATCH}"
-        RESULT_VARIABLE _SE_KONSOLE_PATCH_RESULT
+                --check --whitespace=error "${_se_konsole_source_patch}"
+        RESULT_VARIABLE _se_konsole_patch_applies
         OUTPUT_QUIET ERROR_QUIET)
-    if(NOT _SE_KONSOLE_PATCH_RESULT EQUAL 0)
-        message(FATAL_ERROR
-            "static-everywhere: failed to apply the pinned Konsole source patch")
+    if(_se_konsole_patch_applies EQUAL 0)
+        execute_process(
+            COMMAND git -C "${CMAKE_CURRENT_SOURCE_DIR}" apply
+                    --whitespace=error "${_se_konsole_source_patch}"
+            RESULT_VARIABLE _se_konsole_patch_result
+            OUTPUT_QUIET ERROR_QUIET)
+        if(NOT _se_konsole_patch_result EQUAL 0)
+            message(FATAL_ERROR
+                "static-everywhere: failed to apply pinned Konsole source patch "
+                "${_se_konsole_source_patch_name}")
+        endif()
+        message(STATUS
+            "static-everywhere: applied Konsole source patch "
+            "${_se_konsole_source_patch_name}")
+    else()
+        execute_process(
+            COMMAND git -C "${CMAKE_CURRENT_SOURCE_DIR}" apply
+                    --reverse --check --whitespace=error
+                    "${_se_konsole_source_patch}"
+            RESULT_VARIABLE _se_konsole_patch_reverses
+            OUTPUT_QUIET ERROR_QUIET)
+        if(NOT _se_konsole_patch_reverses EQUAL 0)
+            message(FATAL_ERROR
+                "static-everywhere: pinned Konsole source patch "
+                "${_se_konsole_source_patch_name} applies neither forward "
+                "nor reverse; source revision or patch drifted")
+        endif()
+        message(STATUS
+            "static-everywhere: Konsole source patch already applied "
+            "${_se_konsole_source_patch_name}")
     endif()
-    message(STATUS
-        "static-everywhere: applied portable source placeholders patch")
-else()
-    execute_process(
-        COMMAND git -C "${CMAKE_CURRENT_SOURCE_DIR}" apply
-                --reverse --check --whitespace=error "${_SE_KONSOLE_SOURCE_PATCH}"
-        RESULT_VARIABLE _SE_KONSOLE_PATCH_REVERSES
-        OUTPUT_QUIET ERROR_QUIET)
-    if(NOT _SE_KONSOLE_PATCH_REVERSES EQUAL 0)
-        message(FATAL_ERROR
-            "static-everywhere: pinned Konsole source patch applies neither "
-            "forward nor reverse; source revision or patch drifted")
-    endif()
-    message(STATUS
-        "static-everywhere: portable source placeholders patch already applied")
+endforeach()
+
+# GUI-related KDE/Qt helpers may create widgets or query application paths.
+# They must never run before QApplication exists: static builds make this
+# ordering failure fatal instead of allowing a plugin/runtime path lookup to
+# be deferred as it often is with shared builds. Keep the check structural and
+# cover every known startup helper, so a future source overlay cannot silently
+# move one of them back above the application object.
+set(_se_konsole_main_source "${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp")
+if(NOT EXISTS "${_se_konsole_main_source}")
+    message(FATAL_ERROR
+        "static-everywhere: Konsole main source is missing: "
+        "${_se_konsole_main_source}")
 endif()
+file(READ "${_se_konsole_main_source}" _se_konsole_main_content)
+string(FIND "${_se_konsole_main_content}"
+    "new QApplication(argc, argv)" _se_konsole_app_pos)
+if(_se_konsole_app_pos LESS 0)
+    message(FATAL_ERROR
+        "static-everywhere: Konsole main has no QApplication construction")
+endif()
+foreach(_se_konsole_gui_helper
+        "KIconTheme::initTheme()"
+        "KStyleManager::initStyle()"
+        "QApplication::setStyle")
+    string(FIND "${_se_konsole_main_content}" "${_se_konsole_gui_helper}"
+        _se_konsole_gui_helper_pos)
+    if(_se_konsole_gui_helper_pos GREATER -1 AND
+       _se_konsole_gui_helper_pos LESS _se_konsole_app_pos)
+        message(FATAL_ERROR
+            "static-everywhere: Konsole GUI helper runs before QApplication: "
+            "${_se_konsole_gui_helper}")
+    endif()
+endforeach()
+message(STATUS
+    "static-everywhere: Konsole GUI startup helpers run after QApplication")
 
 # Konsole deliberately keeps its application facade as a shared library:
 # the executable and the installed KPart both use the same implementation.
