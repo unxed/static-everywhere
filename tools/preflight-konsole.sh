@@ -28,6 +28,8 @@ bash -n "$REPO_ROOT/tools/build-konsole.sh" "$REPO_ROOT/tools/preflight-konsole.
     "$REPO_ROOT/tools/test-konsole-runtime-rpath.sh" \
     "$REPO_ROOT/tools/test-konsole-icu-consistency.sh" \
     "$REPO_ROOT/tools/test-konsole-direct-qt-includes.sh" \
+    "$REPO_ROOT/tools/clean-kde-builder-source-tree.sh" \
+    "$REPO_ROOT/tools/test-konsole-source-cache-cleanup.sh" \
     "$REPO_ROOT/tools/test-optional-gl-cxx-only.sh" \
     "$REPO_ROOT/tools/test-konsole-host-runtime-contract.sh" \
     "$REPO_ROOT/tools/test-audit-internal-prefix.sh"
@@ -71,6 +73,9 @@ pass 'ICU consistency probe carries concrete package paths into try_compile'
 
 bash "$REPO_ROOT/tools/test-konsole-direct-qt-includes.sh"
 pass 'split KDE sources receive direct Qt includes through the source contract'
+
+bash "$REPO_ROOT/tools/test-konsole-source-cache-cleanup.sh"
+pass 'cached KDE source overlays cannot block the next kde-builder update'
 
 bash "$REPO_ROOT/tools/test-optional-gl-cxx-only.sh"
 pass 'optional-GL forwarding covers executable, shared and MODULE link boundaries'
@@ -181,6 +186,8 @@ grep -Fq 'KIconTheme::initTheme()' \
 grep -Fq 'test-konsole-source-patch.sh' \
     "$REPO_ROOT/.github/workflows/konsole-zig-build.yml" || \
     fail 'workflow does not validate the source patch against the pinned checkout'
+grep -Fq 'clean-kde-builder-source-tree.sh' "$REPO_ROOT/tools/build-konsole.sh" || \
+    fail 'build does not clean cached KDE source checkouts before kde-builder'
 pass 'Konsole internal shared-library RPATH and portable bundle are in the plan'
 pass 'Zig baseline, static Qt, cache, hook and artifact gates are in the plan'
 

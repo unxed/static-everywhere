@@ -513,3 +513,21 @@ source-only preflight and the post-apply CMake check verify that every known
 GUI startup helper follows the application construction. This treats the
 failure as an initialization-order class, not as a special case for the one
 abort string.
+
+## Run 76: a cached source overlay blocked the next update
+
+Run `34241267817` at `0362449fd8e7e8567d665c683bcb9e96135c2805` did not reach
+the Konsole configure step. The previous run had applied the CMake source
+overlay to the cached `out/konsole/kde-source` checkout. On restore,
+`kde-builder` found tracked local changes on detached `HEAD`, refused to stash
+them while switching to the wanted branch, and stopped with
+`Unable to update konsole, build canceled`. The compilation, artifact audit
+and smoke tests therefore had no result for this run; the unrelated Zig
+diagnostic matches in the collected grep were not the stopping error.
+
+The recipe now treats all cached KDE source trees as generated state. It
+restores every Git checkout before the updater runs and cleans them on every
+exit, including failures, so a source overlay cannot poison the cache for the
+next run. `test-konsole-source-cache-cleanup.sh` proves the invariant against
+both tracked and untracked residue. This closes the update-blocking class
+rather than adding a workaround for the `konsole` directory or this one cache.
