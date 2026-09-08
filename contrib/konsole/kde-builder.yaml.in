@@ -165,6 +165,16 @@ global:
 override konsole:
   revision: "@KONSOLE_REF@"
 
+# KIconThemes registers a Q_COREAPP_STARTUP_FUNCTION. With BreezeIcons enabled
+# its startup callback calls BreezeIcons::initIcons() while QApplication is
+# still being constructed, which is not safe for this static GUI graph. The
+# KIconThemes CMakeLists.txt makes this optional integration explicit; keep the
+# filesystem icon theme from the separate breeze-icons project, but disable
+# this in-process startup integration for the portable build.
+override kiconthemes:
+  cmake-options: >
+    -DUSE_BreezeIcons=OFF
+
 # qca defaults to its legacy Qt5 build. The KDE dependency graph consumes its
 # Qt6 package, and qca's CMakeLists.txt requires Qt6 Core5Compat even when its
 # optional tests and command-line tools are not part of the application build.

@@ -155,7 +155,9 @@ for needle in \
     'BUILD_KSECRETD=OFF' \
     'BUILD_KWALLETD=OFF' \
     'BUILD_KWALLET_QUERY=OFF' \
-    'BUILD_PLUGINS=none'; do
+    'BUILD_PLUGINS=none' \
+    'override kiconthemes:' \
+    'USE_BreezeIcons=OFF'; do
     if ! grep -Fq -- "$needle" "$PLAN" &&
        ! grep -Fq -- "$needle" "$REPO_ROOT/contrib/konsole/kde-builder.yaml.in"; then
         fail "plan/config is missing: $needle"
@@ -241,6 +243,7 @@ assert "BUILD_SHARED_LIBS=OFF" in cmake_options
 assert "CMAKE_IGNORE_PREFIX_PATH=" in cmake_options
 assert "CMAKE_IGNORE_PREFIX_PATH=/usr" not in cmake_options
 assert "WITH_X11=ON" in cmake_options
+assert "USE_BreezeIcons=OFF" not in cmake_options
 assert "-DCMAKE_C_FLAGS=--target=x86_64-linux-gnu.2.27" in cmake_options
 assert "-DCMAKE_CXX_FLAGS=--target=x86_64-linux-gnu.2.27" in cmake_options
 cmake_tokens = shlex.split(cmake_options)
@@ -257,6 +260,7 @@ for prefix, expected in expected_link_flags.items():
     ]
     assert actual == [expected], (prefix, actual)
 assert config["override konsole"]["revision"]
+assert "-DUSE_BreezeIcons=OFF" in config["override kiconthemes"]["cmake-options"]
 assert "#" not in cmake_options
 workflow = yaml.safe_load(pathlib.Path(sys.argv[2]).read_text())
 assert set(workflow["jobs"]) == {"preflight", "build"}

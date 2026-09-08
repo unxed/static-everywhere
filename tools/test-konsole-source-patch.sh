@@ -59,8 +59,16 @@ app_line=$(awk '/new QApplication\(argc, argv\)/ { print NR; exit }' "$main_sour
     printf 'error: patched Konsole main has no QApplication construction\n' >&2
     exit 1
 }
+icon_line=$(awk '/KIconTheme::initTheme\(\)/ { print NR; exit }' "$main_source")
+[[ -n $icon_line ]] || {
+    printf 'error: patched Konsole main has no KIconTheme::initTheme() call\n' >&2
+    exit 1
+}
+if (( icon_line >= app_line )); then
+    printf 'error: KIconTheme::initTheme() must precede QApplication\n' >&2
+    exit 1
+fi
 for gui_helper in \
-    'KIconTheme::initTheme()' \
     'KStyleManager::initStyle()' \
     'QApplication::setStyle'; do
     helper_line=$(awk -v token="$gui_helper" 'index($0, token) { print NR; exit }' "$main_source")
@@ -70,4 +78,4 @@ for gui_helper in \
         exit 1
     fi
 done
-printf 'Konsole GUI startup order: PASS (helpers follow QApplication)\n'
+printf 'Konsole GUI startup order: PASS (KIconTheme bootstrap precedes QApplication; remaining helpers follow)\n'

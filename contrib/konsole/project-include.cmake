@@ -292,12 +292,13 @@ foreach(_se_konsole_source_patch IN LISTS _SE_KONSOLE_SOURCE_PATCHES)
     endif()
 endforeach()
 
-# GUI-related KDE/Qt helpers may create widgets or query application paths.
-# They must never run before QApplication exists: static builds make this
-# ordering failure fatal instead of allowing a plugin/runtime path lookup to
-# be deferred as it often is with shared builds. Keep the check structural and
-# cover every known startup helper, so a future source overlay cannot silently
-# move one of them back above the application object.
+# KIconTheme::initTheme() has an upstream contract: it must run before the
+# application object so its Q_COREAPP_STARTUP_FUNCTION is registered in time.
+# The remaining KDE/Qt GUI helpers must run after QApplication exists. Static
+# builds make violating either half fatal instead of allowing a plugin/runtime
+# path lookup to be deferred as it often is with shared builds. Keep both
+# checks structural, so a future source overlay cannot silently change this
+# startup contract.
 set(_se_konsole_main_source "${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp")
 if(NOT EXISTS "${_se_konsole_main_source}")
     message(FATAL_ERROR
@@ -311,8 +312,17 @@ if(_se_konsole_app_pos LESS 0)
     message(FATAL_ERROR
         "static-everywhere: Konsole main has no QApplication construction")
 endif()
+string(FIND "${_se_konsole_main_content}" "KIconTheme::initTheme()"
+    _se_konsole_icon_theme_pos)
+if(_se_konsole_icon_theme_pos LESS 0)
+    message(FATAL_ERROR
+        "static-everywhere: Konsole has no KIconTheme::initTheme() call")
+endif()
+if(NOT _se_konsole_icon_theme_pos LESS _se_konsole_app_pos)
+    message(FATAL_ERROR
+        "static-everywhere: KIconTheme::initTheme() must precede QApplication")
+endif()
 foreach(_se_konsole_gui_helper
-        "KIconTheme::initTheme()"
         "KStyleManager::initStyle()"
         "QApplication::setStyle")
     string(FIND "${_se_konsole_main_content}" "${_se_konsole_gui_helper}"
@@ -325,7 +335,8 @@ foreach(_se_konsole_gui_helper
     endif()
 endforeach()
 message(STATUS
-    "static-everywhere: Konsole GUI startup helpers run after QApplication")
+    "static-everywhere: Konsole icon-theme bootstrap precedes QApplication; "
+    "remaining GUI helpers run after it")
 
 # Konsole deliberately keeps its application facade as a shared library:
 # the executable and the installed KPart both use the same implementation.

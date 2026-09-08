@@ -531,3 +531,30 @@ exit, including failures, so a source overlay cannot poison the cache for the
 next run. `test-konsole-source-cache-cleanup.sh` proves the invariant against
 both tracked and untracked residue. This closes the update-blocking class
 rather than adding a workaround for the `konsole` directory or this one cache.
+
+## Run 77: KIconThemes' BreezeIcons startup hook ran during application construction
+
+Run `34258025840` at `4e35c7b948e4d54046313d92ca39b1f1000ff4a7` built and
+installed all 38 projects. The static Qt/KF6 contract, strict artifact audit,
+runtime bundle creation and cache cleanup passed. The first graphical X11
+smoke nevertheless aborted before creating a window with
+`QWidget: Must construct a QApplication before a QWidget`; the isolated smoke
+was skipped and the run was red.
+
+The pinned Konsole source overlay had already moved the explicit
+`KIconTheme::initTheme()` call after `QApplication`, so this was not a missing
+overlay. Inspection of the KIconThemes build files and source showed the
+broader mechanism: `USE_BreezeIcons` defaults to ON, and its
+`Q_COREAPP_STARTUP_FUNCTION(initThemeHelper)` calls `BreezeIcons::initIcons()`
+while `QApplication` is being constructed. The source-only check also exposed
+that moving `KIconTheme::initTheme()` violated the upstream API contract, which
+requires that call before the application object.
+
+The recipe now disables only KIconThemes' optional in-process BreezeIcons
+integration with the source-derived `-DUSE_BreezeIcons=OFF` override. The
+separately built breeze-icons project still supplies the installed filesystem
+theme. The invalid Konsole ordering overlay is removed, restoring the upstream
+call order. Preflight requires the targeted framework override and the CMake
+source contract checks that the icon bootstrap precedes `QApplication` while
+the remaining GUI helpers follow it. This closes the startup-hook class rather
+than matching the observed abort text.
