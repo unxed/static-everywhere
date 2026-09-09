@@ -231,12 +231,15 @@ jobs:
           trap 'mv "$HOME/.conan2/p.hidden" "$HOME/.conan2/p"; mv out/konsole/kde-install.hidden out/konsole/kde-install' EXIT
           KONSOLE_INSTALL_DIR="$neutral/runtime" KONSOLE_SMOKE_DISABLE_LD_LIBRARY_PATH=1 \
             ./tools/run-konsole-smoke.sh \
-            "$neutral/runtime/bin/konsole" "$PWD/out/konsole/smoke-isolated"
-          # Warnings that mean a compiled-in path was needed and is gone:
-          if grep -qiE 'Cannot load default config file|u_init|ICU data|could not find the Qt platform plugin' \
+            "$neutral/runtime/konsole" "$PWD/out/konsole/smoke-isolated"
+          # These warnings mean a compiled-in application path was needed and
+          # is gone. Fontconfig configuration is intentionally host data, so
+          # its absence is a degraded-font warning rather than a bundle-path
+          # failure; the launcher supplies /etc/fonts when it exists.
+          if grep -qiE 'u_init|ICU data|could not find the Qt platform plugin|Could not find any platform plugin' \
               out/konsole/smoke-isolated/konsole.log 2>/dev/null; then
             echo "the isolated run relied on a build-time path:" >&2
-            grep -iE 'Cannot load default config file|u_init|ICU data|platform plugin' out/konsole/smoke-isolated/konsole.log >&2
+            grep -iE 'u_init|ICU data|platform plugin' out/konsole/smoke-isolated/konsole.log >&2
             exit 1
           fi
 

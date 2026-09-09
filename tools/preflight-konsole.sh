@@ -13,6 +13,7 @@ pass() { printf 'PASS: %s\n' "$1"; }
 bash -n "$REPO_ROOT/tools/build-konsole.sh" "$REPO_ROOT/tools/preflight-konsole.sh" \
     "$REPO_ROOT/tools/run-konsole-smoke.sh" "$REPO_ROOT/tools/verify-konsole-artifact.sh" \
     "$REPO_ROOT/tools/package-konsole-runtime.sh" "$REPO_ROOT/contrib/konsole/konsole-launcher.sh" \
+    "$REPO_ROOT/tools/test-konsole-portable-launcher.sh" \
     "$REPO_ROOT/tools/preflight-konsole-kde-builder-pretend.sh" \
     "$REPO_ROOT/contrib/konsole/qt-package-root.sh" "$REPO_ROOT/tools/test-konsole-qt-package-root.sh" \
     "$REPO_ROOT/tools/test-konsole-cmake-find-mode.sh" \
@@ -34,6 +35,9 @@ bash -n "$REPO_ROOT/tools/build-konsole.sh" "$REPO_ROOT/tools/preflight-konsole.
     "$REPO_ROOT/tools/test-konsole-host-runtime-contract.sh" \
     "$REPO_ROOT/tools/test-audit-internal-prefix.sh"
 pass 'Konsole shell scripts parse'
+
+bash "$REPO_ROOT/tools/test-konsole-portable-launcher.sh"
+pass 'Konsole launcher keeps bundle data/plugins relocatable and supports isolated RPATH mode'
 
 python3 "$REPO_ROOT/tools/test-konsole-dependency-contract.py"
 pass 'Conan metadata rejects missing public headers and host pkg-config substitutions'
@@ -739,6 +743,13 @@ pass 'the workflow runs an isolated portable-bundle smoke test with build-time p
 grep -Fq 'KONSOLE_SMOKE_DISABLE_LD_LIBRARY_PATH=1' "$REPO_ROOT/.github/workflows/konsole-zig-build.yml" || \
     fail 'the isolated smoke test still masks missing origin-relative runtime libraries'
 pass 'the isolated smoke test exercises the binary without LD_LIBRARY_PATH'
+grep -Fq '"$neutral/runtime/konsole"' "$REPO_ROOT/.github/workflows/konsole-zig-build.yml" || \
+    fail 'the isolated smoke test bypasses the portable bundle launcher'
+grep -Fq 'export QT_PLUGIN_PATH=' "$REPO_ROOT/tools/run-konsole-smoke.sh" || \
+    fail 'the smoke harness does not expose the bundle Qt/KF6 plugin root'
+grep -Fq 'export QT_PLUGIN_PATH="$ROOT/lib/plugins' "$REPO_ROOT/contrib/konsole/konsole-launcher.sh" || \
+    fail 'the portable launcher does not expose its relocatable plugin root'
+pass 'portable smoke uses the bundle launcher and relocatable Qt/KF6 plugin paths'
 
 # The install prefix must be neutral and staged, or KDE compiles build
 # paths into every binary and the audit reports them one module at a time

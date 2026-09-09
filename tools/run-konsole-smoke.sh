@@ -44,6 +44,7 @@ chmod 700 "$runtime_dir"
 export DISPLAY="$display"
 export XDG_RUNTIME_DIR="$runtime_dir"
 export XDG_DATA_DIRS="$install_dir/share:/usr/share"
+export QT_PLUGIN_PATH="$install_dir/lib/plugins${QT_PLUGIN_PATH:+:$QT_PLUGIN_PATH}"
 export QT_QPA_PLATFORM=xcb
 # Make plugin resolution visible in konsole.log: a QPA, KF6 or ICU-data
 # failure otherwise shows up only as "no window appeared", which says what
