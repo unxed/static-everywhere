@@ -79,3 +79,21 @@ for gui_helper in \
     fi
 done
 printf 'Konsole GUI startup order: PASS (KIconTheme bootstrap precedes QApplication; remaining helpers follow)\n'
+
+app_cmake="$PATCH_PROBE/src/CMakeLists.txt"
+[[ -r $app_cmake ]] || {
+    printf 'error: patched Konsole application CMake file is missing: %s\n' \
+        "$app_cmake" >&2
+    exit 1
+}
+if ! grep -Eq '^[[:space:]]*add_library\(konsoleapp[[:space:]]+STATIC[[:space:]]+Application\.cpp$' \
+    "$app_cmake"; then
+    printf 'error: patched Konsole application target is not STATIC\n' >&2
+    exit 1
+fi
+if grep -Eq '^[[:space:]]*add_library\(konsoleapp[[:space:]]+SHARED[[:space:]]+Application\.cpp$' \
+    "$app_cmake"; then
+    printf 'error: patched Konsole application target remains SHARED\n' >&2
+    exit 1
+fi
+printf 'Konsole static Qt runtime boundary: PASS (konsoleapp is STATIC)\n'

@@ -292,6 +292,28 @@ foreach(_se_konsole_source_patch IN LISTS _SE_KONSOLE_SOURCE_PATCHES)
     endif()
 endforeach()
 
+# Qt and KF6 are static in this recipe. Keeping this application facade as a
+# loadable library would put a second copy of Qt's global state behind the
+# loader boundary, so qApp seen by MainWindow would differ from the one made
+# by the executable. The pinned source patch must keep konsoleapp STATIC.
+set(_se_konsole_app_cmake "${CMAKE_CURRENT_SOURCE_DIR}/src/CMakeLists.txt")
+if(NOT EXISTS "${_se_konsole_app_cmake}")
+    message(FATAL_ERROR
+        "static-everywhere: Konsole application CMake file is missing: "
+        "${_se_konsole_app_cmake}")
+endif()
+file(READ "${_se_konsole_app_cmake}" _se_konsole_app_cmake_content)
+string(FIND "${_se_konsole_app_cmake_content}"
+    "add_library(konsoleapp STATIC Application.cpp" _se_konsole_app_static_pos)
+string(FIND "${_se_konsole_app_cmake_content}"
+    "add_library(konsoleapp SHARED Application.cpp" _se_konsole_app_shared_pos)
+if(_se_konsole_app_static_pos LESS 0 OR _se_konsole_app_shared_pos GREATER -1)
+    message(FATAL_ERROR
+        "static-everywhere: Konsole application target must be "
+        "konsoleapp STATIC when Qt/KF6 are static")
+endif()
+message(STATUS "static-everywhere: static Qt runtime boundary is confined to konsoleapp STATIC")
+
 # KIconTheme::initTheme() has an upstream contract: it must run before the
 # application object so its Q_COREAPP_STARTUP_FUNCTION is registered in time.
 # The remaining KDE/Qt GUI helpers must run after QApplication exists. Static
@@ -338,14 +360,11 @@ message(STATUS
     "static-everywhere: Konsole icon-theme bootstrap precedes QApplication; "
     "remaining GUI helpers run after it")
 
-# Konsole deliberately keeps its application facade as a shared library:
-# the executable and the installed KPart both use the same implementation.
 # The global recipe disables RPATH for KDE frameworks, but that policy cannot
-# be applied to this application's own relocatable runtime: without an
-# origin-relative install RPATH, bin/konsole needs a manually prepared
-# LD_LIBRARY_PATH to find lib/libkonsoleapp.so. Keep the system boundary
-# dynamic (X11/OpenGL/Canberra); only the library shipped beside the
-# application is made relocatable.
+# be applied to any remaining application-owned loadable targets: without an
+# origin-relative install RPATH, the portable bundle would need a manually
+# prepared LD_LIBRARY_PATH. Keep the system boundary dynamic
+# (X11/OpenGL/Canberra) and retain the generic target-level RPATH contract.
 set(CMAKE_SKIP_RPATH OFF CACHE BOOL "" FORCE)
 set(CMAKE_SKIP_INSTALL_RPATH OFF CACHE BOOL "" FORCE)
 set(CMAKE_BUILD_RPATH_USE_ORIGIN ON)

@@ -1,0 +1,13 @@
+diff --git a/src/CMakeLists.txt b/src/CMakeLists.txt
+index 311e638..ff072fc 100644
+--- a/src/CMakeLists.txt
++++ b/src/CMakeLists.txt
+@@ -334,7 +334,7 @@ set_target_properties(konsoleprivate PROPERTIES
+ 
+ install(TARGETS konsoleprivate ${KDE_INSTALL_TARGETS_DEFAULT_ARGS} LIBRARY NAMELINK_SKIP)
+ 
+-add_library(konsoleapp SHARED Application.cpp
++add_library(konsoleapp STATIC Application.cpp
+     MainWindow.cpp
+     settings/ConfigurationDialog.cpp
+     settings/ConfigDialogButtonGroupManager.cpp

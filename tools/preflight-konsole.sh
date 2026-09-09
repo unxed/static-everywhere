@@ -185,12 +185,21 @@ grep -Fq 'git -C "${CMAKE_CURRENT_SOURCE_DIR}" apply' \
 grep -Fq 'KIconTheme::initTheme()' \
     "$REPO_ROOT/contrib/konsole/project-include.cmake" || \
     fail 'Konsole GUI startup ordering invariant is missing'
+grep -Fq 'static Qt runtime boundary is confined to konsoleapp STATIC' \
+    "$REPO_ROOT/contrib/konsole/project-include.cmake" || \
+    fail 'Konsole static Qt runtime boundary invariant is missing'
+konsole_app_patch="$REPO_ROOT/contrib/konsole/patches/0002-static-konsoleapp-runtime.patch"
+grep -Fq 'add_library(konsoleapp STATIC Application.cpp' "$konsole_app_patch" || \
+    fail 'Konsole source patch does not make konsoleapp STATIC'
+if grep -Eq '^\+add_library\(konsoleapp SHARED Application\.cpp$' "$konsole_app_patch"; then
+    fail 'Konsole source patch still contains a SHARED konsoleapp target'
+fi
 grep -Fq 'test-konsole-source-patch.sh' \
     "$REPO_ROOT/.github/workflows/konsole-zig-build.yml" || \
     fail 'workflow does not validate the source patch against the pinned checkout'
 grep -Fq 'clean-kde-builder-source-tree.sh' "$REPO_ROOT/tools/build-konsole.sh" || \
     fail 'build does not clean cached KDE source checkouts before kde-builder'
-pass 'Konsole internal shared-library RPATH and portable bundle are in the plan'
+pass 'Konsole static Qt boundary, shared-library RPATH and portable bundle are in the plan'
 pass 'Zig baseline, static Qt, cache, hook and artifact gates are in the plan'
 
 grep -Fq 'max_file = max_file' "$REPO_ROOT/onebin/src/main.c" || \

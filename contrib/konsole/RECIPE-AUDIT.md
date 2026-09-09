@@ -558,3 +558,30 @@ call order. Preflight requires the targeted framework override and the CMake
 source contract checks that the icon bootstrap precedes `QApplication` while
 the remaining GUI helpers follow it. This closes the startup-hook class rather
 than matching the observed abort text.
+
+## Run 78: static Qt was duplicated by Konsole's application facade
+
+Run `34292303396` at `958041d37110a6391b7ce22ca44d05f16beb1326` built all 38
+projects, passed the static Qt contract, strict artifact audit and runtime
+bundle packaging, but the graphical X11 smoke still aborted before creating a
+window. The log ended with `QCoreApplication::applicationDirPath: Please
+instantiate the QApplication object first`, followed by `QWidget: Must
+construct a QApplication before a QWidget`. The pinned artifact was run under
+gdb with only its bundled runtime and a nested X server; the backtrace placed
+the abort in `Konsole::MainWindow::MainWindow()` inside
+`libkonsoleapp.so`, after `Application::newInstance()` had been called.
+
+The exact pinned Konsole `src/CMakeLists.txt` declares
+`add_library(konsoleapp SHARED Application.cpp)`. `BUILD_SHARED_LIBS=OFF` does
+not override an explicit target type, so the shared facade linked its own
+static Qt/KF6 copy. The executable and `libkonsoleapp.so` therefore observed
+different Qt global state, including different `QCoreApplication::instance()`
+values. This is a target-boundary defect, not another startup-order symptom.
+
+The new source patch is generated directly from the pinned checkout and changes
+that facade to `STATIC`. The source-only patch test checks the applied source,
+and the project CMake hook repeats the invariant after every overlay application
+and fails if `konsoleapp` becomes loadable again. The preflight also checks the
+patch contract before the expensive build. This closes the class of duplicate
+static-runtime state across loadable boundaries rather than matching the one
+abort message.
