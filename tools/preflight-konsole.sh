@@ -153,6 +153,8 @@ for needle in \
     'CMAKE_DISABLE_FIND_PACKAGE_OpenMP=ON' \
     'CMAKE_DISABLE_FIND_PACKAGE_UTEMPTER=ON' \
     'CMAKE_DISABLE_FIND_PACKAGE_UDev=ON' \
+    'KDE_INSTALL_PLUGINDIR=lib/plugins' \
+    'KDE_INSTALL_QTPLUGINDIR=lib/plugins' \
     'CMAKE_PROJECT_INCLUDE' \
     'CMAKE_EXE_LINKER_FLAGS="-pie' \
     'verify-konsole-artifact.sh' \

@@ -56,6 +56,12 @@ global:
   # option keeps the runner's FindX11/FindXCB modules discoverable.
   # KDE_INSTALL_LIBDIR is pinned so every framework installs its CONFIG files
   # under the same lib/cmake tree, independently of include order.
+  # KDEInstallDirs can leave the plugin variables empty when Qt's install
+  # paths are unavailable during the per-framework configure. An empty value
+  # is dangerous here: upstream DESTINATION expressions put a leading slash
+  # before their subdirectory, staging the MODULE outside this install
+  # prefix. Keep every KDE and Qt plugin destination relative to the prefix
+  # so the portable packager can see the complete runtime closure.
   # The Conan toolchain carries the target in its package-build and link flags,
   # but kde-builder configures every KDE source module separately. Keep the
   # compile driver on the same pinned target too; otherwise zig-c++ silently
@@ -106,6 +112,8 @@ global:
     -DCMAKE_IGNORE_PREFIX_PATH=
     -DKDE_INSTALL_USE_QT_SYS_PATHS=OFF
     -DKDE_INSTALL_LIBDIR=lib
+    -DKDE_INSTALL_PLUGINDIR=lib/plugins
+    -DKDE_INSTALL_QTPLUGINDIR=lib/plugins
     -DCMAKE_POSITION_INDEPENDENT_CODE=ON
     -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
     -DCMAKE_C_IMPLICIT_INCLUDE_DIRECTORIES=/usr/include

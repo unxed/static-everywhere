@@ -396,14 +396,24 @@ origin-relative RPATH for the Konsole application and creates a portable
 bundle containing the executable, all install-prefix shared objects, KDE
 modules and data. The packager normalizes MODULEs found below the prefix,
 `bin/`, `lib/`, or a Qt-style `plugins/` directory into the launcher’s single
-relocatable plugin root; the `bin/` case is required when an empty
-`KDE_INSTALL_PLUGINDIR` leaves KWindowSystem at `bin/kf6/kwindowsystem/`.
+relocatable plugin root; the legacy `bin/` case remains necessary for cached
+or third-party projects that retain that layout.
 CI smoke-tests that bundle and uploads it, so downloading the artifact does not
 require manually setting `LD_LIBRARY_PATH` or `XDG_DATA_DIRS`. The bundle
 launcher also supplies its own `QT_PLUGIN_PATH` so KF6 MODULE plugins (notably
 KWindowSystem's X11 backend) do not fall back to the build-time Qt plugin
 prefix. Fontconfig remains host data by design; the launcher makes that
 boundary explicit with `/etc/fonts` when available.
+
+The hosted isolated smoke then exposed a second install-directory edge: both
+`KDE_INSTALL_PLUGINDIR` and `KDE_INSTALL_QTPLUGINDIR` were empty in the
+per-framework CMake cache. Upstream expressions such as
+`${KDE_INSTALL_PLUGINDIR}/kf6/kwindowsystem/` consequently began with `/` and
+staged the MODULE outside the configured install prefix. The recipe now pins
+both variables to the relative `lib/plugins` directory, and preflight checks
+that the contract remains in the rendered build plan. The packager still
+accepts the older prefix-level, `bin/`, and multiarch layouts because cached or
+third-party projects may retain them.
 
 Run 69 (2026-09-07): build `34066071126` compiled and installed all 38 KDE
 projects, but the artifact verifier correctly rejected the result because the
