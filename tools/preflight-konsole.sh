@@ -14,6 +14,7 @@ bash -n "$REPO_ROOT/tools/build-konsole.sh" "$REPO_ROOT/tools/preflight-konsole.
     "$REPO_ROOT/tools/run-konsole-smoke.sh" "$REPO_ROOT/tools/verify-konsole-artifact.sh" \
     "$REPO_ROOT/tools/package-konsole-runtime.sh" "$REPO_ROOT/contrib/konsole/konsole-launcher.sh" \
     "$REPO_ROOT/tools/test-konsole-portable-launcher.sh" \
+    "$REPO_ROOT/tools/test-konsole-runtime-packaging.sh" \
     "$REPO_ROOT/tools/preflight-konsole-kde-builder-pretend.sh" \
     "$REPO_ROOT/contrib/konsole/qt-package-root.sh" "$REPO_ROOT/tools/test-konsole-qt-package-root.sh" \
     "$REPO_ROOT/tools/test-konsole-cmake-find-mode.sh" \
@@ -38,6 +39,9 @@ pass 'Konsole shell scripts parse'
 
 bash "$REPO_ROOT/tools/test-konsole-portable-launcher.sh"
 pass 'Konsole launcher keeps bundle data/plugins relocatable and supports isolated RPATH mode'
+
+bash "$REPO_ROOT/tools/test-konsole-runtime-packaging.sh"
+pass 'Konsole packaging preserves every install-prefix MODULE layout under the bundle plugin root'
 
 python3 "$REPO_ROOT/tools/test-konsole-dependency-contract.py"
 pass 'Conan metadata rejects missing public headers and host pkg-config substitutions'

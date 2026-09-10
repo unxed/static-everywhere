@@ -29,14 +29,35 @@ if [[ -e "$prefix/bin/konsoleprofile" ]]; then
     cp -a "$prefix/bin/konsoleprofile" "$output/bin/konsoleprofile"
 fi
 
-# Copy every application-owned shared object at the install-lib root and all
-# installed KDE modules. This is a closure rule, not a libkonsoleapp name
-# exception: a future Konsole split library is packaged automatically.
+# Copy every application-owned shared object at the install-lib root. This is
+# a closure rule, not a libkonsoleapp name exception: a future Konsole split
+# library is packaged automatically.
 find "$prefix/lib" -maxdepth 1 \( -type f -o -type l \) -name '*.so*' \
     -exec cp -a --target-directory="$output/lib" {} +
-if [[ -d "$prefix/lib/plugins" ]]; then
-    cp -a "$prefix/lib/plugins" "$output/lib/"
-fi
+
+# KDE_INSTALL_PLUGINDIR is not stable across KDE projects. In this recipe it
+# is intentionally empty, so a MODULE target such as KWindowSystem's X11
+# backend is installed below "$prefix/kf6" rather than "$prefix/lib". Other
+# projects may use a lib/plugins or a multiarch Qt plugin directory. Normalize
+# every nested shared object into one relocatable Qt plugin root while keeping
+# its path below the plugin directory (platforms/, kf6/, imageformats/, ...).
+# This closes the whole install-layout class instead of naming one framework.
+while IFS= read -r -d '' module; do
+    relative=${module#"$prefix"/}
+    if [[ $relative == lib/*.so* && ${relative#lib/} != */* ]]; then
+        continue
+    fi
+    case "$relative" in
+        */plugins/*) plugin_relative=${relative#*/plugins/} ;;
+        plugins/*) plugin_relative=${relative#plugins/} ;;
+        lib/*) plugin_relative=${relative#lib/} ;;
+        *) plugin_relative=$relative ;;
+    esac
+    destination="$output/lib/plugins/$plugin_relative"
+    mkdir -p "$(dirname -- "$destination")"
+    cp -a "$module" "$destination"
+done < <(find "$prefix" -mindepth 2 \( -type f -o -type l \) -name '*.so*' -print0)
+
 if [[ -d "$prefix/share" ]]; then
     cp -a "$prefix/share/." "$output/share/"
 fi
