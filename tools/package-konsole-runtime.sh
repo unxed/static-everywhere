@@ -24,16 +24,16 @@ repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 }
 
 mkdir -p "$output/bin" "$output/lib" "$output/share"
-cp -a "$prefix/bin/konsole" "$output/bin/konsole"
+cp -aL "$prefix/bin/konsole" "$output/bin/konsole"
 if [[ -e "$prefix/bin/konsoleprofile" ]]; then
-    cp -a "$prefix/bin/konsoleprofile" "$output/bin/konsoleprofile"
+    cp -aL "$prefix/bin/konsoleprofile" "$output/bin/konsoleprofile"
 fi
 
 # Copy every application-owned shared object at the install-lib root. This is
 # a closure rule, not a libkonsoleapp name exception: a future Konsole split
 # library is packaged automatically.
-find "$prefix/lib" -maxdepth 1 \( -type f -o -type l \) -name '*.so*' \
-    -exec cp -a --target-directory="$output/lib" {} +
+find -L "$prefix/lib" -maxdepth 1 -type f -name '*.so*' \
+    -exec cp -aL --target-directory="$output/lib" {} +
 
 # KDE_INSTALL_PLUGINDIR is not stable across KDE projects. In this recipe it
 # is intentionally empty, so a MODULE target such as KWindowSystem's X11
@@ -42,7 +42,9 @@ find "$prefix/lib" -maxdepth 1 \( -type f -o -type l \) -name '*.so*' \
 # plugin directory. Normalize every nested shared object into one relocatable
 # Qt plugin root while keeping its path below the plugin directory
 # (platforms/, kf6/, imageformats/, ...). This closes the whole install-layout
-# class instead of naming one framework.
+# class instead of naming one framework. Follow and dereference staged
+# symlinks: a development install may point a MODULE back into its build tree,
+# which is not present when the copied bundle is run on a user's machine.
 while IFS= read -r -d '' module; do
     relative=${module#"$prefix"/}
     if [[ $relative == lib/*.so* && ${relative#lib/} != */* ]]; then
@@ -57,11 +59,11 @@ while IFS= read -r -d '' module; do
     esac
     destination="$output/lib/plugins/$plugin_relative"
     mkdir -p "$(dirname -- "$destination")"
-    cp -a "$module" "$destination"
-done < <(find "$prefix" -mindepth 2 \( -type f -o -type l \) -name '*.so*' -print0)
+    cp -aL "$module" "$destination"
+done < <(find -L "$prefix" -mindepth 2 -type f -name '*.so*' -print0)
 
 if [[ -d "$prefix/share" ]]; then
-    cp -a "$prefix/share/." "$output/share/"
+    cp -aL "$prefix/share/." "$output/share/"
 fi
 
 install -m 755 "$repo_root/contrib/konsole/konsole-launcher.sh" "$output/konsole"
