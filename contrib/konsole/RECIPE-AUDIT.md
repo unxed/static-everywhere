@@ -395,13 +395,15 @@ host allowlist only for X11/GL-adjacent system ABI. The build also restores an
 origin-relative RPATH for the Konsole application and creates a portable
 bundle containing the executable, all install-prefix shared objects, KDE
 modules and data. The packager normalizes MODULEs found below the prefix,
-`lib/`, or a Qt-style `plugins/` directory into the launcher’s single
-relocatable plugin root. CI smoke-tests that bundle and uploads it, so downloading
-the artifact does not require manually setting `LD_LIBRARY_PATH` or
-`XDG_DATA_DIRS`. The bundle launcher also supplies its own `QT_PLUGIN_PATH`
-so KF6 MODULE plugins (notably KWindowSystem's X11 backend) do not fall back
-to the build-time Qt plugin prefix. Fontconfig remains host data by design;
-the launcher makes that boundary explicit with `/etc/fonts` when available.
+`bin/`, `lib/`, or a Qt-style `plugins/` directory into the launcher’s single
+relocatable plugin root; the `bin/` case is required when an empty
+`KDE_INSTALL_PLUGINDIR` leaves KWindowSystem at `bin/kf6/kwindowsystem/`.
+CI smoke-tests that bundle and uploads it, so downloading the artifact does not
+require manually setting `LD_LIBRARY_PATH` or `XDG_DATA_DIRS`. The bundle
+launcher also supplies its own `QT_PLUGIN_PATH` so KF6 MODULE plugins (notably
+KWindowSystem's X11 backend) do not fall back to the build-time Qt plugin
+prefix. Fontconfig remains host data by design; the launcher makes that
+boundary explicit with `/etc/fonts` when available.
 
 Run 69 (2026-09-07): build `34066071126` compiled and installed all 38 KDE
 projects, but the artifact verifier correctly rejected the result because the

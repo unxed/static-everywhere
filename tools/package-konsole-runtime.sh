@@ -37,11 +37,12 @@ find "$prefix/lib" -maxdepth 1 \( -type f -o -type l \) -name '*.so*' \
 
 # KDE_INSTALL_PLUGINDIR is not stable across KDE projects. In this recipe it
 # is intentionally empty, so a MODULE target such as KWindowSystem's X11
-# backend is installed below "$prefix/kf6" rather than "$prefix/lib". Other
-# projects may use a lib/plugins or a multiarch Qt plugin directory. Normalize
-# every nested shared object into one relocatable Qt plugin root while keeping
-# its path below the plugin directory (platforms/, kf6/, imageformats/, ...).
-# This closes the whole install-layout class instead of naming one framework.
+# backend can be installed below "$prefix/bin/kf6" rather than "$prefix/lib".
+# Other projects may use a prefix-level kf6/, a lib/plugins or a multiarch Qt
+# plugin directory. Normalize every nested shared object into one relocatable
+# Qt plugin root while keeping its path below the plugin directory
+# (platforms/, kf6/, imageformats/, ...). This closes the whole install-layout
+# class instead of naming one framework.
 while IFS= read -r -d '' module; do
     relative=${module#"$prefix"/}
     if [[ $relative == lib/*.so* && ${relative#lib/} != */* ]]; then
@@ -50,6 +51,7 @@ while IFS= read -r -d '' module; do
     case "$relative" in
         */plugins/*) plugin_relative=${relative#*/plugins/} ;;
         plugins/*) plugin_relative=${relative#plugins/} ;;
+        bin/*) plugin_relative=${relative#bin/} ;;
         lib/*) plugin_relative=${relative#lib/} ;;
         *) plugin_relative=$relative ;;
     esac
