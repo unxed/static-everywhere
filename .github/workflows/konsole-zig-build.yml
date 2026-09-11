@@ -214,6 +214,9 @@ jobs:
             "$PWD/out/konsole/konsole-runtime/konsole" \
             "$PWD/out/konsole/smoke"
 
+      - name: Verify the portable KDE MODULE payload
+        run: ./tools/verify-konsole-runtime-plugins.sh out/konsole/konsole-runtime
+
       - name: Run the X11 smoke test as a user's machine would see it
         # The first smoke run passes on this runner even for a binary that
         # is broken everywhere else: paths compiled in at build time -- the
@@ -230,6 +233,7 @@ jobs:
           mv out/konsole/kde-install out/konsole/kde-install.hidden
           trap 'mv "$HOME/.conan2/p.hidden" "$HOME/.conan2/p"; mv out/konsole/kde-install.hidden out/konsole/kde-install' EXIT
           KONSOLE_INSTALL_DIR="$neutral/runtime" KONSOLE_SMOKE_DISABLE_LD_LIBRARY_PATH=1 \
+          KONSOLE_SMOKE_DEBUG_LOADER=1 \
             ./tools/run-konsole-smoke.sh \
             "$neutral/runtime/konsole" "$PWD/out/konsole/smoke-isolated"
           # These warnings mean a compiled-in application path was needed and
@@ -258,6 +262,13 @@ jobs:
           set +e
           diag=/tmp/konsole-diagnostic-logs
           mkdir -p "$diag"
+          for smoke_dir in out/konsole/smoke out/konsole/smoke-isolated; do
+            if [ -d "$smoke_dir" ]; then
+              target="$diag/${smoke_dir##*/}"
+              mkdir -p "$target"
+              cp -a "$smoke_dir/." "$target/" 2>/dev/null || true
+            fi
+          done
           cp out/konsole/konsole-audit.txt "$diag/00-konsole-audit.txt" 2>/dev/null || true
           find "$HOME/.conan2/p/b" -newer /tmp/job-start-marker -type f \
             ! -name '*.o' ! -name '*.a' ! -name '*.so' ! -name '*.so.*' \

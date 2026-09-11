@@ -13,6 +13,7 @@ pass() { printf 'PASS: %s\n' "$1"; }
 bash -n "$REPO_ROOT/tools/build-konsole.sh" "$REPO_ROOT/tools/preflight-konsole.sh" \
     "$REPO_ROOT/tools/run-konsole-smoke.sh" "$REPO_ROOT/tools/verify-konsole-artifact.sh" \
     "$REPO_ROOT/tools/package-konsole-runtime.sh" "$REPO_ROOT/contrib/konsole/konsole-launcher.sh" \
+    "$REPO_ROOT/tools/verify-konsole-runtime-plugins.sh" \
     "$REPO_ROOT/tools/test-konsole-portable-launcher.sh" \
     "$REPO_ROOT/tools/test-konsole-runtime-packaging.sh" \
     "$REPO_ROOT/tools/preflight-konsole-kde-builder-pretend.sh" \
@@ -189,6 +190,8 @@ grep -Fq 'export QT_PLUGIN_PATH="$ROOT/lib/plugins' \
 grep -Fq 'export QT_PLUGIN_PATH="$install_dir/lib/plugins' \
     "$REPO_ROOT/tools/run-konsole-smoke.sh" || \
     fail 'Konsole smoke harness does not export the relocated Qt plugin root'
+grep -Fq 'verify-konsole-runtime-plugins.sh' "$REPO_ROOT/.github/workflows/konsole-zig-build.yml" || \
+    fail 'workflow does not verify the real KDE MODULE payload before smoke'
 grep -Fq 'package-konsole-runtime.sh' "$REPO_ROOT/tools/build-konsole.sh" || \
     fail 'build plan does not create the portable Konsole runtime bundle'
 grep -Fq 'konsole-runtime' "$REPO_ROOT/.github/workflows/konsole-zig-build.yml" || \
@@ -766,6 +769,16 @@ grep -Fq 'export QT_PLUGIN_PATH=' "$REPO_ROOT/tools/run-konsole-smoke.sh" || \
 grep -Fq 'export QT_PLUGIN_PATH="$ROOT/lib/plugins' "$REPO_ROOT/contrib/konsole/konsole-launcher.sh" || \
     fail 'the portable launcher does not expose its relocatable plugin root'
 pass 'portable smoke uses the bundle launcher and relocatable Qt/KF6 plugin paths'
+
+# The isolated run must retain enough loader evidence to distinguish a
+# missing MODULE from a present MODULE whose dependencies or metadata reject
+# QPluginLoader. The trace is enabled only for the application process by the
+# smoke harness, so it cannot turn an Xvfb diagnostic into megabytes of noise.
+grep -Fq 'KONSOLE_SMOKE_DEBUG_LOADER=1' "$REPO_ROOT/.github/workflows/konsole-zig-build.yml" || \
+    fail 'the isolated smoke test does not collect dynamic-loader evidence'
+grep -Fq 'LD_DEBUG=libs,files' "$REPO_ROOT/tools/run-konsole-smoke.sh" || \
+    fail 'the smoke harness has no scoped dynamic-loader trace'
+pass 'isolated smoke retains scoped dynamic-loader evidence for KDE MODULE failures'
 
 # The install prefix must be neutral and staged, or KDE compiles build
 # paths into every binary and the audit reports them one module at a time
