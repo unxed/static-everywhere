@@ -229,6 +229,82 @@ if(PROJECT_NAME STREQUAL "KPackage")
                 "${_se_kpackage_cmake}")
     endif()
 endif()
+
+# Qt's QPluginLoader is deliberately unavailable when Qt itself is static:
+# QPluginLoader::setFileName() becomes a no-op in that configuration. A KDE
+# framework can still expose a MODULE target, so merely copying that MODULE
+# and exporting QT_PLUGIN_PATH gives a false portable-runtime contract. Make
+# KWindowSystem's X11 backend a static Qt plugin in the framework target too;
+# its existing dynamic MODULE remains harmless, while the static registration
+# is found first by KWindowSystem's plugin wrapper on every static-Qt build.
+#
+# This is a source-shape contract for the current upstream framework rather
+# than a hand-maintained dependency patch. The callback is deferred until the
+# framework has declared KF6WindowSystem, and the source edit is idempotent so
+# cached kde-builder checkouts can be reused safely and cleaned on exit.
+function(_se_konsole_enable_static_kwindowsystem_x11_plugin)
+    if(NOT KWINDOWSYSTEM_X11)
+        return()
+    endif()
+    if(NOT TARGET KF6WindowSystem)
+        message(FATAL_ERROR
+            "static-everywhere: KWindowSystem has no KF6WindowSystem target")
+    endif()
+
+    set(_se_kwindowsystem_wrapper
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/pluginwrapper.cpp")
+    set(_se_kwindowsystem_plugin_dir
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/platforms/xcb")
+    foreach(_se_kwindowsystem_required
+            "${_se_kwindowsystem_wrapper}"
+            "${_se_kwindowsystem_plugin_dir}/kwindoweffects.cpp"
+            "${_se_kwindowsystem_plugin_dir}/kwindowshadow.cpp"
+            "${_se_kwindowsystem_plugin_dir}/kwindowsystem.cpp"
+            "${_se_kwindowsystem_plugin_dir}/plugin.cpp")
+        if(NOT EXISTS "${_se_kwindowsystem_required}")
+            message(FATAL_ERROR
+                "static-everywhere: KWindowSystem static X11 plugin source "
+                "is missing: ${_se_kwindowsystem_required}")
+        endif()
+    endforeach()
+
+    file(READ "${_se_kwindowsystem_wrapper}" _se_kwindowsystem_content)
+    string(FIND "${_se_kwindowsystem_content}" "Q_IMPORT_PLUGIN(X11Plugin)"
+        _se_kwindowsystem_import_pos)
+    if(_se_kwindowsystem_import_pos LESS 0)
+        string(FIND "${_se_kwindowsystem_content}" "#include <QPluginLoader>"
+            _se_kwindowsystem_loader_include_pos)
+        if(_se_kwindowsystem_loader_include_pos LESS 0)
+            message(FATAL_ERROR
+                "static-everywhere: KWindowSystem plugin wrapper lost its "
+                "QPluginLoader include anchor")
+        endif()
+        string(REPLACE "#include <QPluginLoader>"
+            "#include <QPluginLoader>\n#include <QtPlugin>\n\nQ_IMPORT_PLUGIN(X11Plugin)"
+            _se_kwindowsystem_content "${_se_kwindowsystem_content}")
+        file(WRITE "${_se_kwindowsystem_wrapper}" "${_se_kwindowsystem_content}")
+    elseif(NOT _se_kwindowsystem_content MATCHES "#[ \t]*include[ \t]*<QtPlugin>")
+        message(FATAL_ERROR
+            "static-everywhere: KWindowSystem static plugin import has no "
+            "QtPlugin include")
+    endif()
+
+    target_compile_definitions(KF6WindowSystem PRIVATE QT_STATICPLUGIN)
+    target_sources(KF6WindowSystem PRIVATE
+        "${_se_kwindowsystem_plugin_dir}/kwindoweffects.cpp"
+        "${_se_kwindowsystem_plugin_dir}/kwindowshadow.cpp"
+        "${_se_kwindowsystem_plugin_dir}/kwindowsystem.cpp"
+        "${_se_kwindowsystem_plugin_dir}/plugin.cpp")
+    message(STATUS
+        "static-everywhere: registered KWindowSystem X11 backend as a "
+        "static Qt plugin")
+endfunction()
+
+if(PROJECT_NAME STREQUAL "KWindowSystem" AND PROJECT_IS_TOP_LEVEL)
+    cmake_language(DEFER DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+        CALL _se_konsole_enable_static_kwindowsystem_x11_plugin)
+endif()
+
 if(NOT PROJECT_IS_TOP_LEVEL)
     return()
 endif()

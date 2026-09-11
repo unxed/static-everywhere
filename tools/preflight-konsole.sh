@@ -27,6 +27,7 @@ bash -n "$REPO_ROOT/tools/build-konsole.sh" "$REPO_ROOT/tools/preflight-konsole.
     "$REPO_ROOT/tools/test-konsole-host-perl-modules.sh" \
     "$REPO_ROOT/tools/test-konsole-host-docbook-tools.sh" \
     "$REPO_ROOT/tools/test-konsole-static-qt-plugins.sh" \
+    "$REPO_ROOT/tools/test-konsole-static-kwindowsystem-plugin.sh" \
     "$REPO_ROOT/tools/test-konsole-portable-plugin-path.sh" \
     "$REPO_ROOT/tools/test-konsole-deferred-recipe-file.sh" \
     "$REPO_ROOT/tools/test-konsole-runtime-rpath.sh" \
@@ -71,6 +72,9 @@ pass 'Qt component-style CONFIG packages resolve through Conan aggregate metadat
 
 bash "$REPO_ROOT/tools/test-konsole-static-qt-plugins.sh"
 pass 'Konsole static Qt plugin imports are configure-time and Conan-safe'
+
+bash "$REPO_ROOT/tools/test-konsole-static-kwindowsystem-plugin.sh"
+pass 'static Qt KWindowSystem X11 plugin registration is wired at configure time'
 
 bash "$REPO_ROOT/tools/test-konsole-portable-plugin-path.sh"
 pass 'relocated KDE MODULE plugins are found from the portable bundle'
@@ -192,6 +196,12 @@ grep -Fq 'export QT_PLUGIN_PATH="$install_dir/lib/plugins' \
     fail 'Konsole smoke harness does not export the relocated Qt plugin root'
 grep -Fq 'verify-konsole-runtime-plugins.sh' "$REPO_ROOT/.github/workflows/konsole-zig-build.yml" || \
     fail 'workflow does not verify the real KDE MODULE payload before smoke'
+grep -Fq '_se_konsole_enable_static_kwindowsystem_x11_plugin' \
+    "$REPO_ROOT/contrib/konsole/project-include.cmake" || \
+    fail 'KWindowSystem static Qt plugin source hook is missing'
+grep -Fq 'Q_IMPORT_PLUGIN(X11Plugin)' \
+    "$REPO_ROOT/contrib/konsole/project-include.cmake" || \
+    fail 'KWindowSystem static Qt plugin import contract is missing'
 grep -Fq 'package-konsole-runtime.sh' "$REPO_ROOT/tools/build-konsole.sh" || \
     fail 'build plan does not create the portable Konsole runtime bundle'
 grep -Fq 'konsole-runtime' "$REPO_ROOT/.github/workflows/konsole-zig-build.yml" || \
@@ -769,6 +779,11 @@ grep -Fq 'export QT_PLUGIN_PATH=' "$REPO_ROOT/tools/run-konsole-smoke.sh" || \
 grep -Fq 'export QT_PLUGIN_PATH="$ROOT/lib/plugins' "$REPO_ROOT/contrib/konsole/konsole-launcher.sh" || \
     fail 'the portable launcher does not expose its relocatable plugin root'
 pass 'portable smoke uses the bundle launcher and relocatable Qt/KF6 plugin paths'
+grep -Fq 'QPluginLoader' "$REPO_ROOT/contrib/konsole/project-include.cmake" || \
+    fail 'static Qt QPluginLoader limitation is not documented in the source hook'
+grep -Fq 'QT_STATICPLUGIN' "$REPO_ROOT/contrib/konsole/project-include.cmake" || \
+    fail 'KWindowSystem static plugin does not define QT_STATICPLUGIN'
+pass 'static Qt does not depend on runtime loading of the KWindowSystem X11 MODULE'
 
 # The isolated run must retain enough loader evidence to distinguish a
 # missing MODULE from a present MODULE whose dependencies or metadata reject
