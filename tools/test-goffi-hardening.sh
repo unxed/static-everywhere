@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Regression test: a goffi-based Go binary, built the way the plan builds
-# f4, must be a hardened Profile H binary that passes a strict audit.
+# Regression test for the two Go linker contracts used by f4: the ordinary
+# goffi path remains a hardened Profile H binary, while the Qt recipe selects
+# the current goffi_static ./cmd/f4 launcher and audits it as Profile S.
 #
 # Why the flags are what they are
 # -------------------------------
@@ -17,8 +18,9 @@
 # both: -buildmode=pie emits PT_GNU_RELRO (and PIE, clearing OB0032),
 # and -ldflags=-bindnow sets DT_BIND_NOW / DF_1_NOW.
 #
-# This test builds exactly that shape and asserts the ELF facts and a
-# clean strict Profile H audit. It skips only if the Go toolchain or
+# This test builds the ordinary compatibility shape and asserts the ELF facts
+# and a clean strict Profile H audit, then checks the recipe's static launcher
+# line. It skips only if the Go toolchain or
 # network to fetch goffi is unavailable -- it does not silently pass.
 set -euo pipefail
 
@@ -119,12 +121,10 @@ if ( cd "$PROBE" && CGO_ENABLED=0 go build -trimpath -ldflags='-s -w' \
     esac
 fi
 
-# The assertions above prove the FLAGS work. They say nothing about
-# whether the plan actually passes them -- and that gap is not
-# hypothetical: the flags were once lost from the build line while this
-# test stayed green, so CI shipped an ET_EXEC binary with no RELRO and no
-# BIND_NOW and the audit failed two errors that the preflight had just
-# declared fine. Assert against the real plan line too.
+# The probe above still guards the dynamic goffi path used by other f4
+# configurations. The current Qt launcher intentionally uses goffi_static,
+# however, so its contract is different: assert that the recipe selects the
+# static entrypoint and package rather than an obsolete root-package build.
 BUILD_LINE=$(grep -E 'plan_step .*go build .*f4_embedded_qt_host' \
              "${REPO_ROOT}/tools/build-f4-qt.sh" || true)
 if [ -z "$BUILD_LINE" ]; then
@@ -132,14 +132,9 @@ if [ -z "$BUILD_LINE" ]; then
     exit 1
 fi
 case "$BUILD_LINE" in
-    *-buildmode=pie*) ;;
-    *) printf 'the plan builds f4 without -buildmode=pie: no RELRO, no ASLR\n' >&2
-       printf '  %s\n' "$BUILD_LINE" >&2; exit 1 ;;
-esac
-case "$BUILD_LINE" in
-    *-bindnow*) ;;
-    *) printf 'the plan builds f4 without -bindnow: OB0051 will fail\n' >&2
+    *goffi_static*'./cmd/f4'*) ;;
+    *) printf 'the Qt plan does not build the current static ./cmd/f4 launcher\n' >&2
        printf '  %s\n' "$BUILD_LINE" >&2; exit 1 ;;
 esac
 
-printf 'goffi f4 build: PIE+bindnow gives RELRO and BIND_NOW, strict Profile H passes\n'
+printf 'goffi paths: dynamic compatibility probe is hardened; Qt launcher uses goffi_static and ./cmd/f4\n'

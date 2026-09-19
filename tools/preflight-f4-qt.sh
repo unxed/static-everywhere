@@ -92,8 +92,8 @@ else
     fail "the software-renderer image fallback is missing from the build plan"
 fi
 
-for _qml in BrickDelegate GalleryEntryDelegate FlickableZoomable ViewerMode \
-            GalleryViewer SphericViewer; do
+for _qml in GalleryThumbnailShaderLayer ViewerImageLayer GalleryViewerSurface \
+            StandaloneViewerSurface SphericViewer; do
     if grep -q "third_party/ZoinGallery/qml/${_qml}[.]qml" \
          "${REPO_ROOT}/contrib/f4-qt/patches/zoin-gallery-software-images.patch"; then
         pass "software Image coverage includes ${_qml}.qml"
@@ -217,14 +217,15 @@ else
     printf '%s\n' "$HYGIENE_TEST" | sed 's/^/       /'
 fi
 
-# The packaged f4 is a goffi binary: dynamic on the C runtime by
-# construction, so Profile H, and it needs PIE+bindnow to carry RELRO and
-# BIND_NOW without cgo. This proves the flags do that and the result
-# audits clean. Skips only if the Go toolchain is unavailable.
+# The ordinary goffi path remains a dynamic Profile H configuration and still
+# needs PIE+bindnow to carry RELRO and BIND_NOW without cgo. The current Qt
+# launcher intentionally selects goffi_static instead; the companion test
+# checks that the recipe uses that static entry point. Skips only if the Go
+# toolchain is unavailable.
 if GOFFI_TEST=$("${REPO_ROOT}/tools/test-goffi-hardening.sh" 2>&1); then
-    pass "the goffi build is hardened and passes a strict Profile H audit"
+    pass "the goffi compatibility path is hardened and the Qt launcher is static"
 else
-    fail "goffi hardening regression"
+    fail "goffi/Qt launcher hardening regression"
     printf '%s\n' "$GOFFI_TEST" | sed 's/^/       /'
 fi
 

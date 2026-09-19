@@ -113,7 +113,7 @@ far2l-plan:
 f4-qt-plan:
 	@echo "--- f4-qt linux plan ---"
 	@if [ -f ./tools/build-f4-qt.sh ]; then SCRIPT="./tools/build-f4-qt.sh"; else SCRIPT="../tools/build-f4-qt.sh"; fi; \
-	sh "$$SCRIPT" --config linux --gallery off --print-plan > /dev/null || exit 1; \
+	sh "$$SCRIPT" --config linux --gallery public --print-plan > /dev/null || exit 1; \
 	echo "f4-qt-plan: plan generation succeeded"; \
 	if command -v shellcheck >/dev/null 2>&1; then \
 		shellcheck "$$SCRIPT" && echo "shellcheck: clean"; \
@@ -121,9 +121,14 @@ f4-qt-plan:
 		echo "SKIP: shellcheck not installed"; \
 	fi; \
 	if sh "$$SCRIPT" --config linux --print-plan >/dev/null 2>&1; then \
-		echo "FAIL: build-f4-qt.sh without --gallery must exit non-zero"; exit 1; \
+		echo "gallery-default check: no flag uses the public gallery"; \
 	else \
-		echo "gallery-guard check: exit non-zero, as required"; \
+		echo "FAIL: build-f4-qt.sh without --gallery must use the public default"; exit 1; \
+	fi; \
+	if sh "$$SCRIPT" --config linux --gallery off --print-plan >/dev/null 2>&1; then \
+		echo "FAIL: build-f4-qt.sh --gallery off must exit non-zero"; exit 1; \
+	else \
+		echo "gallery-guard check: --gallery off exits non-zero, as required"; \
 	fi
 
 install: build/onebin

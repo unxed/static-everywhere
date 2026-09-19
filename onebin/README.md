@@ -67,7 +67,7 @@ pipx install conan
 ./tools/build-far2l.sh --config sdl --fetch --src /tmp/far2l-src --out /tmp/out-far2l-sdl
 
 # 2. Build f4-qt (Go core + static embedded Qt Quick host)
-./tools/build-f4-qt.sh --config linux --gallery off --fetch --src /tmp/f4-src --out /tmp/out-f4-qt
+./tools/build-f4-qt.sh --config linux --gallery public --fetch --src /tmp/f4-src --out /tmp/out-f4-qt
 ```
 ## Build
 

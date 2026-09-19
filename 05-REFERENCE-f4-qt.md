@@ -43,9 +43,9 @@ us.
 |---|---|
 | Upstream core | `https://github.com/unxed/f4` — Go, BSD-3-Clause, module path `github.com/unxed/f4` |
 | Qt fork | `https://github.com/Zoinen/f4`, branch **`zoin`** |
-| Pin used for this document | `1a03511a5ad97bbd4ec1400078272373b32e9d2c` (2026-08-17) |
+| Pin used for this document | `fa25519a763875a5bb1cb3b8b19ba76b10a09852` (2026-09-19) |
 | Where the Qt code lives | `qt/host/` in the fork; upstream has `sdk/extui` and `extui_host.go` but no `qt/` |
-| Qt | **6.11.1**, via Conan; `Core Gui Qml Quick QuickControls2 Network Svg` (+ `Test`) |
+| Qt | **6.11.1**, via Conan; `Core Concurrent Gui Qml Quick QuickControls2 Network Svg` (+ static `OpenGL`/`WaylandClient` and `Test`) |
 | C++ standard | `gnu20` |
 | Linux baseline | **glibc 2.27** (Ubuntu 18.04), gcc-11 from `ppa:ubuntu-toolchain-r/test` |
 | macOS deployment target | 13.0, enforced by the Conan recipe's `validate()` |
@@ -87,7 +87,7 @@ which is why it can be a child process without the design feeling contorted.
 
 The Linux and Windows download is **one Go executable**. The Qt host is gzipped
 (`ci/package-embedded-qt-host.py`, level 9, `mtime=0` for determinism) into
-`embedded/f4-qt-host.gz` at release time — never committed — and linked in under
+`internal/plughost/embedded/f4-qt-host.gz` at release time — never committed — and linked in under
 the `f4_embedded_qt_host` build tag.
 
 On the first `--gui=qt` launch the Go process materialises it into a
@@ -173,12 +173,15 @@ link:    -static-libstdc++ -static-libgcc
          -Wl,--gc-sections -Wl,--exclude-libs,ALL -Wl,--as-needed
          -Wl,-z,relro,-z,now,-z,noexecstack
 MSVC:    MSVC_RUNTIME_LIBRARY = MultiThreaded   (static CRT)
-Go:      CGO_ENABLED=0 go build -trimpath -tags f4_embedded_qt_host -ldflags='-s -w'
+Go:      CGO_ENABLED=0 go build -trimpath -buildmode=exe \
+         -tags 'goffi_static f4_embedded_qt_host' -ldflags='-s -w' ./cmd/f4
 ```
 
-That link line is Profile H from our Quick Start, flag for flag, arrived at
-independently. `--exclude-libs,ALL` is safe here because the Qt host exports no
-ABI to plugins of its own — the far2l exception (§7.1 there) does not apply.
+The C++/Qt link lines are Profile H from our Quick Start, flag for flag, arrived
+at independently. The Go line is intentionally different: the current Qt
+launcher uses `goffi_static` and is audited as Profile S. `--exclude-libs,ALL`
+is safe for the Qt host because it exports no ABI to plugins of its own — the
+far2l exception (§7.1 there) does not apply.
 
 `F4_PORTABLE_STATIC=ON` also *asserts* the shape of the Qt package at configure
 time: `Qt6::Core` must be a `STATIC_LIBRARY` or an `INTERFACE_LIBRARY` facade, or
@@ -319,8 +322,8 @@ job you must actually run.
 
 > **Consequence, confirmed by an actual far2l build attempt (see
 > `STATUS.md`'s top note and `04-REFERENCE-far2l.md §6.1`): f4 is a
-> dlopen *user*, which means f4/f4-qt must target Profile H, not Profile
-> S.** Do not attempt a Profile S build of f4 or f4-qt expecting zero
+> dlopen *user*, which means the ordinary f4 build must target Profile H, not
+> Profile S.** Do not assume an ordinary Profile S build of f4 will have zero
 > dlopen evidence from `onebin audit` — it will FAIL on OB0033 for the
 > same structural reason far2l-tiny did, and re-discovering that is a
 > waste of a session. Target Profile H from the start.
@@ -339,6 +342,12 @@ And on Linux it opens windows **without libX11 and without libwayland-client**,
 using pure-Go clients that speak the X11 and Wayland wire protocols over a
 socket.
 
+The embedded Qt launcher is a deliberate exception to the ordinary f4 build:
+the latest f4 pin supports `goffi_static`, which omits the optional GPU FFI path
+for this launcher. The recipe builds that entry point with `./cmd/f4` and
+audits the resulting Go executable as Profile S; the separate Qt host remains
+the Profile H process described above.
+
 **Decision: amend row 1.** The correct statement is that *the C toolchain* gives
 you no loader in a static binary, and that a runtime which carries its own FFI
 machinery is a live counterexample. It is also the strongest evidence yet for the
@@ -351,7 +360,7 @@ cite a shipping program instead of a specification.
 
 > **Update.** ZoinGallery is now public. `git ls-remote
 > https://github.com/Zoinen/ZoinGallery` succeeds anonymously, and the
-> exact commit f4 pins at PIN `1a03511a` — `65d851c5` — is fetchable
+> exact commit f4 pins at PIN `fa25519a` — `3afcbe6b` — is fetchable
 > without credentials. The Level-0 objection below no longer stands.
 >
 > One thing still bites: f4's `.gitmodules` names the submodule by its
@@ -362,19 +371,18 @@ cite a shipping program instead of a specification.
 > The rest of this section is kept as the record of why it mattered.
 
 `third_party/ZoinGallery` is pinned as a submodule at
-`git@github.com:Zoinen/ZoinGallery.git`, branch `zoin/f4-integration`. It returns
-404 to an anonymous clone, and CI supplies `secrets.SUBMODULE_SSH_KEY`.
+`git@github.com:Zoinen/ZoinGallery.git`, branch `zoin/f4-integration`, commit
+`3afcbe6b`. The repository is public; the SSH URL is the remaining source of
+friction for anonymous builders, so the recipe rewrites it to HTTPS.
 `qt/host/CMakeLists.txt` hard-fails without it.
 
-So: **today, nobody outside the project can reproduce the reference build.** That
-is not a criticism of a work in progress, it is a blocker for using it as a
-showcase, and it is a Level-0 problem in our own terms — an artifact whose
-sources cannot be obtained cannot have a verifiable SBOM.
+The source is now obtainable without credentials, so the original
+reproducibility blocker is resolved. The HTTPS rewrite remains necessary for
+builders that do not have GitHub SSH credentials.
 
-**Decision: the showcase needs one of** (a) ZoinGallery public, or (b) a
-`-DF4_NO_GALLERY=ON` build path that produces a complete Qt host without it. Ask
-upstream for (b) even if (a) is coming; a reference build that can lose a
-dependency and still stand up is a better reference.
+**Decision: use the public ZoinGallery checkout.** A `-DF4_NO_GALLERY=ON`
+fallback is neither needed nor supported by this f4 pin: the Qt host requires
+the gallery target and its QML module as part of the application.
 
 ### 7.9 Source mirrors are a provenance question
 
@@ -430,6 +438,7 @@ Same shape as `tools/build-far2l.sh` (`04-REFERENCE-far2l.md §10`):
 ```
 tools/build-f4-qt.sh --config linux|windows --src DIR --out DIR
                      [--print-plan] [--no-fetch] [--pin COMMIT]
+                     [--gallery public] [--toolchain host|zig]
 ```
 
 - reads pinned versions from `contrib/f4-qt/deps.lock` (Qt, codecs, QWindowKit,
@@ -459,7 +468,8 @@ ci/audit-portable-qt-linux.sh     the Linux audit
 ci/audit-static-go-linux.sh       the Go launcher audit
 ci/audit-portable-qt-windows.ps1  the Windows import audit
 ci/package-embedded-qt-host.py    the deterministic payload
-embedded_qt_host.go               the content-addressed cache
+internal/plughost/qt_embedded_qt_host.go
+                                  the content-addressed cache
 .github/workflows/build.yml       the portable-qt matrix and the submodule secret
 go.mod                            purego → pureffi, and the pure-Go X11/Wayland clients
 ```

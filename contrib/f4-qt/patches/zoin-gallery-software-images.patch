@@ -1,158 +1,68 @@
-diff --git a/third_party/ZoinGallery/qml/BrickDelegate.qml b/third_party/ZoinGallery/qml/BrickDelegate.qml
---- a/third_party/ZoinGallery/qml/BrickDelegate.qml
-+++ b/third_party/ZoinGallery/qml/BrickDelegate.qml
-@@ -129,6 +129,24 @@ BrickItem {
-             visible: internalImage.source != ""
-         }
- 
-+        // Qt Quick's software scenegraph does not paint this custom shader.
-+        // Keep the shader path for hardware renderers, but put the ordinary
-+        // Image back on top when the raster renderer is active.
-+        Image {
-+            id: softwareImage
-+            objectName: "gallerySoftwareImage"
-+            x: imageShader.x
-+            y: imageShader.y
-+            width: imageShader.width
-+            height: imageShader.height
-+            source: internalImage.source
-+            fillMode: imageViewRoot.fillMode
-+            cache: false
-+            asynchronous: false
-+            visible: GraphicsInfo.api === GraphicsInfo.Software
-+                     && internalImage.source != ""
-+        }
-+
-         // Text {
-         //     id: imageSizeDiff
-         //     text: (internalImage.xDiff !== 0 || internalImage.yDiff !== 0) ? internalImage.xDiff + "x" + internalImage.yDiff : "0"
-diff --git a/third_party/ZoinGallery/qml/FlickableZoomable.qml b/third_party/ZoinGallery/qml/FlickableZoomable.qml
---- a/third_party/ZoinGallery/qml/FlickableZoomable.qml
-+++ b/third_party/ZoinGallery/qml/FlickableZoomable.qml
-@@ -1146,6 +1146,22 @@ Item {
-                     visible: viewerImage2.status !== Image.Ready
-                 }
-             }
-+
-+            // The software scenegraph cannot paint the custom viewer shader.
-+            // Draw the selected full or partial provider image directly in
-+            // that case; the surrounding item still supplies zoom and pan.
-+            Image {
-+                id: viewerImageSoftware
-+                objectName: "galleryViewerSoftwareImage"
-+                anchors.fill: parent
-+                source: viewerImage2.status === Image.Ready
-+                        ? viewerImage2.source : viewerImageBase.source
-+                cache: false
-+                mipmap: false
-+                asynchronous: false
-+                visible: GraphicsInfo.api === GraphicsInfo.Software
-+                         && flickableArea.imageTextureReady
-+            }
-         }
+diff --git a/third_party/ZoinGallery/qml/GalleryThumbnailShaderLayer.qml b/third_party/ZoinGallery/qml/GalleryThumbnailShaderLayer.qml
+index 1fe9ee9..02e50f8 100644
+--- a/third_party/ZoinGallery/qml/GalleryThumbnailShaderLayer.qml
++++ b/third_party/ZoinGallery/qml/GalleryThumbnailShaderLayer.qml
+@@ -65,4 +65,24 @@ Item {
+         fragmentShader: "qrc:/ZoinGallery/resources/shader.frag.qsb"
+         visible: layer.imageSource.toString() !== ""
      }
- 
-diff --git a/third_party/ZoinGallery/qml/GalleryEntryDelegate.qml b/third_party/ZoinGallery/qml/GalleryEntryDelegate.qml
---- a/third_party/ZoinGallery/qml/GalleryEntryDelegate.qml
-+++ b/third_party/ZoinGallery/qml/GalleryEntryDelegate.qml
-@@ -547,6 +547,26 @@ BrickItem {
-                     "qrc:/ZoinGallery/resources/shader.frag.qsb"
-                 visible: thumbnail.source.toString() !== ""
-             }
 +
-+            // ShaderEffect is intentionally retained above for the normal
-+            // hardware path. The software scenegraph cannot paint its
-+            // custom fragment shader, so draw the same provider image with
-+            // Qt Quick's built-in raster Image node instead.
-+            Image {
-+                id: softwareThumbnailImage
-+                objectName: "gallerySoftwareThumbnailImage-" + brick.viewIndex
-+                x: thumbnailShader.x
-+                y: thumbnailShader.y
-+                width: thumbnailShader.width
-+                height: thumbnailShader.height
-+                source: thumbnail.source
-+                fillMode: thumbnailSource.fillMode
-+                asynchronous: false
-+                cache: false
-+                mipmap: false
-+                visible: GraphicsInfo.api === GraphicsInfo.Software
-+                         && thumbnail.source.toString() !== ""
-+            }
-         }
-     }
- 
-diff --git a/third_party/ZoinGallery/qml/ViewerMode.qml b/third_party/ZoinGallery/qml/ViewerMode.qml
---- a/third_party/ZoinGallery/qml/ViewerMode.qml
-+++ b/third_party/ZoinGallery/qml/ViewerMode.qml
-@@ -1894,6 +1894,18 @@ Item {
- 
-                     fragmentShader: "qrc:/ZoinGallery/resources/shader.frag.qsb"
-                 }
++    // Qt Quick's software scenegraph does not paint this custom shader. Keep
++    // the shader path for hardware renderers, but draw the provider image
++    // through the built-in raster Image node when software rendering is used.
++    Image {
++        id: softwareThumbnailImage
++        objectName: layer.activePresentation
++                    ? "gallerySoftwareThumbnailImage-" + layer.entry.viewIndex : ""
++        x: thumbnailShader.x
++        y: thumbnailShader.y
++        width: thumbnailShader.width
++        height: thumbnailShader.height
++        source: sourceImage.source
++        fillMode: sourceImage.fillMode
++        asynchronous: false
++        cache: false
++        mipmap: false
++        visible: GraphicsInfo.api === GraphicsInfo.Software
++                 && layer.imageSource.toString() !== ""
++    }
+ }
+diff --git a/third_party/ZoinGallery/qml/GalleryViewerSurface.qml b/third_party/ZoinGallery/qml/GalleryViewerSurface.qml
+index ffe9cfe..59d48e0 100644
+--- a/third_party/ZoinGallery/qml/GalleryViewerSurface.qml
++++ b/third_party/ZoinGallery/qml/GalleryViewerSurface.qml
+@@ -204,6 +204,19 @@ Item {
+                             4 * root.viewer.devicePixelRatio
+                         borderRadius: 0
+                     }
 +
-+                Image {
-+                    id: viewerNavigationNeighborSoftwareImage
-+                    objectName: "standaloneViewerNavigationNeighborSoftwareImage"
-+                    anchors.fill: parent
-+                    source: viewerNavigationNeighborImage.source
-+                    fillMode: Image.PreserveAspectFit
-+                    asynchronous: false
-+                    cache: false
-+                    visible: GraphicsInfo.api === GraphicsInfo.Software
-+                             && viewerNavigationNeighborImage.source != ""
-+                }
-             }
-         }
-     }
-@@ -2488,6 +2500,21 @@ Item {
-                     visible: filmstripImage.source != ""
-                 }
- 
-+                Image {
-+                    id: filmstripSoftwareImage
-+                    objectName: "galleryFilmstripSoftwareImage"
-+                    anchors.centerIn: parent
-+                    width: imageShader.width
-+                    height: imageShader.height
-+                    source: filmstripImage.source
-+                    fillMode: Image.PreserveAspectFit
-+                    asynchronous: false
-+                    cache: false
-+                    mipmap: false
-+                    visible: GraphicsInfo.api === GraphicsInfo.Software
-+                             && filmstripImage.source != ""
-+                }
-+
-                 /*Image {
-                     id: thumbnailImage
-                     source: model.imageIdUrlRole
-diff --git a/third_party/ZoinGallery/qml/GalleryViewer.qml b/third_party/ZoinGallery/qml/GalleryViewer.qml
---- a/third_party/ZoinGallery/qml/GalleryViewer.qml
-+++ b/third_party/ZoinGallery/qml/GalleryViewer.qml
-@@ -1627,0 +1628,15 @@ FocusScope {
-+                    // Keep navigation transitions visible with the raster
-+                    // scenegraph too. The hardware shader remains above;
-+                    // software renders the same provider image directly.
 +                    Image {
-+                        id: viewerNavigationNeighborSoftwareImage
++                        id: softwareNeighborImage
 +                        objectName: "galleryViewerNavigationNeighborSoftwareImage"
 +                        anchors.fill: parent
-+                        source: viewerNavigationNeighborImage.source
++                        source: neighborImage.source
 +                        fillMode: Image.PreserveAspectFit
 +                        asynchronous: false
 +                        cache: false
-+                        mipmap: root.viewerNavigationTargetSourceLevel === 2
++                        mipmap: false
 +                        visible: GraphicsInfo.api === GraphicsInfo.Software
-+                                 && viewerNavigationNeighborImage.source != ""
++                                 && neighborImage.source.toString() !== ""
 +                    }
+                 }
+             }
+         }
 diff --git a/third_party/ZoinGallery/qml/SphericViewer.qml b/third_party/ZoinGallery/qml/SphericViewer.qml
+index 400fad6..94337e2 100644
 --- a/third_party/ZoinGallery/qml/SphericViewer.qml
 +++ b/third_party/ZoinGallery/qml/SphericViewer.qml
-@@ -67,0 +68,16 @@ Item {
+@@ -81,6 +81,23 @@ Item {
+         fragmentShader: "qrc:/ZoinGallery/resources/sphere.frag.qsb"
+     }
+ 
 +    // The spherical projection is a custom fragment shader and therefore has
 +    // no raster-scenegraph implementation. Keep panorama files visible on
 +    // software-only systems as a fitted equirectangular image; hardware
-+    // renderers retain the interactive spherical projection above.
++    // renderers retain the interactive projection above.
 +    Image {
 +        id: softwarePanoramaImage
 +        objectName: "gallerySoftwarePanoramaImage"
@@ -163,5 +73,61 @@ diff --git a/third_party/ZoinGallery/qml/SphericViewer.qml b/third_party/ZoinGal
 +        cache: false
 +        mipmap: false
 +        visible: GraphicsInfo.api === GraphicsInfo.Software
-+                 && flickableArea.source != ""
++                 && flickableArea.source.toString() !== ""
 +    }
++
+     MouseArea {
+         id: panoramaMouseArea
+         objectName: "sphericViewerPointerArea"
+diff --git a/third_party/ZoinGallery/qml/StandaloneViewerSurface.qml b/third_party/ZoinGallery/qml/StandaloneViewerSurface.qml
+index b95b51b..5e2c516 100644
+--- a/third_party/ZoinGallery/qml/StandaloneViewerSurface.qml
++++ b/third_party/ZoinGallery/qml/StandaloneViewerSurface.qml
+@@ -304,6 +304,19 @@ Item {
+                     checkerboardSize: 4 * surface.devicePixelRatio
+                     borderRadius: 0
+                 }
++
++                Image {
++                    id: softwareNeighborImage
++                    objectName: "standaloneViewerNavigationNeighborSoftwareImage"
++                    anchors.fill: parent
++                    source: viewerNavigationNeighborImage.source
++                    fillMode: Image.PreserveAspectFit
++                    asynchronous: false
++                    cache: false
++                    mipmap: false
++                    visible: GraphicsInfo.api === GraphicsInfo.Software
++                             && viewerNavigationNeighborImage.source.toString() !== ""
++                }
+             }
+         }
+     }
+diff --git a/third_party/ZoinGallery/qml/ViewerImageLayer.qml b/third_party/ZoinGallery/qml/ViewerImageLayer.qml
+index e5713a8..8c87fe4 100644
+--- a/third_party/ZoinGallery/qml/ViewerImageLayer.qml
++++ b/third_party/ZoinGallery/qml/ViewerImageLayer.qml
+@@ -286,5 +286,23 @@ Item {
+                          && !root.viewport.zoomFitView
+             }
+         }
++
++        // ViewerResample is a custom fragment shader and has no raster
++        // scenegraph implementation. Preserve the image-viewing contract on
++        // software-only systems with a direct Image fallback; hardware
++        // renderers retain the resampling path above.
++        Image {
++            id: softwareImage
++            objectName: "galleryViewerSoftwareImage"
++            anchors.fill: parent
++            source: imageShader.imageSource
++                    ? imageShader.imageSource.source : root.source
++            fillMode: Image.PreserveAspectFit
++            asynchronous: false
++            cache: false
++            mipmap: false
++            visible: GraphicsInfo.api === GraphicsInfo.Software
++                     && root.viewport.imageTextureReady
++        }
+     }
+ }
