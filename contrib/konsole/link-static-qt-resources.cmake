@@ -57,7 +57,10 @@ function(_se_link_static_qt_resources)
 
         set(_se_object "${_se_target}_se_qt_resources")
         add_library("${_se_object}" OBJECT ${_se_qrc})
+        # The only compiled sources are the qrc_*.cpp AUTORCC adds at
+        # generate time, so CMake cannot infer the language from the list.
         set_target_properties("${_se_object}" PROPERTIES
+            LINKER_LANGUAGE CXX
             AUTORCC ON
             AUTOMOC OFF
             AUTOUIC OFF
