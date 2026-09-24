@@ -28,6 +28,8 @@ bash -n "$REPO_ROOT/tools/build-konsole.sh" "$REPO_ROOT/tools/preflight-konsole.
     "$REPO_ROOT/tools/test-konsole-host-docbook-tools.sh" \
     "$REPO_ROOT/tools/test-konsole-static-qt-plugins.sh" \
     "$REPO_ROOT/tools/test-konsole-static-kwindowsystem-plugin.sh" \
+    "$REPO_ROOT/tools/test-konsole-static-qt-resources.sh" \
+    "$REPO_ROOT/tools/check-konsole-runtime-log.sh" \
     "$REPO_ROOT/tools/test-konsole-portable-plugin-path.sh" \
     "$REPO_ROOT/tools/test-konsole-deferred-recipe-file.sh" \
     "$REPO_ROOT/tools/test-konsole-runtime-rpath.sh" \
@@ -75,6 +77,15 @@ pass 'Konsole static Qt plugin imports are configure-time and Conan-safe'
 
 bash "$REPO_ROOT/tools/test-konsole-static-kwindowsystem-plugin.sh"
 pass 'static Qt KWindowSystem X11 plugin registration is wired at configure time'
+
+bash "$REPO_ROOT/tools/test-konsole-static-qt-resources.sh"
+pass 'Qt resources of every STATIC Konsole target reach the final link'
+grep -Fq 'CALL _se_link_static_qt_resources' \
+    "$REPO_ROOT/contrib/konsole/project-include.cmake" || \
+    fail 'the Konsole hook does not defer the static Qt resource pass'
+grep -Fq 'check-konsole-runtime-log.sh' "$REPO_ROOT/.github/workflows/konsole-zig-build.yml" || \
+    fail 'the workflow does not check the smoke logs for a hollow static runtime'
+pass 'the workflow rejects a Konsole window without its static runtime contracts'
 
 bash "$REPO_ROOT/tools/test-konsole-portable-plugin-path.sh"
 pass 'relocated KDE MODULE plugins are found from the portable bundle'

@@ -214,9 +214,6 @@ jobs:
             "$PWD/out/konsole/konsole-runtime/konsole" \
             "$PWD/out/konsole/smoke"
 
-      - name: Verify the portable KDE MODULE payload
-        run: ./tools/verify-konsole-runtime-plugins.sh out/konsole/konsole-runtime
-
       - name: Run the X11 smoke test as a user's machine would see it
         # The first smoke run passes on this runner even for a binary that
         # is broken everywhere else: paths compiled in at build time -- the
@@ -240,12 +237,25 @@ jobs:
           # is gone. Fontconfig configuration is intentionally host data, so
           # its absence is a degraded-font warning rather than a bundle-path
           # failure; the launcher supplies /etc/fonts when it exists.
-          if grep -qiE 'u_init|ICU data|could not find the Qt platform plugin|Could not find any platform plugin' \
+          if grep -qiE 'u_init|ICU data|could not find the Qt platform plugin' \
               out/konsole/smoke-isolated/konsole.log 2>/dev/null; then
             echo "the isolated run relied on a build-time path:" >&2
-            grep -iE 'u_init|ICU data|platform plugin' out/konsole/smoke-isolated/konsole.log >&2
+            grep -iE 'u_init|ICU data|Qt platform plugin' out/konsole/smoke-isolated/konsole.log >&2
             exit 1
           fi
+
+      # Both runs first, then the contracts: a failed check here must not
+      # cost the isolated run's screenshot and log.
+      - name: Verify the static KDE plugin payload
+        run: ./tools/verify-konsole-runtime-plugins.sh out/konsole/konsole-runtime
+
+      - name: Check both smoke logs for a hollow static runtime
+        run: |
+          status=0
+          for log in out/konsole/smoke/konsole.log out/konsole/smoke-isolated/konsole.log; do
+            ./tools/check-konsole-runtime-log.sh "$log" || status=1
+          done
+          exit "$status"
 
       - name: ccache statistics and disk usage
         if: always()

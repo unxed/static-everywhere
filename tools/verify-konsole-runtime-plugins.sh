@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
-# Verify the portable bundle's KDE MODULE payload before graphical smoke.
+# Verify the portable bundle's KDE plugin contract before graphical smoke.
 #
-# KWindowSystem's X11 backend is an explicit runtime boundary: its static
-# library is part of konsole, but its platform implementation is a MODULE
-# loaded through QPluginLoader. A layout-only fixture cannot prove that the
-# real install preserved this ELF, so the built bundle checks the contract at
-# the point where it is produced. The inventory also makes a missing or
-# unexpectedly relocated module visible in a failed CI diagnostic.
+# Qt is static in this recipe, and a static QtCore refuses every MODULE:
+# QPluginLoader logs "Cannot load ... into a statically linked Qt library".
+# KWindowSystem's X11 backend therefore has to be a static Qt plugin inside
+# the executable, registered with Q_IMPORT_PLUGIN. The first CI run that
+# shipped it as KF6WindowSystemX11Plugin.so passed a presence check here and
+# still started without a window-system backend. Check what static Qt can
+# actually use: the plugin class and its IID in the executable, and no
+# bundled KWindowSystem MODULE that claims the IID it can never serve.
 set -euo pipefail
 
 if [[ $# -ne 1 || ! -d $1 ]]; then
@@ -15,52 +17,45 @@ if [[ $# -ne 1 || ! -d $1 ]]; then
 fi
 
 runtime=$(CDPATH= cd -- "$1" && pwd)
+binary="$runtime/bin/konsole"
 plugin_root="$runtime/lib/plugins"
-plugin="$plugin_root/kf6/kwindowsystem/KF6WindowSystemX11Plugin.so"
+iid='org.kde.kwindowsystem.KWindowSystemPluginInterface'
 
-[[ -d $plugin_root ]] || {
-    printf 'error: portable bundle has no plugin root: %s\n' "$plugin_root" >&2
-    exit 1
-}
-[[ -f $plugin && ! -L $plugin ]] || {
-    printf 'error: portable bundle is missing the KWindowSystem X11 MODULE: %s\n' "$plugin" >&2
-    printf '%s\n' 'Portable plugin inventory:' >&2
-    find -L "$plugin_root" -type f -name '*.so*' -printf '  %P\n' | sort >&2 || true
+[[ -f $binary ]] || {
+    printf 'error: portable bundle has no Konsole executable: %s\n' "$binary" >&2
     exit 1
 }
 
 printf 'Portable plugin inventory (%s):\n' "$plugin_root"
-find -L "$plugin_root" -type f -name '*.so*' -printf '  %P\n' | sort
+if [[ -d $plugin_root ]]; then
+    find -L "$plugin_root" -type f -name '*.so*' -printf '  %P\n' | sort
+fi
 
-file_output=$(file -b "$plugin")
-grep -Fq 'ELF' <<<"$file_output" || {
-    printf 'error: KWindowSystem X11 MODULE is not an ELF object: %s\n' "$file_output" >&2
+binary_strings=$(strings -a "$binary") || {
+    printf 'error: strings could not inspect %s\n' "$binary" >&2
     exit 1
 }
-elf_header=$(readelf -h "$plugin") || {
-    printf 'error: readelf could not inspect KWindowSystem X11 MODULE\n' >&2
+grep -Fq "$iid" <<<"$binary_strings" || {
+    printf 'error: Konsole has no KWindowSystem plugin IID\n' >&2
     exit 1
 }
-grep -Fq 'DYN (Shared object file)' <<<"$elf_header" || {
-    printf 'error: KWindowSystem X11 MODULE is not an ELF shared object\n' >&2
-    readelf -h "$plugin" >&2
-    exit 1
-}
-
-# Q_PLUGIN_METADATA embeds both the interface IID and the xcb platform name.
-# Checking both strings catches a copied-but-wrong module and protects the
-# metadata contract that KWindowSystem uses before calling instance().
-plugin_strings=$(strings -a "$plugin") || {
-    printf 'error: strings could not inspect KWindowSystem X11 MODULE\n' >&2
-    exit 1
-}
-grep -Fq 'org.kde.kwindowsystem.KWindowSystemPluginInterface' <<<"$plugin_strings" || {
-    printf 'error: KWindowSystem X11 MODULE has no expected plugin IID\n' >&2
-    exit 1
-}
-grep -Fq 'xcb' <<<"$plugin_strings" || {
-    printf 'error: KWindowSystem X11 MODULE has no xcb platform metadata\n' >&2
+grep -Fq 'X11Plugin' <<<"$binary_strings" || {
+    printf 'error: Konsole does not contain the static KWindowSystem X11Plugin\n' >&2
     exit 1
 }
 
-printf 'Konsole runtime plugin payload: PASS (KWindowSystem X11 MODULE is present and loadable-shaped)\n'
+if [[ -d $plugin_root/kf6/kwindowsystem ]]; then
+    while IFS= read -r -d '' module; do
+        module_strings=$(strings -a "$module") || {
+            printf 'error: strings could not inspect %s\n' "$module" >&2
+            exit 1
+        }
+        if grep -Fq "$iid" <<<"$module_strings"; then
+            printf 'error: bundle ships a KWindowSystem MODULE that static Qt cannot load: %s\n' \
+                "$module" >&2
+            exit 1
+        fi
+    done < <(find -L "$plugin_root/kf6/kwindowsystem" -type f -name '*.so*' -print0)
+fi
+
+printf 'Konsole runtime plugin payload: PASS (KWindowSystem X11 backend is a static plugin of the executable)\n'
