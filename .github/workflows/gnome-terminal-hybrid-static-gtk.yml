@@ -44,6 +44,9 @@ jobs:
       - name: Check the static GTK recipe
         run: ./tools/preflight-gnome-terminal.sh
 
+      - name: Check the release packaging scripts
+        run: tools/test-release-publishing.sh
+
   build:
     needs: preflight
     runs-on: ubuntu-24.04
@@ -227,6 +230,31 @@ jobs:
               wait "$client_pid"
             '
           xvfb-run -a -s "-screen 0 1280x800x24 +extension GLX" glxinfo -B
+
+      - name: Pack the GNOME Terminal release archive
+        # Packed here, from the tree the steps above built and smoke-tested,
+        # because an uploaded artifact loses executable bits and symlinks.
+        # See tools/pack-release.sh.
+        run: |
+          set -euo pipefail
+          version=$(awk '$1 == "gnome-terminal" { print $2; exit }' contrib/gnome-terminal/deps.lock)
+          test -n "$version"
+          tools/pack-release.sh \
+            --name gnome-terminal \
+            --out "$RUNNER_TEMP/release" \
+            --title "GNOME Terminal ${version}, hybrid static GTK (x86_64 Linux)" \
+            --run './gnome-terminal/gnome-terminal' \
+            --lock contrib/gnome-terminal/deps.lock \
+            out/gnome-terminal/package=.
+
+      - name: Upload the release archive for the release job
+        uses: actions/upload-artifact@v4
+        with:
+          name: gnome-terminal-release
+          path: ${{ runner.temp }}/release
+          compression-level: 0
+          retention-days: 1
+          if-no-files-found: error
 
       - name: ccache statistics and disk usage
         if: always()
@@ -428,3 +456,35 @@ jobs:
           path: /tmp/gnome-terminal-diagnostic-logs
           if-no-files-found: warn
           retention-days: 14
+
+  release:
+    # Publishes the archive the build job packed as the GitHub release
+    # gnome-terminal-latest, which anyone can download without a GitHub account.
+    # Only a manual run on the default branch is published: that is the
+    # build of the pinned sources the release notes point at.
+    # The only job with write access; it runs no build code.
+    needs: build
+    if: github.event_name == 'workflow_dispatch' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    concurrency:
+      group: release-gnome-terminal-latest
+    steps:
+      - name: Checkout static-everywhere
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Download the packed release
+        uses: actions/download-artifact@v4
+        with:
+          name: gnome-terminal-release
+          path: release
+
+      - name: Publish gnome-terminal-latest
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: tools/publish-release.sh --tag gnome-terminal-latest --dir release

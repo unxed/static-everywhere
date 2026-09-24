@@ -69,6 +69,9 @@ jobs:
           onebin/build/onebin audit --help | grep -F universal
           onebin/tools/build-far2l-deps.sh --profile universal --print-plan
 
+      - name: Check the release packaging scripts
+        run: tools/test-release-publishing.sh
+
   build:
     needs: preflight
     runs-on: ubuntu-24.04
@@ -427,6 +430,33 @@ jobs:
             "$PWD/out/far2l/build/install/bin/far2l" \
             "$PWD/out/far2l/smoke-software"
 
+      - name: Pack the far2l SDL Profile U release archive
+        # Packed here, from the tree the steps above built and smoke-tested,
+        # because an uploaded artifact loses executable bits and symlinks.
+        # See tools/pack-release.sh.
+        run: |
+          set -euo pipefail
+          far2l_commit=$(git -C far2l-src rev-parse HEAD)
+          tools/pack-release.sh \
+            --name far2l-sdl-profile-u \
+            --out "$RUNNER_TEMP/release" \
+            --title "far2l SDL preview ${far2l_commit:0:7}, Profile U with the SoLo loader (x86_64 Linux)" \
+            --run './far2l-sdl-profile-u/bin/far2l' \
+            --lock contrib/far2l/deps.lock \
+            --lock contrib/far2l/solo.lock \
+            --note "far2l: https://github.com/elfmz/far2l/commit/${far2l_commit}" \
+            --note 'CI starts this same build on Ubuntu and in an Alpine container.' \
+            out/far2l/build/install=.
+
+      - name: Upload the release archive for the release job
+        uses: actions/upload-artifact@v4
+        with:
+          name: far2l-sdl-profile-u-release
+          path: ${{ runner.temp }}/release
+          compression-level: 0
+          retention-days: 1
+          if-no-files-found: error
+
       - name: Collect Profile U diagnostics on failure or cancellation
         if: failure() || cancelled()
         run: |
@@ -484,3 +514,35 @@ jobs:
             out/far2l/deps-prefix
             out/far2l/deps-work
           key: ${{ steps.cache-restore.outputs.cache-primary-key }}
+
+  release:
+    # Publishes the archive the build job packed as the GitHub release
+    # far2l-sdl-profile-u-latest, which anyone can download without a GitHub account.
+    # Only a manual run on the default branch is published: that is the
+    # build of the pinned sources the release notes point at.
+    # The only job with write access; it runs no build code.
+    needs: build
+    if: github.event_name == 'workflow_dispatch' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    concurrency:
+      group: release-far2l-sdl-profile-u-latest
+    steps:
+      - name: Checkout static-everywhere
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Download the packed release
+        uses: actions/download-artifact@v4
+        with:
+          name: far2l-sdl-profile-u-release
+          path: release
+
+      - name: Publish far2l-sdl-profile-u-latest
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: tools/publish-release.sh --tag far2l-sdl-profile-u-latest --dir release

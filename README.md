@@ -48,6 +48,33 @@ Flatpak, Snap and Docker apply Layer-1 thinking to Layers 2 and 3: they ship a u
 
 ---
 
+## Download
+
+The showcase builds whose CI is green are published as GitHub releases:
+no GitHub account needed. Each archive unpacks into one directory and runs
+from there, wherever that directory is. Linux x86_64.
+
+| Program | Archive | Start it | Built by |
+|---|---|---|---|
+| GNOME Terminal (hybrid static GTK) | [gnome-terminal-linux-x86_64.tar.gz](https://github.com/unxed/static-everywhere/releases/download/gnome-terminal-latest/gnome-terminal-linux-x86_64.tar.gz) | `./gnome-terminal/gnome-terminal` | [`gnome-terminal-hybrid-static-gtk.yml`](./.github/workflows/gnome-terminal-hybrid-static-gtk.yml) |
+| f4-qt (f4 with static Qt) | [f4-qt-linux-x86_64.tar.gz](https://github.com/unxed/static-everywhere/releases/download/f4-qt-latest/f4-qt-linux-x86_64.tar.gz) | `./f4-qt/f4 --gui=qt` | [`f4-qt-zig-build.yml`](./.github/workflows/f4-qt-zig-build.yml) |
+| far2l SDL, hybrid | [far2l-sdl-linux-x86_64.tar.gz](https://github.com/unxed/static-everywhere/releases/download/far2l-sdl-latest/far2l-sdl-linux-x86_64.tar.gz) | `./far2l-sdl/bin/far2l` | [`far2l-sdl-zig-build.yml`](./.github/workflows/far2l-sdl-zig-build.yml) |
+| far2l SDL, Profile U | [far2l-sdl-profile-u-linux-x86_64.tar.gz](https://github.com/unxed/static-everywhere/releases/download/far2l-sdl-profile-u-latest/far2l-sdl-profile-u-linux-x86_64.tar.gz) | `./far2l-sdl-profile-u/bin/far2l` | [`far2l-sdl-profile-u.yml`](./.github/workflows/far2l-sdl-profile-u.yml) |
+
+```sh
+tar xzf gnome-terminal-linux-x86_64.tar.gz
+./gnome-terminal/gnome-terminal
+```
+
+Each release is replaced by the next successful manual run of its workflow
+on the default branch; a link above works once that workflow has run with
+the release job in place. `BUILD-INFO.txt` in every archive names the commit
+of this repository it was built from and the pinned upstream sources.
+Packing and publishing: [`tools/pack-release.sh`](./tools/pack-release.sh),
+[`tools/publish-release.sh`](./tools/publish-release.sh).
+
+---
+
 ## Quick start
 
 Two profiles. Pick by whether you need `dlopen`.

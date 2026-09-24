@@ -102,6 +102,9 @@ jobs:
           ./tools/glibc-source-scan.py \
             f4-src/qt f4-src/third_party/ZoinGallery qwk-src
 
+      - name: Check the release packaging scripts
+        run: tools/test-release-publishing.sh
+
   build:
     needs: preflight
     runs-on: ubuntu-24.04
@@ -246,6 +249,34 @@ jobs:
             --src "$PWD/f4-src" \
             --out "$PWD/out/f4-qt" \
             --no-fetch 2>&1 | tee /tmp/build-output.log
+
+      - name: Pack the f4-qt release archive
+        # Packed here, from the tree the steps above built and smoke-tested,
+        # because an uploaded artifact loses executable bits and symlinks.
+        # See tools/pack-release.sh.
+        run: |
+          set -euo pipefail
+          f4_commit=$(git -C f4-src rev-parse HEAD)
+          tools/pack-release.sh \
+            --name f4-qt \
+            --out "$RUNNER_TEMP/release" \
+            --title "f4-qt: f4 ${f4_commit:0:7} with static Qt (x86_64 Linux)" \
+            --run './f4-qt/f4 --gui=qt' \
+            --lock contrib/f4-qt/deps.lock \
+            --note "f4: https://github.com/Zoinen/f4/commit/${f4_commit}" \
+            --note 'If no window appears, `./f4-qt/f4-diag -- --gui=qt` writes a log next to the binary.' \
+            out/f4-qt/f4=f4 \
+            out/f4-qt/f4-diag=f4-diag \
+            out/f4-qt/run.sh=run.sh
+
+      - name: Upload the release archive for the release job
+        uses: actions/upload-artifact@v4
+        with:
+          name: f4-qt-release
+          path: ${{ runner.temp }}/release
+          compression-level: 0
+          retention-days: 1
+          if-no-files-found: error
 
       - name: ccache stats and disk usage
         if: always()
@@ -546,3 +577,36 @@ jobs:
             out/f4-qt/smoke.log
           if-no-files-found: warn
           retention-days: 14
+
+  release:
+    # Publishes the archive the build job packed as the GitHub release
+    # f4-qt-latest, which anyone can download without a GitHub account.
+    # Only a manual run on the default branch is published: that is the
+    # build of the pinned sources the release notes point at.
+    # A run with an f4_pin override is a test build and is not published.
+    # The only job with write access; it runs no build code.
+    needs: build
+    if: github.event_name == 'workflow_dispatch' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) && inputs.f4_pin == ''
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    concurrency:
+      group: release-f4-qt-latest
+    steps:
+      - name: Checkout static-everywhere
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Download the packed release
+        uses: actions/download-artifact@v4
+        with:
+          name: f4-qt-release
+          path: release
+
+      - name: Publish f4-qt-latest
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: tools/publish-release.sh --tag f4-qt-latest --dir release
