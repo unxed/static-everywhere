@@ -335,6 +335,7 @@ render_config() {
         -e "s|@TARGET_TRIPLE@|$TARGET_TRIPLE|g" \
         -e "s|@GLIBC_SHIM_OBJ@|$OUT_ABS/compat-glibc-shims.o|g" \
         -e "s|@KONSOLE_REF@|$KONSOLE_REF|g" \
+        -e "s|@KWINDOWSYSTEM_REF@|$(awk '$1 == "kwindowsystem" { print $2 }' "$REPO_ROOT/contrib/konsole/deps.lock")|g" \
         -e "s|@QT_PACKAGE_ROOT@|$QT_PACKAGE_ROOT|g" \
         "$REPO_ROOT/contrib/konsole/kde-builder.yaml.in"
 }

@@ -173,6 +173,9 @@ global:
 override konsole:
   revision: "@KONSOLE_REF@"
 
+override kwindowsystem:
+  revision: "@KWINDOWSYSTEM_REF@"
+
 # KIconThemes registers a Q_COREAPP_STARTUP_FUNCTION. With BreezeIcons enabled
 # its startup callback calls BreezeIcons::initIcons() while QApplication is
 # still being constructed, which is not safe for this static GUI graph. The

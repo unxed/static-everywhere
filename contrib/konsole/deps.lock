@@ -13,6 +13,9 @@
 # the commit; kde-builder fetches from invent.kde.org, not the GitHub
 # mirror, so that is the URL that matters.
 konsole v26.08.0 9a304001aad60b7a3a39bca39ce3a3764ec058d5 https://invent.kde.org/utilities/konsole.git
+# The static X11 overlay is generated from this exact source revision.
+# It uses the same explicit Zig target compiler as the rest of the KF6 graph.
+kwindowsystem v6.30.0 802629c63985e29f8288256b225e97419423c7a6 https://invent.kde.org/frameworks/kwindowsystem.git
 qt 6.11.1 - -
 icu 78.1 - -
 hunspell 1.7.2 - -

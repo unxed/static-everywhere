@@ -58,14 +58,19 @@ else
 fi
 export LIBGL_ALWAYS_SOFTWARE=1
 export SE_RENDER_DEBUG_FILE="$render_log"
+export KONSOLE_SMOKE_MARKER="$out/pty-ready"
+rm -f "$KONSOLE_SMOKE_MARKER"
+# A mapped window alone can be an error dialog. Require a child shell with
+# a working PTY, and leave readable output in the terminal for the screenshot.
+terminal_command='test -t 0 && test -t 1 || exit 1; printf "\033[2J\033[HKonsole portable CI: shell and PTY ready\n"; printf "ready\n" > "$KONSOLE_SMOKE_MARKER"; sleep 120'
 
 if [[ ${KONSOLE_SMOKE_DEBUG_LOADER:-0} == 1 ]]; then
     # Keep the dynamic-loader trace on the Konsole process only. Exporting
     # LD_DEBUG for this whole harness would also trace Xvfb, xdotool and
     # ImageMagick, drowning the plugin failure in unrelated loader output.
-    LD_DEBUG=libs,files "$binary" --separate --nofork --hold >"$app_log" 2>&1 &
+    LD_DEBUG=libs,files "$binary" --separate --nofork --hold -e /bin/sh -c "$terminal_command" >"$app_log" 2>&1 &
 else
-    "$binary" --separate --nofork --hold >"$app_log" 2>&1 &
+    "$binary" --separate --nofork --hold -e /bin/sh -c "$terminal_command" >"$app_log" 2>&1 &
 fi
 app_pid=$!
 window_id=
@@ -85,6 +90,18 @@ done
     exit 1
 }
 
+for _ in {1..30}; do
+    [[ -s $KONSOLE_SMOKE_MARKER ]] && break
+    kill -0 "$app_pid" 2>/dev/null || break
+    sleep 1
+done
+[[ -s $KONSOLE_SMOKE_MARKER ]] && kill -0 "$app_pid" 2>/dev/null || {
+    cat "$app_log" >&2
+    printf 'error: Konsole did not run a shell with a working PTY\n' >&2
+    exit 1
+}
+sleep 1
+
 xwd -display "$display" -id "$window_id" -silent >"$out/window.xwd"
 convert "$out/window.xwd" "$out/window.png"
 xwd -display "$display" -root -silent >"$out/screen.xwd"
@@ -99,9 +116,14 @@ deviation=$(convert "$png" -format '%[standard-deviation]' info:)
     printf 'error: screenshot is blank\n' >&2
     exit 1
 }
-if grep -Eiq 'Could not find the Qt platform plugin|cannot connect to display|failed to initialize graphics backend|no xcb' "$app_log"; then
+if grep -Eiq 'Could not find the Qt platform plugin|Could not find any platform plugin|cannot connect to display|failed to initialize graphics backend|no xcb' "$app_log"; then
     cat "$app_log" >&2
     printf 'error: graphical startup failure in log\n' >&2
     exit 1
 fi
-printf 'Konsole graphical smoke: PASS (%s, pixel stddev %s)\n' "$dimensions" "$deviation"
+grep -Fq 'Loaded a static plugin for platform "xcb"' "$app_log" || {
+    cat "$app_log" >&2
+    printf 'error: KWindowSystem did not select the embedded X11 backend\n' >&2
+    exit 1
+}
+printf 'Konsole graphical smoke: PASS (%s, pixel stddev %s, shell/PTY and static X11 backend ready)\n' "$dimensions" "$deviation"

@@ -45,6 +45,7 @@ sed \
     -e 's|@GLIBC_SHIM_OBJ@|/tmp/compat-glibc-shims.o|g' \
     -e "s|@QT_PACKAGE_ROOT@|$R/qt|g" \
     -e "s|@KONSOLE_REF@|$(awk '$1 == "konsole" { print $2 }' "$REPO_ROOT/contrib/konsole/deps.lock")|g" \
+    -e "s|@KWINDOWSYSTEM_REF@|$(awk '$1 == "kwindowsystem" { print $2 }' "$REPO_ROOT/contrib/konsole/deps.lock")|g" \
     "$REPO_ROOT/contrib/konsole/kde-builder.yaml.in" >"$R/cfg.yaml"
 
 if grep -qE '@[A-Z_]+@' "$R/cfg.yaml"; then

@@ -74,7 +74,7 @@ bash "$REPO_ROOT/tools/test-konsole-static-qt-plugins.sh"
 pass 'Konsole static Qt plugin imports are configure-time and Conan-safe'
 
 bash "$REPO_ROOT/tools/test-konsole-static-kwindowsystem-plugin.sh"
-pass 'static Qt KWindowSystem X11 plugin registration is wired at configure time'
+pass 'pinned KWindowSystem backend has one owner and reaches an installed static consumer'
 
 bash "$REPO_ROOT/tools/test-konsole-portable-plugin-path.sh"
 pass 'relocated KDE MODULE plugins are found from the portable bundle'
@@ -269,6 +269,7 @@ sed -e "s|@KDE_SOURCE_DIR@|$REPO_ROOT/.konsole-preflight-source|g" \
     -e 's|@GLIBC_SHIM_OBJ@|/tmp/compat-glibc-shims.o|g' \
     -e "s|@QT_PACKAGE_ROOT@|$REPO_ROOT/.konsole-preflight-qt|g" \
     -e "s|@KONSOLE_REF@|$(awk '$1 == "konsole" { print $2 }' "$REPO_ROOT/contrib/konsole/deps.lock")|g" \
+    -e "s|@KWINDOWSYSTEM_REF@|$(awk '$1 == "kwindowsystem" { print $2 }' "$REPO_ROOT/contrib/konsole/deps.lock")|g" \
     "$REPO_ROOT/contrib/konsole/kde-builder.yaml.in" >"$RENDERED"
 python3 - "$RENDERED" "$workflow" <<'PY'
 import pathlib
@@ -781,7 +782,7 @@ grep -Fq 'export QT_PLUGIN_PATH="$ROOT/lib/plugins' "$REPO_ROOT/contrib/konsole/
 pass 'portable smoke uses the bundle launcher and relocatable Qt/KF6 plugin paths'
 grep -Fq 'QPluginLoader' "$REPO_ROOT/contrib/konsole/project-include.cmake" || \
     fail 'static Qt QPluginLoader limitation is not documented in the source hook'
-grep -Fq 'QT_STATICPLUGIN' "$REPO_ROOT/contrib/konsole/project-include.cmake" || \
+grep -Fq 'QT_STATICPLUGIN' "$REPO_ROOT/contrib/konsole/kwindowsystem-patches/0001-static-x11-backend.patch" || \
     fail 'KWindowSystem static plugin does not define QT_STATICPLUGIN'
 pass 'static Qt does not depend on runtime loading of the KWindowSystem X11 MODULE'
 

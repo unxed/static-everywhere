@@ -1,0 +1,58 @@
+diff --git a/src/platforms/xcb/CMakeLists.txt b/src/platforms/xcb/CMakeLists.txt
+index 58987be..45dccd4 100644
+--- a/src/platforms/xcb/CMakeLists.txt
++++ b/src/platforms/xcb/CMakeLists.txt
+@@ -1,3 +1,16 @@
++if(NOT BUILD_SHARED_LIBS)
++    # Keep the backend in the same Qt instance as its static framework.
++    # kxutils.cpp is already compiled by KF6WindowSystem itself.
++    target_sources(KF6WindowSystem PRIVATE
++        kwindoweffects.cpp
++        kwindowshadow.cpp
++        kwindowsystem.cpp
++        plugin.cpp
++    )
++    target_compile_definitions(KF6WindowSystem PRIVATE
++        QT_STATICPLUGIN KWINDOWSYSTEM_STATIC_X11
++    )
++else()
+ add_library(KF6WindowSystemX11Plugin MODULE)
+ 
+ target_sources(KF6WindowSystemX11Plugin PRIVATE
+@@ -17,6 +30,7 @@ target_link_libraries(KF6WindowSystemX11Plugin
+         ${X11_Xfixes_LIB}
+         Qt6::GuiPrivate
+ )
++endif()
+ 
+ ecm_generate_headers(KWindowSystemX11_HEADERS
+     HEADER_NAMES
+@@ -39,6 +53,7 @@ install(
+         Devel
+ )
+ 
++if(BUILD_SHARED_LIBS)
+ set_target_properties(
+     KF6WindowSystemX11Plugin
+     PROPERTIES LIBRARY_OUTPUT_DIRECTORY "${CMAKE_LIBRARY_OUTPUT_DIRECTORY}/kf6/kwindowsystem"
+@@ -50,3 +65,4 @@ install(
+     DESTINATION
+         ${KDE_INSTALL_PLUGINDIR}/kf6/kwindowsystem/
+ )
++endif()
+diff --git a/src/pluginwrapper.cpp b/src/pluginwrapper.cpp
+index 87e7cb8..102fd42 100644
+--- a/src/pluginwrapper.cpp
++++ b/src/pluginwrapper.cpp
+@@ -16,6 +16,11 @@
+ #include <QLibrary>
+ #include <QPluginLoader>
+ 
++#ifdef KWINDOWSYSTEM_STATIC_X11
++#include <QtPlugin>
++Q_IMPORT_PLUGIN(X11Plugin)
++#endif
++
+ Q_GLOBAL_STATIC(KWindowSystemPluginWrapper, s_pluginWrapper)
+ 
+ static QStringList pluginCandidates()

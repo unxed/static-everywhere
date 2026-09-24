@@ -214,7 +214,7 @@ jobs:
             "$PWD/out/konsole/konsole-runtime/konsole" \
             "$PWD/out/konsole/smoke"
 
-      - name: Verify the portable KDE MODULE payload
+      - name: Verify the embedded KWindowSystem X11 backend
         run: ./tools/verify-konsole-runtime-plugins.sh out/konsole/konsole-runtime
 
       - name: Run the X11 smoke test as a user's machine would see it
