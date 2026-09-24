@@ -212,7 +212,7 @@ log "Building f4-qt via the container-free zig toolchain (this is the slow part)
 static-everywhere/tools/build-f4-qt.sh \
     --config linux \
     --toolchain zig \
-    --gallery off \
+    --gallery public \
     --src "$WORKDIR/f4-src" \
     --out "$WORKDIR/out/f4-qt" \
     --no-fetch
