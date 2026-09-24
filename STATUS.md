@@ -33,6 +33,14 @@ empty. `link-static-qt-resources.cmake` moves the `.qrc` of every STATIC
 target into an OBJECT library linked into its consumers
 (`qt_add_resources` does the same for static Qt).
 
+**kcoreaddons moved under us.** The KF6 graph builds from master. Run
+36034264974 built kwindowsystem with the fix above, then kcrash failed to
+configure: kcoreaddons 864299c6 (2026-09-10) writes `if (@UDev_FOUND@ OR
+@LibMount_FOUND@)` into its static config, and UDev is disabled by this
+recipe, so `UDev_FOUND` was never set -> `if ( OR 1)`. The hook now
+defines `<P>_FOUND FALSE` for every `CMAKE_DISABLE_FIND_PACKAGE_<P>=ON`
+(UPSTREAM.md).
+
 **Checks.** `check-konsole-runtime-log.sh` reads both smoke logs and
 fails on the four messages above plus any MODULE refused by static Qt,
 and requires KWindowSystem's `Loaded a static plugin`. The bundle

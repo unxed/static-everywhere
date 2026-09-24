@@ -174,3 +174,23 @@ transitive declarations.
 `contrib/konsole/project-include.cmake`. It applies before KIO's target is
 declared, fails if the expected source shape disappears, and is covered by a
 configure-only regression that checks insertion and reconfigure idempotence.
+
+## 8. kcoreaddons: static config template breaks when UDev is not searched
+
+`KF6CoreAddonsConfig.cmake.in` (864299c6, 2026-09-10) writes, for static
+builds, `if (@UDev_FOUND@ OR @LibMount_FOUND@)`. `find_package(UDev)` does
+not set `UDev_FOUND` when the package is disabled with
+`CMAKE_DISABLE_FIND_PACKAGE_UDev=ON`, so the installed config contains
+`if ( OR 1)` and every consumer's `find_package(KF6CoreAddons)` fails with
+"Unknown arguments specified". kcrash stopped there.
+
+**Suggested fix:** substitute a boolean that is always defined, e.g.
+`set(HAVE_UDEV ${UDev_FOUND})` is already computed -- use `@HAVE_UDEV@`
+after normalizing it with `if(UDev_FOUND) ... else() set(HAVE_UDEV FALSE)`,
+or quote the substitutions: `if ("@UDev_FOUND@" OR "@LibMount_FOUND@")`.
+
+**Worked around here** for every disabled package, not only UDev:
+`_se_define_disabled_package_found_flags()` in
+`contrib/konsole/project-include.cmake` defines `<P>_FOUND` as FALSE for each
+`CMAKE_DISABLE_FIND_PACKAGE_<P>` that is ON, before any template is
+configured. Covered by `tools/test-konsole-disabled-package-found.sh`.

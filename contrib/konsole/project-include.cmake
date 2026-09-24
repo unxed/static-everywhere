@@ -88,6 +88,34 @@ endif()
 
 _se_promote_conan_package_prefixes()
 
+# The recipe switches optional packages off with
+# CMAKE_DISABLE_FIND_PACKAGE_<P>=ON. find_package() then returns without
+# setting <P>_FOUND at all, so a package config template substitutes an
+# empty @<P>_FOUND@. kcoreaddons 864299c6 (2026-09-10) writes
+# `if (@UDev_FOUND@ OR @LibMount_FOUND@)` for static builds, which became
+# `if ( OR 1)` and stopped kcrash's find_package(KF6CoreAddons). Give every
+# disabled package the value it stands for -- not found -- in every project,
+# before any template is configured, instead of patching one template.
+function(_se_define_disabled_package_found_flags)
+    get_cmake_property(_se_cache_variables CACHE_VARIABLES)
+    set(_se_defined)
+    foreach(_se_variable IN LISTS _se_cache_variables)
+        if(_se_variable MATCHES "^CMAKE_DISABLE_FIND_PACKAGE_(.+)$" AND
+           ${_se_variable})
+            set(_se_package "${CMAKE_MATCH_1}")
+            if(NOT DEFINED ${_se_package}_FOUND)
+                set(${_se_package}_FOUND FALSE PARENT_SCOPE)
+                list(APPEND _se_defined "${_se_package}")
+            endif()
+        endif()
+    endforeach()
+    if(_se_defined)
+        message(STATUS "static-everywhere: disabled packages are not found: "
+                       "${_se_defined}")
+    endif()
+endfunction()
+_se_define_disabled_package_found_flags()
+
 # Declare /usr/include implicit -- as a NORMAL variable, here, after
 # project(). The -D form in cmake-options sets only the cache, and
 # CMakeCXXCompiler.cmake (CMake cannot introspect zig-c++) then runs

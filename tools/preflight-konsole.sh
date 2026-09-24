@@ -29,6 +29,7 @@ bash -n "$REPO_ROOT/tools/build-konsole.sh" "$REPO_ROOT/tools/preflight-konsole.
     "$REPO_ROOT/tools/test-konsole-static-qt-plugins.sh" \
     "$REPO_ROOT/tools/test-konsole-static-kwindowsystem-plugin.sh" \
     "$REPO_ROOT/tools/test-konsole-static-qt-resources.sh" \
+    "$REPO_ROOT/tools/test-konsole-disabled-package-found.sh" \
     "$REPO_ROOT/tools/check-konsole-runtime-log.sh" \
     "$REPO_ROOT/tools/test-konsole-portable-plugin-path.sh" \
     "$REPO_ROOT/tools/test-konsole-deferred-recipe-file.sh" \
@@ -80,6 +81,8 @@ pass 'static Qt KWindowSystem X11 plugin registration is wired at configure time
 
 bash "$REPO_ROOT/tools/test-konsole-static-qt-resources.sh"
 pass 'Qt resources of every STATIC Konsole target reach the final link'
+bash "$REPO_ROOT/tools/test-konsole-disabled-package-found.sh"
+pass 'packages disabled by the recipe configure as not found in config templates'
 grep -Fq 'CALL _se_link_static_qt_resources' \
     "$REPO_ROOT/contrib/konsole/project-include.cmake" || \
     fail 'the Konsole hook does not defer the static Qt resource pass'
