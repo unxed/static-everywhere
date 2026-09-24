@@ -15,4 +15,4 @@ qwindowkit 4f683f2e0e4f3a7d6061d0224de9ed30e7c17e0f - https://github.com/stdware
 conan 2.29.1 - -
 cmake 3.31.6 - -
 ninja 1.13.0 - -
-go 1.26.0 - -
+go 1.26.6 - -

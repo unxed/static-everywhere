@@ -292,6 +292,28 @@ not the final portable bundle: the next hosted run must verify that the
 explicit executable-link contract yields PIE and that the bundle then passes
 the isolated graphical smoke test.
 
+## Run 73: neutral install prefix left toolchain debug paths
+
+Run `34137857096` at `695fd24` built all 38 KDE projects and installed
+Konsole. The recursive artifact verifier passed, and the neutral-prefix
+change did its job: no physical `kde-install` path appeared among the
+unwaived hygiene findings. The strict onebin audit nevertheless stopped before
+packaging on four unwaived `OB0060` strings:
+
+```text
+/home/runner/.../zig-linux-x86_64-0.13.0/lib/libc/glibc/sysdeps/x86_64/crti.S
+/home/runner/.../zig-linux-x86_64-0.13.0/lib/libc/glibc/sysdeps/x86_64/crtn.S
+/home/runner/.../zig-linux-x86_64-0.13.0/lib/libc/glibc/sysdeps/x86_64/start-2.33.S
+/home/username
+```
+
+The same report contained `OB0062 debug info not stripped`. These are
+toolchain/debug metadata paths, not runtime install paths and not a missing
+dependency. The recipe now strips debug sections at every source-built KDE
+link boundary (executable, SHARED and MODULE), and the existing folded-YAML
+flag regression asserts the complete three-way linker contract before CI.
+This closes the class of debug-path leaks instead of waiving the four strings.
+
 ## Pass 2: reverse check of the Konsole recipe
 
 After the implementation was written, every item above was checked against
@@ -372,9 +394,26 @@ audits internal libraries found in the supplied install prefix, and keeps the
 host allowlist only for X11/GL-adjacent system ABI. The build also restores an
 origin-relative RPATH for the Konsole application and creates a portable
 bundle containing the executable, all install-prefix shared objects, KDE
-modules and data. CI smoke-tests that bundle and uploads it, so downloading
-the artifact does not require manually setting `LD_LIBRARY_PATH` or
-`XDG_DATA_DIRS`.
+modules and data. The packager normalizes MODULEs found below the prefix,
+`bin/`, `lib/`, or a Qt-style `plugins/` directory into the launcher’s single
+relocatable plugin root; the legacy `bin/` case remains necessary for cached
+or third-party projects that retain that layout.
+CI smoke-tests that bundle and uploads it, so downloading the artifact does not
+require manually setting `LD_LIBRARY_PATH` or `XDG_DATA_DIRS`. The bundle
+launcher also supplies its own `QT_PLUGIN_PATH` so KF6 MODULE plugins (notably
+KWindowSystem's X11 backend) do not fall back to the build-time Qt plugin
+prefix. Fontconfig remains host data by design; the launcher makes that
+boundary explicit with `/etc/fonts` when available.
+
+The hosted isolated smoke then exposed a second install-directory edge: both
+`KDE_INSTALL_PLUGINDIR` and `KDE_INSTALL_QTPLUGINDIR` were empty in the
+per-framework CMake cache. Upstream expressions such as
+`${KDE_INSTALL_PLUGINDIR}/kf6/kwindowsystem/` consequently began with `/` and
+staged the MODULE outside the configured install prefix. The recipe now pins
+both variables to the relative `lib/plugins` directory, and preflight checks
+that the contract remains in the rendered build plan. The packager still
+accepts the older prefix-level, `bin/`, and multiarch layouts because cached or
+third-party projects may retain them.
 
 Run 69 (2026-09-07): build `34066071126` compiled and installed all 38 KDE
 projects, but the artifact verifier correctly rejected the result because the
@@ -455,3 +494,111 @@ runtime SONAME contract. Both `build-konsole.sh` and
 asserts that the list is non-empty, duplicate-free, contains the required X11,
 EGL and Canberra boundary, and is consumed by both paths. The build still
 rejects any host SONAME outside that file.
+
+## Run 74: source example was mistaken for a build path
+
+Run `34169221813` at `322ea9b` built all 38 KDE projects and installed Konsole;
+the recursive artifact verifier passed. The remaining strict-audit finding was
+only `OB0060 /home/username`. Inspection of the exact source commit recorded in
+`deps.lock` showed that this string comes from
+`src/widgets/EditProfileGeneralPage.ui`, where it is the user-facing placeholder
+for “Initial directory”, not a compiler or install path. The runtime artifact
+was therefore not missing a dependency: the string scanner had no provenance
+information and classified an intentional absolute example as a build path.
+
+The recipe now carries a complete patch generated from that pinned checkout,
+replacing the example with `~`. The workflow checks the checkout SHA and the
+patch's forward applicability before the expensive build; the CMake project
+hook applies it idempotently and rejects both a moved source revision and an
+unexpected source shape. This closes the class of absolute home-directory
+examples in source UI placeholders without weakening the strict hygiene audit.
+
+## Run 75: static startup called a GUI helper before `QApplication`
+
+Run `34223893815` at `5a6a807aef112d2a00155995a10b85a918cf0e42` built all 38
+projects, passed the artifact contract, and produced the portable runtime
+bundle. The graphical X11 smoke test then aborted before a window appeared:
+`KIconTheme::initTheme()` ran before `new QApplication(...)`; the log showed
+KDE probing `konsoleplugins` followed by `QWidget: Must construct a
+QApplication before a QWidget`. The second isolated smoke test was skipped
+because the first smoke test failed.
+
+The next recipe revision moves the icon-theme initialization after
+`QApplication` in a complete patch generated from the pinned Konsole checkout.
+The source patch hook now applies the whole ordered patch set, while the
+source-only preflight and the post-apply CMake check verify that every known
+GUI startup helper follows the application construction. This treats the
+failure as an initialization-order class, not as a special case for the one
+abort string.
+
+## Run 76: a cached source overlay blocked the next update
+
+Run `34241267817` at `0362449fd8e7e8567d665c683bcb9e96135c2805` did not reach
+the Konsole configure step. The previous run had applied the CMake source
+overlay to the cached `out/konsole/kde-source` checkout. On restore,
+`kde-builder` found tracked local changes on detached `HEAD`, refused to stash
+them while switching to the wanted branch, and stopped with
+`Unable to update konsole, build canceled`. The compilation, artifact audit
+and smoke tests therefore had no result for this run; the unrelated Zig
+diagnostic matches in the collected grep were not the stopping error.
+
+The recipe now treats all cached KDE source trees as generated state. It
+restores every Git checkout before the updater runs and cleans them on every
+exit, including failures, so a source overlay cannot poison the cache for the
+next run. `test-konsole-source-cache-cleanup.sh` proves the invariant against
+both tracked and untracked residue. This closes the update-blocking class
+rather than adding a workaround for the `konsole` directory or this one cache.
+
+## Run 77: KIconThemes' BreezeIcons startup hook ran during application construction
+
+Run `34258025840` at `4e35c7b948e4d54046313d92ca39b1f1000ff4a7` built and
+installed all 38 projects. The static Qt/KF6 contract, strict artifact audit,
+runtime bundle creation and cache cleanup passed. The first graphical X11
+smoke nevertheless aborted before creating a window with
+`QWidget: Must construct a QApplication before a QWidget`; the isolated smoke
+was skipped and the run was red.
+
+The pinned Konsole source overlay had already moved the explicit
+`KIconTheme::initTheme()` call after `QApplication`, so this was not a missing
+overlay. Inspection of the KIconThemes build files and source showed the
+broader mechanism: `USE_BreezeIcons` defaults to ON, and its
+`Q_COREAPP_STARTUP_FUNCTION(initThemeHelper)` calls `BreezeIcons::initIcons()`
+while `QApplication` is being constructed. The source-only check also exposed
+that moving `KIconTheme::initTheme()` violated the upstream API contract, which
+requires that call before the application object.
+
+The recipe now disables only KIconThemes' optional in-process BreezeIcons
+integration with the source-derived `-DUSE_BreezeIcons=OFF` override. The
+separately built breeze-icons project still supplies the installed filesystem
+theme. The invalid Konsole ordering overlay is removed, restoring the upstream
+call order. Preflight requires the targeted framework override and the CMake
+source contract checks that the icon bootstrap precedes `QApplication` while
+the remaining GUI helpers follow it. This closes the startup-hook class rather
+than matching the observed abort text.
+
+## Run 78: static Qt was duplicated by Konsole's application facade
+
+Run `34292303396` at `958041d37110a6391b7ce22ca44d05f16beb1326` built all 38
+projects, passed the static Qt contract, strict artifact audit and runtime
+bundle packaging, but the graphical X11 smoke still aborted before creating a
+window. The log ended with `QCoreApplication::applicationDirPath: Please
+instantiate the QApplication object first`, followed by `QWidget: Must
+construct a QApplication before a QWidget`. The pinned artifact was run under
+gdb with only its bundled runtime and a nested X server; the backtrace placed
+the abort in `Konsole::MainWindow::MainWindow()` inside
+`libkonsoleapp.so`, after `Application::newInstance()` had been called.
+
+The exact pinned Konsole `src/CMakeLists.txt` declares
+`add_library(konsoleapp SHARED Application.cpp)`. `BUILD_SHARED_LIBS=OFF` does
+not override an explicit target type, so the shared facade linked its own
+static Qt/KF6 copy. The executable and `libkonsoleapp.so` therefore observed
+different Qt global state, including different `QCoreApplication::instance()`
+values. This is a target-boundary defect, not another startup-order symptom.
+
+The new source patch is generated directly from the pinned checkout and changes
+that facade to `STATIC`. The source-only patch test checks the applied source,
+and the project CMake hook repeats the invariant after every overlay application
+and fails if `konsoleapp` becomes loadable again. The preflight also checks the
+patch contract before the expensive build. This closes the class of duplicate
+static-runtime state across loadable boundaries rather than matching the one
+abort message.

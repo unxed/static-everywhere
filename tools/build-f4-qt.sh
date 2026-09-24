@@ -9,7 +9,7 @@ SRC="./f4-qt-src"
 OUT="./out/f4-qt"
 FETCH=0
 PRINT_PLAN=0
-PIN="1a03511a5ad97bbd4ec1400078272373b32e9d2c"
+PIN="fa25519a763875a5bb1cb3b8b19ba76b10a09852"
 GALLERY=""
 TOOLCHAIN="host"
 GLIBC_BASELINE="2.27"
@@ -36,7 +36,7 @@ Usage: tools/build-f4-qt.sh --config linux|windows --src DIR --out DIR [OPTIONS]
   --config linux|windows  required: target configuration
   --src DIR               f4-qt source tree (default: ./f4-qt-src)
   --out DIR               build/install output directory (default: ./out/f4-qt)
-  --pin COMMIT            git commit to check out (default: 1a03511a...)
+  --pin COMMIT            git commit to check out (default: fa25519a...)
   --fetch                 allowed to clone f4 over the network
   --no-fetch              refuse to touch the network (default)
   --print-plan            print every command this invocation would run
@@ -226,7 +226,7 @@ fi
 # public. The rewrite is passed with `git -c` rather than written with
 # `submodule set-url`, so a checkout the caller owns is not left with
 # modified config afterwards. Confirmed anonymously: this checks out
-# 65d851c5, the commit f4 pins at PIN 1a03511a. Re-running is a no-op.
+# 3afcbe6b, the commit f4 pins at PIN fa25519a. Re-running is a no-op.
 plan_step "git -C ${SRC} -c url.\"https://github.com/\".insteadOf=\"git@github.com:\" submodule update --init --recursive --depth 1"
 
 # Fail here, not an hour and a half later inside f4's configure. The
@@ -279,14 +279,12 @@ esac
 if [ "${CONFIG}" = "linux" ] && [ "${TOOLCHAIN}" = "host" ]; then
     plan_step "cd ${SRC} && ci/build-portable-qt-linux.sh"
 
-    plan_step "cp ${SRC}/f4 ${OUT}/f4"
-    plan_step "cp ${SRC}/embedded/f4-qt-host.gz ${OUT}/"
+    plan_step "cp ${SRC}/dist/f4-linux-amd64/f4 ${OUT}/f4"
+    plan_step "cp ${SRC}/internal/plughost/embedded/f4-qt-host.gz ${OUT}/"
 
-    # Profile H, not S: goffi makes f4 dynamic on the C runtime by
-    # construction (see the go build step). Contract is exactly
-    # libc/libdl/libpthread, and through the hygiene wrapper for the
-    # OB0060 build-path strings from prebuilt Go modules (colorer4go).
-    plan_step "${REPO_ROOT}/tools/audit-with-hygiene-waivers.sh ${ONEBIN_BIN} --profile hybrid --glibc-max ${GLIBC_BASELINE} --allow libc.so.6 --allow libdl.so.2 --allow libpthread.so.0 --level 1 --strict ${OUT}/f4"
+    # The upstream portable script now builds the launcher with goffi_static,
+    # so it is a Profile S artifact with no loader or DT_NEEDED entries.
+    plan_step "${REPO_ROOT}/tools/audit-with-hygiene-waivers.sh ${ONEBIN_BIN} --profile static --glibc-max ${GLIBC_BASELINE} --level 1 --strict ${OUT}/f4"
     # Through tools/audit-with-hygiene-waivers.sh, not onebin directly.
     # The host audit reaches 0 errors and fails --strict only on OB0060
     # build-path warnings baked into prebuilt Qt and libheif archives --
@@ -842,26 +840,13 @@ HOOKEOF"
     plan_step "${REPO_ROOT}/tools/check-gl-integrations.sh ${SRC}/qt/host/build-portable-linux/bin/Release/f4-qt-host"
     plan_step "if [ \"\${_F4_GALLERY_PATCH_APPLIED}\" -eq 1 ]; then git -C \"${SRC}\" apply --unidiff-zero --reverse --quiet \"${GALLERY_PATCH}\"; _F4_GALLERY_PATCH_APPLIED=0; fi"
 
-    plan_step "cd ${SRC} && python ci/package-embedded-qt-host.py qt/host/build-portable-linux/bin/Release/f4-qt-host"
-    plan_step "cd ${SRC} && go test -tags f4_embedded_qt_host -run 'TestMaterializeEmbeddedQtHost|TestGeneratedEmbeddedQtHostPayload' ."
+    plan_step "cd ${SRC} && python ci/package-embedded-qt-host.py qt/host/build-portable-linux/bin/Release/f4-qt-host internal/plughost/embedded/f4-qt-host.gz"
+    plan_step "cd ${SRC} && go test -tags f4_embedded_qt_host -run 'TestMaterializeEmbeddedQtHost|TestGeneratedEmbeddedQtHostPayload' ./internal/plughost"
     plan_step "mkdir -p ${SRC}/dist/f4-linux-amd64"
-    # -buildmode=pie and -bindnow are load-bearing, not cosmetic.
-    #
-    # f4 is built without cgo and reaches system libraries through goffi,
-    # whose fakecgo path uses //go:cgo_import_dynamic. That makes the Go
-    # linker emit PT_INTERP and DT_NEEDED even under CGO_ENABLED=0, so the
-    # binary is dynamic by construction and audited as Profile H. A
-    # dynamic binary must carry RELRO and BIND_NOW or the audit fails
-    # OB0050/OB0051, both ERROR, and ET_EXEC additionally warns OB0054
-    # (no ASLR).
-    #
-    # External linking would supply them but requires cgo, which f4 avoids
-    # on purpose. Go's internal linker does both alone: -buildmode=pie
-    # emits PT_GNU_RELRO and makes the file ET_DYN, and the linker flag
-    # -bindnow sets DT_BIND_NOW and DF_1_NOW. Verified on Go 1.27 with
-    # goffi 0.6.3, and asserted against this very line by
-    # tools/test-goffi-hardening.sh.
-    plan_step "cd ${SRC} && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -tags f4_embedded_qt_host -buildmode=pie -ldflags='-s -w -bindnow' -o dist/f4-linux-amd64/f4 ."
+    # The current f4 launcher deliberately uses goffi's static/stub mode. It
+    # does not need the optional GPU FFI path, so this keeps the Go artifact
+    # free of PT_INTERP and DT_NEEDED entries and makes it Profile S.
+    plan_step "cd ${SRC} && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -buildmode=exe -tags 'goffi_static f4_embedded_qt_host' -ldflags='-s -w' -o dist/f4-linux-amd64/f4 ./cmd/f4"
 
     plan_step "cp ${SRC}/dist/f4-linux-amd64/f4 ${OUT}/f4"
     # Ship the diagnostic wrapper next to the binary. CI cannot test a
@@ -874,11 +859,10 @@ HOOKEOF"
     # standalone test bundle.
     plan_step "cp ${REPO_ROOT}/run.sh ${OUT}/run.sh"
     plan_step "chmod +x ${OUT}/run.sh"
-    # Profile H, not S: goffi makes f4 dynamic on the C runtime by
-    # construction (see the go build step). Contract is exactly
-    # libc/libdl/libpthread, and through the hygiene wrapper for the
-    # OB0060 build-path strings from prebuilt Go modules (colorer4go).
-    plan_step "${REPO_ROOT}/tools/audit-with-hygiene-waivers.sh ${ONEBIN_BIN} --profile hybrid --glibc-max ${GLIBC_BASELINE} --allow libc.so.6 --allow libdl.so.2 --allow libpthread.so.0 --level 1 --strict ${OUT}/f4"
+    # Profile S: the launcher is deliberately free of a loader and dynamic
+    # dependencies. The wrapper still checks third-party hygiene findings
+    # from embedded Go modules while failing on any new finding of our own.
+    plan_step "${REPO_ROOT}/tools/audit-with-hygiene-waivers.sh ${ONEBIN_BIN} --profile static --glibc-max ${GLIBC_BASELINE} --level 1 --strict ${OUT}/f4"
 
 elif [ "${CONFIG}" = "windows" ]; then
     plan_step "cd ${SRC} && pwsh ci/build-portable-qt-windows.ps1"

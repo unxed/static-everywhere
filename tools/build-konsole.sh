@@ -13,7 +13,7 @@ GLIBC_BASELINE=2.27
 # larger while still being valid audit inputs, so the recipe opts into a
 # bounded 1 GiB tier explicitly; the auditor enforces this value.
 KONSOLE_AUDIT_MAX_FILE=1073741824
-KONSOLE_REF=264ecd0808f752a10204f954dfc1f87f7aba9ea8
+KONSOLE_REF=
 KDE_BUILDER_REF=0e661248c9da227dc5c129949cf7a403eb6d4d7e
 OUT=./out/konsole
 KDE_BUILDER=
@@ -42,6 +42,15 @@ while [[ $# -gt 0 ]]; do
         *) printf 'error: unknown option: %s\n' "$1" >&2; usage >&2; exit 2 ;;
     esac
 done
+
+if [[ -z $KONSOLE_REF ]]; then
+    KONSOLE_REF=$(awk '$1 == "konsole" { print $2 }' \
+        "$REPO_ROOT/contrib/konsole/deps.lock")
+    [[ -n $KONSOLE_REF ]] || {
+        printf 'error: deps.lock has no Konsole revision\n' >&2
+        exit 1
+    }
+fi
 
 if [[ -z $KDE_BUILDER ]]; then
     printf 'error: --kde-builder is required\n' >&2
@@ -149,6 +158,21 @@ run_env() {
     fi
 }
 
+# CMake applies the pinned source overlays while each project configures. The
+# edits are necessary for the build, but they dirty the Git checkouts that
+# kde-builder keeps under the cached source directory. On the next run its
+# updater refuses a dirty detached checkout instead of switching it to the
+# pinned branch. Clean every cached checkout before the updater sees it, and
+# again on every exit so a failed build cannot poison the next cache entry.
+clean_kde_source_cache_on_exit() {
+    local exit_status=$?
+    if ! "$REPO_ROOT/tools/clean-kde-builder-source-tree.sh" "$KDE_SOURCE_DIR" >&2; then
+        printf 'error: failed to clean KDE source cache after build\n' >&2
+        [[ $exit_status -eq 0 ]] && exit_status=1
+    fi
+    return "$exit_status"
+}
+
 printf '# Konsole showcase plan\n'
 printf 'konsole_ref=%s\nkde_builder_ref=%s\nglibc_baseline=%s\n' \
     "$KONSOLE_REF" "$KDE_BUILDER_REF" "$GLIBC_BASELINE"
@@ -176,6 +200,9 @@ fi
 
 run mkdir -p "$OUT_ABS" "$QT_OUT" "$KDE_SOURCE_DIR" "$KDE_BUILD_DIR" \
     "$KDE_INSTALL_DIR" "$KDE_LOG_DIR" "$KDE_STATE_DIR"
+if [[ $PRINT_PLAN -eq 0 ]]; then
+    trap clean_kde_source_cache_on_exit EXIT
+fi
 run touch "$GIT_CONFIG_GLOBAL"
 run "$ZIGCC" -target "$TARGET_TRIPLE" -O2 -fPIC -c \
     "$REPO_ROOT/contrib/f4-qt/compat/glibc-shims.c" \
@@ -329,6 +356,8 @@ run bash -c 'find "$1" -maxdepth 4 -type d -name include -path "*/p/include" 2>/
 mapfile -t HOST_DEV_PACKAGES < <(grep -vE '^\s*(#|$)' "$REPO_ROOT/contrib/konsole/host-dev-packages.txt")
 run "$REPO_ROOT/tools/stage-host-includes.sh" "$HOST_INCLUDE_STAGE" "$VENDORED_ROOTS" \
     "${HOST_DEV_PACKAGES[@]}"
+
+run "$REPO_ROOT/tools/clean-kde-builder-source-tree.sh" "$KDE_SOURCE_DIR"
 
 run_env GIT_CONFIG_GLOBAL="$GIT_CONFIG_GLOBAL" PYTHONPATH="$KDE_BUILDER" \
     XDG_STATE_HOME="$KDE_STATE_DIR" \

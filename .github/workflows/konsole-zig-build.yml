@@ -68,6 +68,7 @@ jobs:
             echo "The tag moved, or the lock is stale. Re-pin deliberately." >&2
             exit 1
           fi
+          tools/test-konsole-source-patch.sh "$PWD/konsole-src"
 
       - name: Run kde-builder itself in pretend mode on the rendered config
         # The one check that would have caught most of the config-level
@@ -229,15 +230,32 @@ jobs:
           mv out/konsole/kde-install out/konsole/kde-install.hidden
           trap 'mv "$HOME/.conan2/p.hidden" "$HOME/.conan2/p"; mv out/konsole/kde-install.hidden out/konsole/kde-install' EXIT
           KONSOLE_INSTALL_DIR="$neutral/runtime" KONSOLE_SMOKE_DISABLE_LD_LIBRARY_PATH=1 \
+          KONSOLE_SMOKE_DEBUG_LOADER=1 \
             ./tools/run-konsole-smoke.sh \
-            "$neutral/runtime/bin/konsole" "$PWD/out/konsole/smoke-isolated"
-          # Warnings that mean a compiled-in path was needed and is gone:
-          if grep -qiE 'Cannot load default config file|u_init|ICU data|could not find the Qt platform plugin' \
+            "$neutral/runtime/konsole" "$PWD/out/konsole/smoke-isolated"
+          # These warnings mean a compiled-in application path was needed and
+          # is gone. Fontconfig configuration is intentionally host data, so
+          # its absence is a degraded-font warning rather than a bundle-path
+          # failure; the launcher supplies /etc/fonts when it exists.
+          if grep -qiE 'u_init|ICU data|could not find the Qt platform plugin' \
               out/konsole/smoke-isolated/konsole.log 2>/dev/null; then
             echo "the isolated run relied on a build-time path:" >&2
-            grep -iE 'Cannot load default config file|u_init|ICU data|platform plugin' out/konsole/smoke-isolated/konsole.log >&2
+            grep -iE 'u_init|ICU data|Qt platform plugin' out/konsole/smoke-isolated/konsole.log >&2
             exit 1
           fi
+
+      # Both runs first, then the contracts: a failed check here must not
+      # cost the isolated run's screenshot and log.
+      - name: Verify the static KDE plugin payload
+        run: ./tools/verify-konsole-runtime-plugins.sh out/konsole/konsole-runtime
+
+      - name: Check both smoke logs for a hollow static runtime
+        run: |
+          status=0
+          for log in out/konsole/smoke/konsole.log out/konsole/smoke-isolated/konsole.log; do
+            ./tools/check-konsole-runtime-log.sh "$log" || status=1
+          done
+          exit "$status"
 
       - name: ccache statistics and disk usage
         if: always()
@@ -254,6 +272,13 @@ jobs:
           set +e
           diag=/tmp/konsole-diagnostic-logs
           mkdir -p "$diag"
+          for smoke_dir in out/konsole/smoke out/konsole/smoke-isolated; do
+            if [ -d "$smoke_dir" ]; then
+              target="$diag/${smoke_dir##*/}"
+              mkdir -p "$target"
+              cp -a "$smoke_dir/." "$target/" 2>/dev/null || true
+            fi
+          done
           cp out/konsole/konsole-audit.txt "$diag/00-konsole-audit.txt" 2>/dev/null || true
           find "$HOME/.conan2/p/b" -newer /tmp/job-start-marker -type f \
             ! -name '*.o' ! -name '*.a' ! -name '*.so' ! -name '*.so.*' \

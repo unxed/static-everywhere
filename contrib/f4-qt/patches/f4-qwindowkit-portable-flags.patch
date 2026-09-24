@@ -1,15 +1,18 @@
 diff --git a/ci/build-qwindowkit.sh b/ci/build-qwindowkit.sh
+index 124ffa2f..8cb3f70e 100755
 --- a/ci/build-qwindowkit.sh
 +++ b/ci/build-qwindowkit.sh
-@@ -10,5 +10,6 @@
- qwk_build="${repo_root}/build/qwindowkit-build"
- qwk_install="${repo_root}/build/qwindowkit-install"
+@@ -13,7 +13,8 @@ qwk_patch="${repo_root}/ci/patches/qwindowkit-default-maximize-hint.patch"
+ qwk_patch_hash="$(cmake -E sha256sum "${qwk_patch}" | awk '{print substr($1, 1, 16)}')"
+ qwk_marker="${qwk_install}/.f4-qwindowkit-ready-${linkage}-${build_type}-${qwk_patch_hash}"
  qt_version="$(basename "$(dirname "${qt_root}")")"
 -qwk_cxx_flags=""
 +qwk_c_flags="${CFLAGS:-}"
 +qwk_cxx_flags="${CXXFLAGS:-}"
  qwk_platform_args=()
-@@ -45,6 +45,7 @@
+ 
+ case "${linkage}" in
+@@ -60,6 +61,7 @@ fi
  cmake -S "${qwk_source}" -B "${qwk_build}" -G Ninja \
      -DCMAKE_BUILD_TYPE="${build_type}" \
      -DCMAKE_PREFIX_PATH="${qt_root}" \

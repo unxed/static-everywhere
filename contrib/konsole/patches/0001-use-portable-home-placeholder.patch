@@ -1,0 +1,13 @@
+diff --git a/src/widgets/EditProfileGeneralPage.ui b/src/widgets/EditProfileGeneralPage.ui
+index b6145050e..182f69610 100644
+--- a/src/widgets/EditProfileGeneralPage.ui
++++ b/src/widgets/EditProfileGeneralPage.ui
+@@ -173,7 +173,7 @@
+           <enum>Qt::LayoutDirection::LeftToRight</enum>
+          </property>
+          <property name="placeholderText">
+-          <string>/home/username</string>
++          <string>~</string>
+          </property>
+         </widget>
+        </item>

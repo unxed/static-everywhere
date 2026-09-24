@@ -13,6 +13,9 @@ pass() { printf 'PASS: %s\n' "$1"; }
 bash -n "$REPO_ROOT/tools/build-konsole.sh" "$REPO_ROOT/tools/preflight-konsole.sh" \
     "$REPO_ROOT/tools/run-konsole-smoke.sh" "$REPO_ROOT/tools/verify-konsole-artifact.sh" \
     "$REPO_ROOT/tools/package-konsole-runtime.sh" "$REPO_ROOT/contrib/konsole/konsole-launcher.sh" \
+    "$REPO_ROOT/tools/verify-konsole-runtime-plugins.sh" \
+    "$REPO_ROOT/tools/test-konsole-portable-launcher.sh" \
+    "$REPO_ROOT/tools/test-konsole-runtime-packaging.sh" \
     "$REPO_ROOT/tools/preflight-konsole-kde-builder-pretend.sh" \
     "$REPO_ROOT/contrib/konsole/qt-package-root.sh" "$REPO_ROOT/tools/test-konsole-qt-package-root.sh" \
     "$REPO_ROOT/tools/test-konsole-cmake-find-mode.sh" \
@@ -24,14 +27,26 @@ bash -n "$REPO_ROOT/tools/build-konsole.sh" "$REPO_ROOT/tools/preflight-konsole.
     "$REPO_ROOT/tools/test-konsole-host-perl-modules.sh" \
     "$REPO_ROOT/tools/test-konsole-host-docbook-tools.sh" \
     "$REPO_ROOT/tools/test-konsole-static-qt-plugins.sh" \
+    "$REPO_ROOT/tools/test-konsole-static-kwindowsystem-plugin.sh" \
+    "$REPO_ROOT/tools/test-konsole-static-qt-resources.sh" \
+    "$REPO_ROOT/tools/check-konsole-runtime-log.sh" \
+    "$REPO_ROOT/tools/test-konsole-portable-plugin-path.sh" \
     "$REPO_ROOT/tools/test-konsole-deferred-recipe-file.sh" \
     "$REPO_ROOT/tools/test-konsole-runtime-rpath.sh" \
     "$REPO_ROOT/tools/test-konsole-icu-consistency.sh" \
     "$REPO_ROOT/tools/test-konsole-direct-qt-includes.sh" \
+    "$REPO_ROOT/tools/clean-kde-builder-source-tree.sh" \
+    "$REPO_ROOT/tools/test-konsole-source-cache-cleanup.sh" \
     "$REPO_ROOT/tools/test-optional-gl-cxx-only.sh" \
     "$REPO_ROOT/tools/test-konsole-host-runtime-contract.sh" \
     "$REPO_ROOT/tools/test-audit-internal-prefix.sh"
 pass 'Konsole shell scripts parse'
+
+bash "$REPO_ROOT/tools/test-konsole-portable-launcher.sh"
+pass 'Konsole launcher keeps bundle data/plugins relocatable and supports isolated RPATH mode'
+
+bash "$REPO_ROOT/tools/test-konsole-runtime-packaging.sh"
+pass 'Konsole packaging preserves every install-prefix MODULE layout under the bundle plugin root'
 
 python3 "$REPO_ROOT/tools/test-konsole-dependency-contract.py"
 pass 'Conan metadata rejects missing public headers and host pkg-config substitutions'
@@ -60,6 +75,21 @@ pass 'Qt component-style CONFIG packages resolve through Conan aggregate metadat
 bash "$REPO_ROOT/tools/test-konsole-static-qt-plugins.sh"
 pass 'Konsole static Qt plugin imports are configure-time and Conan-safe'
 
+bash "$REPO_ROOT/tools/test-konsole-static-kwindowsystem-plugin.sh"
+pass 'static Qt KWindowSystem X11 plugin registration is wired at configure time'
+
+bash "$REPO_ROOT/tools/test-konsole-static-qt-resources.sh"
+pass 'Qt resources of every STATIC Konsole target reach the final link'
+grep -Fq 'CALL _se_link_static_qt_resources' \
+    "$REPO_ROOT/contrib/konsole/project-include.cmake" || \
+    fail 'the Konsole hook does not defer the static Qt resource pass'
+grep -Fq 'check-konsole-runtime-log.sh' "$REPO_ROOT/.github/workflows/konsole-zig-build.yml" || \
+    fail 'the workflow does not check the smoke logs for a hollow static runtime'
+pass 'the workflow rejects a Konsole window without its static runtime contracts'
+
+bash "$REPO_ROOT/tools/test-konsole-portable-plugin-path.sh"
+pass 'relocated KDE MODULE plugins are found from the portable bundle'
+
 bash "$REPO_ROOT/tools/test-konsole-deferred-recipe-file.sh"
 pass 'deferred recipe files retain their absolute path'
 
@@ -71,6 +101,9 @@ pass 'ICU consistency probe carries concrete package paths into try_compile'
 
 bash "$REPO_ROOT/tools/test-konsole-direct-qt-includes.sh"
 pass 'split KDE sources receive direct Qt includes through the source contract'
+
+bash "$REPO_ROOT/tools/test-konsole-source-cache-cleanup.sh"
+pass 'cached KDE source overlays cannot block the next kde-builder update'
 
 bash "$REPO_ROOT/tools/test-optional-gl-cxx-only.sh"
 pass 'optional-GL forwarding covers executable, shared and MODULE link boundaries'
@@ -140,6 +173,8 @@ for needle in \
     'CMAKE_DISABLE_FIND_PACKAGE_OpenMP=ON' \
     'CMAKE_DISABLE_FIND_PACKAGE_UTEMPTER=ON' \
     'CMAKE_DISABLE_FIND_PACKAGE_UDev=ON' \
+    'KDE_INSTALL_PLUGINDIR=lib/plugins' \
+    'KDE_INSTALL_QTPLUGINDIR=lib/plugins' \
     'CMAKE_PROJECT_INCLUDE' \
     'CMAKE_EXE_LINKER_FLAGS="-pie' \
     'verify-konsole-artifact.sh' \
@@ -150,7 +185,9 @@ for needle in \
     'BUILD_KSECRETD=OFF' \
     'BUILD_KWALLETD=OFF' \
     'BUILD_KWALLET_QUERY=OFF' \
-    'BUILD_PLUGINS=none'; do
+    'BUILD_PLUGINS=none' \
+    'override kiconthemes:' \
+    'USE_BreezeIcons=OFF'; do
     if ! grep -Fq -- "$needle" "$PLAN" &&
        ! grep -Fq -- "$needle" "$REPO_ROOT/contrib/konsole/kde-builder.yaml.in"; then
         fail "plan/config is missing: $needle"
@@ -162,11 +199,51 @@ grep -Fq 'CALL _se_konsole_set_runtime_rpath' "$REPO_ROOT/contrib/konsole/projec
     fail 'Konsole target-level runtime RPATH callback is not deferred'
 grep -Fq 'INSTALL_RPATH "\$ORIGIN/../lib"' "$REPO_ROOT/contrib/konsole/runtime-rpath.cmake" || \
     fail 'Konsole target-level runtime RPATH contract is missing'
+grep -Fq 'export QT_PLUGIN_PATH="$ROOT/lib/plugins' \
+    "$REPO_ROOT/contrib/konsole/konsole-launcher.sh" || \
+    fail 'portable Konsole launcher does not export its relocated Qt plugin root'
+grep -Fq 'export QT_PLUGIN_PATH="$install_dir/lib/plugins' \
+    "$REPO_ROOT/tools/run-konsole-smoke.sh" || \
+    fail 'Konsole smoke harness does not export the relocated Qt plugin root'
+grep -Fq 'verify-konsole-runtime-plugins.sh' "$REPO_ROOT/.github/workflows/konsole-zig-build.yml" || \
+    fail 'workflow does not verify the real KDE MODULE payload before smoke'
+grep -Fq '_se_konsole_enable_static_kwindowsystem_x11_plugin' \
+    "$REPO_ROOT/contrib/konsole/project-include.cmake" || \
+    fail 'KWindowSystem static Qt plugin source hook is missing'
+grep -Fq 'Q_IMPORT_PLUGIN(X11Plugin)' \
+    "$REPO_ROOT/contrib/konsole/project-include.cmake" || \
+    fail 'KWindowSystem static Qt plugin import contract is missing'
 grep -Fq 'package-konsole-runtime.sh' "$REPO_ROOT/tools/build-konsole.sh" || \
     fail 'build plan does not create the portable Konsole runtime bundle'
 grep -Fq 'konsole-runtime' "$REPO_ROOT/.github/workflows/konsole-zig-build.yml" || \
     fail 'workflow does not smoke-test and upload the portable runtime bundle'
-pass 'Konsole internal shared-library RPATH and portable bundle are in the plan'
+patch_count=$(find "$REPO_ROOT/contrib/konsole/patches" -maxdepth 1 \
+    -type f -name '*.patch' -print | wc -l)
+[[ $patch_count -gt 0 ]] || fail 'pinned Konsole source patch set is empty'
+grep -Fq 'file(GLOB _SE_KONSOLE_SOURCE_PATCHES' \
+    "$REPO_ROOT/contrib/konsole/project-include.cmake" || \
+    fail 'Konsole source patch hook does not apply the complete patch set'
+grep -Fq 'git -C "${CMAKE_CURRENT_SOURCE_DIR}" apply' \
+    "$REPO_ROOT/contrib/konsole/project-include.cmake" || \
+    fail 'Konsole source patch is not applied before configure'
+grep -Fq 'KIconTheme::initTheme()' \
+    "$REPO_ROOT/contrib/konsole/project-include.cmake" || \
+    fail 'Konsole GUI startup ordering invariant is missing'
+grep -Fq 'static Qt runtime boundary is confined to konsoleapp STATIC' \
+    "$REPO_ROOT/contrib/konsole/project-include.cmake" || \
+    fail 'Konsole static Qt runtime boundary invariant is missing'
+konsole_app_patch="$REPO_ROOT/contrib/konsole/patches/0002-static-konsoleapp-runtime.patch"
+grep -Fq 'add_library(konsoleapp STATIC Application.cpp' "$konsole_app_patch" || \
+    fail 'Konsole source patch does not make konsoleapp STATIC'
+if grep -Eq '^\+add_library\(konsoleapp SHARED Application\.cpp$' "$konsole_app_patch"; then
+    fail 'Konsole source patch still contains a SHARED konsoleapp target'
+fi
+grep -Fq 'test-konsole-source-patch.sh' \
+    "$REPO_ROOT/.github/workflows/konsole-zig-build.yml" || \
+    fail 'workflow does not validate the source patch against the pinned checkout'
+grep -Fq 'clean-kde-builder-source-tree.sh' "$REPO_ROOT/tools/build-konsole.sh" || \
+    fail 'build does not clean cached KDE source checkouts before kde-builder'
+pass 'Konsole static Qt boundary, shared-library RPATH and portable bundle are in the plan'
 pass 'Zig baseline, static Qt, cache, hook and artifact gates are in the plan'
 
 grep -Fq 'max_file = max_file' "$REPO_ROOT/onebin/src/main.c" || \
@@ -219,15 +296,24 @@ assert "BUILD_SHARED_LIBS=OFF" in cmake_options
 assert "CMAKE_IGNORE_PREFIX_PATH=" in cmake_options
 assert "CMAKE_IGNORE_PREFIX_PATH=/usr" not in cmake_options
 assert "WITH_X11=ON" in cmake_options
+assert "USE_BreezeIcons=OFF" not in cmake_options
 assert "-DCMAKE_C_FLAGS=--target=x86_64-linux-gnu.2.27" in cmake_options
 assert "-DCMAKE_CXX_FLAGS=--target=x86_64-linux-gnu.2.27" in cmake_options
 cmake_tokens = shlex.split(cmake_options)
-assert any(
-    shlex.split(token.split("=", 1)[1]) == ["-pie", "/tmp/compat-glibc-shims.o"]
-    for token in cmake_tokens
-    if token.startswith("-DCMAKE_EXE_LINKER_FLAGS=")
-)
+expected_link_flags = {
+    "-DCMAKE_EXE_LINKER_FLAGS=": ["-pie", "/tmp/compat-glibc-shims.o", "-Wl,--strip-debug"],
+    "-DCMAKE_SHARED_LINKER_FLAGS=": ["/tmp/compat-glibc-shims.o", "-Wl,--strip-debug"],
+    "-DCMAKE_MODULE_LINKER_FLAGS=": ["/tmp/compat-glibc-shims.o", "-Wl,--strip-debug"],
+}
+for prefix, expected in expected_link_flags.items():
+    actual = [
+        shlex.split(token.split("=", 1)[1])
+        for token in cmake_tokens
+        if token.startswith(prefix)
+    ]
+    assert actual == [expected], (prefix, actual)
 assert config["override konsole"]["revision"]
+assert "-DUSE_BreezeIcons=OFF" in config["override kiconthemes"]["cmake-options"]
 assert "#" not in cmake_options
 workflow = yaml.safe_load(pathlib.Path(sys.argv[2]).read_text())
 assert set(workflow["jobs"]) == {"preflight", "build"}
@@ -697,6 +783,28 @@ pass 'the workflow runs an isolated portable-bundle smoke test with build-time p
 grep -Fq 'KONSOLE_SMOKE_DISABLE_LD_LIBRARY_PATH=1' "$REPO_ROOT/.github/workflows/konsole-zig-build.yml" || \
     fail 'the isolated smoke test still masks missing origin-relative runtime libraries'
 pass 'the isolated smoke test exercises the binary without LD_LIBRARY_PATH'
+grep -Fq '"$neutral/runtime/konsole"' "$REPO_ROOT/.github/workflows/konsole-zig-build.yml" || \
+    fail 'the isolated smoke test bypasses the portable bundle launcher'
+grep -Fq 'export QT_PLUGIN_PATH=' "$REPO_ROOT/tools/run-konsole-smoke.sh" || \
+    fail 'the smoke harness does not expose the bundle Qt/KF6 plugin root'
+grep -Fq 'export QT_PLUGIN_PATH="$ROOT/lib/plugins' "$REPO_ROOT/contrib/konsole/konsole-launcher.sh" || \
+    fail 'the portable launcher does not expose its relocatable plugin root'
+pass 'portable smoke uses the bundle launcher and relocatable Qt/KF6 plugin paths'
+grep -Fq 'QPluginLoader' "$REPO_ROOT/contrib/konsole/project-include.cmake" || \
+    fail 'static Qt QPluginLoader limitation is not documented in the source hook'
+grep -Fq 'QT_STATICPLUGIN' "$REPO_ROOT/contrib/konsole/project-include.cmake" || \
+    fail 'KWindowSystem static plugin does not define QT_STATICPLUGIN'
+pass 'static Qt does not depend on runtime loading of the KWindowSystem X11 MODULE'
+
+# The isolated run must retain enough loader evidence to distinguish a
+# missing MODULE from a present MODULE whose dependencies or metadata reject
+# QPluginLoader. The trace is enabled only for the application process by the
+# smoke harness, so it cannot turn an Xvfb diagnostic into megabytes of noise.
+grep -Fq 'KONSOLE_SMOKE_DEBUG_LOADER=1' "$REPO_ROOT/.github/workflows/konsole-zig-build.yml" || \
+    fail 'the isolated smoke test does not collect dynamic-loader evidence'
+grep -Fq 'LD_DEBUG=libs,files' "$REPO_ROOT/tools/run-konsole-smoke.sh" || \
+    fail 'the smoke harness has no scoped dynamic-loader trace'
+pass 'isolated smoke retains scoped dynamic-loader evidence for KDE MODULE failures'
 
 # The install prefix must be neutral and staged, or KDE compiles build
 # paths into every binary and the audit reports them one module at a time
@@ -713,6 +821,8 @@ grep -q 'SE_DESTDIR' "$REPO_ROOT/tools/build-konsole.sh" \
 grep -q 'DESTDIR="$SE_DESTDIR"' "$REPO_ROOT/tools/kde-install-and-reconcile.sh" \
     || fail 'the install wrapper does not export DESTDIR; the neutral prefix would be written for real'
 pass 'the KDE install prefix is neutral and staged through DESTDIR'
+
+pass 'all source-built loadable targets strip debug path metadata at link time'
 
 # A large producer piped into grep -q under pipefail turns a MATCH into a
 # failure when the producer is still writing. It cost a red preflight that

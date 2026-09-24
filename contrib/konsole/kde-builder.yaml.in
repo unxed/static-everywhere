@@ -56,6 +56,12 @@ global:
   # option keeps the runner's FindX11/FindXCB modules discoverable.
   # KDE_INSTALL_LIBDIR is pinned so every framework installs its CONFIG files
   # under the same lib/cmake tree, independently of include order.
+  # KDEInstallDirs can leave the plugin variables empty when Qt's install
+  # paths are unavailable during the per-framework configure. An empty value
+  # is dangerous here: upstream DESTINATION expressions put a leading slash
+  # before their subdirectory, staging the MODULE outside this install
+  # prefix. Keep every KDE and Qt plugin destination relative to the prefix
+  # so the portable packager can see the complete runtime closure.
   # The Conan toolchain carries the target in its package-build and link flags,
   # but kde-builder configures every KDE source module separately. Keep the
   # compile driver on the same pinned target too; otherwise zig-c++ silently
@@ -73,6 +79,10 @@ global:
   # "relocation R_X86_64_32 cannot be used when making a shared object".
   # KDECompilerSettings sets this ON already -- this pins it, since a class
   # that is merely believed absent is not a class that is guarded.
+  # Source-built KDE targets must not carry compiler/toolchain debug paths
+  # into the portable artifact. This applies to every loadable boundary,
+  # not only the final Konsole executable: static archives can contribute
+  # their debug sections to an executable, SHARED library or MODULE.
   # No -Wl,--trace / -t / -Map / --why-extract: zig 0.13 rejects every one
   # of them as "unsupported linker arg", and adding --trace broke the
   # first shared-object link in the graph (kiconthemes). Link tracing has
@@ -102,6 +112,8 @@ global:
     -DCMAKE_IGNORE_PREFIX_PATH=
     -DKDE_INSTALL_USE_QT_SYS_PATHS=OFF
     -DKDE_INSTALL_LIBDIR=lib
+    -DKDE_INSTALL_PLUGINDIR=lib/plugins
+    -DKDE_INSTALL_QTPLUGINDIR=lib/plugins
     -DCMAKE_POSITION_INDEPENDENT_CODE=ON
     -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
     -DCMAKE_C_IMPLICIT_INCLUDE_DIRECTORIES=/usr/include
@@ -113,9 +125,9 @@ global:
     -DCMAKE_CXX_STANDARD_INCLUDE_DIRECTORIES=@QT_PACKAGE_ROOT@/include/QtQmlIntegration
     -DCMAKE_C_FLAGS=--target=@TARGET_TRIPLE@
     -DCMAKE_CXX_FLAGS=--target=@TARGET_TRIPLE@
-    -DCMAKE_EXE_LINKER_FLAGS="-pie @GLIBC_SHIM_OBJ@"
-    -DCMAKE_SHARED_LINKER_FLAGS=@GLIBC_SHIM_OBJ@
-    -DCMAKE_MODULE_LINKER_FLAGS=@GLIBC_SHIM_OBJ@
+    -DCMAKE_EXE_LINKER_FLAGS="-pie @GLIBC_SHIM_OBJ@ -Wl,--strip-debug"
+    -DCMAKE_SHARED_LINKER_FLAGS="@GLIBC_SHIM_OBJ@ -Wl,--strip-debug"
+    -DCMAKE_MODULE_LINKER_FLAGS="@GLIBC_SHIM_OBJ@ -Wl,--strip-debug"
     -DBUILD_WITH_QML=OFF
     -DKCOREADDONS_USE_QML=OFF
     -DKICONTHEMES_USE_QTQUICK=OFF
@@ -160,6 +172,16 @@ global:
   make-install-prefix: "@INSTALL_PREFIX_CMD@"
 override konsole:
   revision: "@KONSOLE_REF@"
+
+# KIconThemes registers a Q_COREAPP_STARTUP_FUNCTION. With BreezeIcons enabled
+# its startup callback calls BreezeIcons::initIcons() while QApplication is
+# still being constructed, which is not safe for this static GUI graph. The
+# KIconThemes CMakeLists.txt makes this optional integration explicit; keep the
+# filesystem icon theme from the separate breeze-icons project, but disable
+# this in-process startup integration for the portable build.
+override kiconthemes:
+  cmake-options: >
+    -DUSE_BreezeIcons=OFF
 
 # qca defaults to its legacy Qt5 build. The KDE dependency graph consumes its
 # Qt6 package, and qca's CMakeLists.txt requires Qt6 Core5Compat even when its

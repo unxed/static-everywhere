@@ -229,6 +229,139 @@ if(PROJECT_NAME STREQUAL "KPackage")
                 "${_se_kpackage_cmake}")
     endif()
 endif()
+
+# Qt's QPluginLoader is deliberately unavailable when Qt itself is static:
+# QPluginLoader::setFileName() becomes a no-op in that configuration. A KDE
+# framework can still expose a MODULE target, so merely copying that MODULE
+# and exporting QT_PLUGIN_PATH gives a false portable-runtime contract. Make
+# KWindowSystem's X11 backend a static Qt plugin of the framework target;
+# KWindowSystem's plugin wrapper asks QPluginLoader::staticPlugins() before
+# it looks at any file, so the registration is found on every static-Qt build.
+#
+# The sources are taken from the MODULE target itself rather than from a
+# hand-kept list, and files the framework already compiles (kxutils.cpp) are
+# not added twice. The MODULE cannot stay as it was: it links KF6WindowSystem,
+# whose archive now holds the same plugin objects, and the first attempt
+# stopped there on duplicate X11Plugin symbols. It is reduced to an empty
+# translation unit with no link libraries, so its upstream install() rule
+# still has a file to install and nothing loadable claims the plugin IID.
+#
+# This is a source-shape contract for the current upstream framework rather
+# than a hand-maintained dependency patch. The callback is deferred until the
+# framework has declared both targets, and the source edit is idempotent so
+# cached kde-builder checkouts can be reused safely and cleaned on exit.
+function(_se_konsole_enable_static_kwindowsystem_x11_plugin)
+    if(NOT KWINDOWSYSTEM_X11)
+        return()
+    endif()
+    foreach(_se_kwindowsystem_target KF6WindowSystem KF6WindowSystemX11Plugin)
+        if(NOT TARGET ${_se_kwindowsystem_target})
+            message(FATAL_ERROR
+                "static-everywhere: KWindowSystem has no "
+                "${_se_kwindowsystem_target} target")
+        endif()
+    endforeach()
+
+    set(_se_kwindowsystem_wrapper
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/pluginwrapper.cpp")
+    if(NOT EXISTS "${_se_kwindowsystem_wrapper}")
+        message(FATAL_ERROR
+            "static-everywhere: KWindowSystem plugin wrapper is missing: "
+            "${_se_kwindowsystem_wrapper}")
+    endif()
+
+    # Absolute source sets of both targets, so the same file named relative
+    # to two different directories is recognised as one file.
+    foreach(_se_kwindowsystem_target KF6WindowSystem KF6WindowSystemX11Plugin)
+        get_target_property(_se_target_dir ${_se_kwindowsystem_target} SOURCE_DIR)
+        get_target_property(_se_target_sources ${_se_kwindowsystem_target} SOURCES)
+        set(_se_absolute_sources)
+        foreach(_se_source IN LISTS _se_target_sources)
+            if(_se_source MATCHES "^\\$<")
+                if(_se_kwindowsystem_target STREQUAL "KF6WindowSystemX11Plugin")
+                    message(FATAL_ERROR
+                        "static-everywhere: KF6WindowSystemX11Plugin has a "
+                        "generator-expression source that cannot be moved: "
+                        "${_se_source}")
+                endif()
+                continue()
+            endif()
+            get_filename_component(_se_source "${_se_source}" ABSOLUTE
+                BASE_DIR "${_se_target_dir}")
+            list(APPEND _se_absolute_sources "${_se_source}")
+        endforeach()
+        set(_se_sources_${_se_kwindowsystem_target} ${_se_absolute_sources})
+    endforeach()
+
+    set(_se_kwindowsystem_moved)
+    foreach(_se_source IN LISTS _se_sources_KF6WindowSystemX11Plugin)
+        if(NOT _se_source MATCHES "\\.(c|cc|cpp|cxx)$")
+            continue()
+        endif()
+        if(NOT EXISTS "${_se_source}")
+            message(FATAL_ERROR
+                "static-everywhere: KWindowSystem X11 plugin source is "
+                "missing: ${_se_source}")
+        endif()
+        list(FIND _se_sources_KF6WindowSystem "${_se_source}" _se_source_pos)
+        if(_se_source_pos LESS 0)
+            list(APPEND _se_kwindowsystem_moved "${_se_source}")
+        endif()
+    endforeach()
+    set(_se_kwindowsystem_plugin_source ${_se_kwindowsystem_moved})
+    list(FILTER _se_kwindowsystem_plugin_source INCLUDE REGEX "/plugin\\.cpp$")
+    if(NOT _se_kwindowsystem_plugin_source)
+        message(FATAL_ERROR
+            "static-everywhere: KWindowSystem X11 MODULE no longer has the "
+            "plugin.cpp that declares X11Plugin")
+    endif()
+
+    file(READ "${_se_kwindowsystem_wrapper}" _se_kwindowsystem_content)
+    string(FIND "${_se_kwindowsystem_content}" "Q_IMPORT_PLUGIN(X11Plugin)"
+        _se_kwindowsystem_import_pos)
+    if(_se_kwindowsystem_import_pos LESS 0)
+        string(FIND "${_se_kwindowsystem_content}" "#include <QPluginLoader>"
+            _se_kwindowsystem_loader_include_pos)
+        if(_se_kwindowsystem_loader_include_pos LESS 0)
+            message(FATAL_ERROR
+                "static-everywhere: KWindowSystem plugin wrapper lost its "
+                "QPluginLoader include anchor")
+        endif()
+        string(REPLACE "#include <QPluginLoader>"
+            "#include <QPluginLoader>\n#include <QtPlugin>\n\nQ_IMPORT_PLUGIN(X11Plugin)"
+            _se_kwindowsystem_content "${_se_kwindowsystem_content}")
+        file(WRITE "${_se_kwindowsystem_wrapper}" "${_se_kwindowsystem_content}")
+    elseif(NOT _se_kwindowsystem_content MATCHES "#[ \t]*include[ \t]*<QtPlugin>")
+        message(FATAL_ERROR
+            "static-everywhere: KWindowSystem static plugin import has no "
+            "QtPlugin include")
+    endif()
+
+    target_compile_definitions(KF6WindowSystem PRIVATE QT_STATICPLUGIN)
+    target_sources(KF6WindowSystem PRIVATE ${_se_kwindowsystem_moved})
+
+    set(_se_kwindowsystem_stub
+        "${CMAKE_CURRENT_BINARY_DIR}/static_everywhere_x11plugin_stub.cpp")
+    file(WRITE "${_se_kwindowsystem_stub}"
+        "// static-everywhere: X11Plugin is a static Qt plugin of KF6WindowSystem.\n")
+    set_target_properties(KF6WindowSystemX11Plugin PROPERTIES
+        SOURCES "${_se_kwindowsystem_stub}"
+        LINK_LIBRARIES ""
+        INTERFACE_LINK_LIBRARIES ""
+        AUTOMOC OFF
+        AUTOUIC OFF
+        AUTORCC OFF)
+    message(STATUS
+        "static-everywhere: registered KWindowSystem X11 backend as a "
+        "static Qt plugin (${_se_kwindowsystem_moved}); the X11 MODULE is an "
+        "empty placeholder")
+endfunction()
+
+if(PROJECT_NAME STREQUAL "KWindowSystem" AND PROJECT_IS_TOP_LEVEL)
+    cmake_language(DEFER DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+        CALL _se_konsole_enable_static_kwindowsystem_x11_plugin)
+endif()
+
 if(NOT PROJECT_IS_TOP_LEVEL)
     return()
 endif()
@@ -239,14 +372,132 @@ endif()
 
 get_filename_component(_SE_REPO_ROOT "${CMAKE_CURRENT_LIST_DIR}/../.." ABSOLUTE)
 
-# Konsole deliberately keeps its application facade as a shared library:
-# the executable and the installed KPart both use the same implementation.
+# Source overlays are generated from the exact commit in deps.lock and are
+# checked by preflight before the expensive graph build starts. Apply every
+# overlay in lexical order, so adding a new source-level contract cannot be
+# forgotten in this hook. The reverse check makes the operation idempotent for
+# a cached kde-builder checkout.
+file(GLOB _SE_KONSOLE_SOURCE_PATCHES LIST_DIRECTORIES false
+    "${CMAKE_CURRENT_LIST_DIR}/patches/*.patch")
+list(SORT _SE_KONSOLE_SOURCE_PATCHES)
+if(NOT _SE_KONSOLE_SOURCE_PATCHES)
+    message(FATAL_ERROR
+        "static-everywhere: no pinned Konsole source patches found")
+endif()
+foreach(_se_konsole_source_patch IN LISTS _SE_KONSOLE_SOURCE_PATCHES)
+    get_filename_component(_se_konsole_source_patch_name
+        "${_se_konsole_source_patch}" NAME)
+    execute_process(
+        COMMAND git -C "${CMAKE_CURRENT_SOURCE_DIR}" apply
+                --check --whitespace=error "${_se_konsole_source_patch}"
+        RESULT_VARIABLE _se_konsole_patch_applies
+        OUTPUT_QUIET ERROR_QUIET)
+    if(_se_konsole_patch_applies EQUAL 0)
+        execute_process(
+            COMMAND git -C "${CMAKE_CURRENT_SOURCE_DIR}" apply
+                    --whitespace=error "${_se_konsole_source_patch}"
+            RESULT_VARIABLE _se_konsole_patch_result
+            OUTPUT_QUIET ERROR_QUIET)
+        if(NOT _se_konsole_patch_result EQUAL 0)
+            message(FATAL_ERROR
+                "static-everywhere: failed to apply pinned Konsole source patch "
+                "${_se_konsole_source_patch_name}")
+        endif()
+        message(STATUS
+            "static-everywhere: applied Konsole source patch "
+            "${_se_konsole_source_patch_name}")
+    else()
+        execute_process(
+            COMMAND git -C "${CMAKE_CURRENT_SOURCE_DIR}" apply
+                    --reverse --check --whitespace=error
+                    "${_se_konsole_source_patch}"
+            RESULT_VARIABLE _se_konsole_patch_reverses
+            OUTPUT_QUIET ERROR_QUIET)
+        if(NOT _se_konsole_patch_reverses EQUAL 0)
+            message(FATAL_ERROR
+                "static-everywhere: pinned Konsole source patch "
+                "${_se_konsole_source_patch_name} applies neither forward "
+                "nor reverse; source revision or patch drifted")
+        endif()
+        message(STATUS
+            "static-everywhere: Konsole source patch already applied "
+            "${_se_konsole_source_patch_name}")
+    endif()
+endforeach()
+
+# Qt and KF6 are static in this recipe. Keeping this application facade as a
+# loadable library would put a second copy of Qt's global state behind the
+# loader boundary, so qApp seen by MainWindow would differ from the one made
+# by the executable. The pinned source patch must keep konsoleapp STATIC.
+set(_se_konsole_app_cmake "${CMAKE_CURRENT_SOURCE_DIR}/src/CMakeLists.txt")
+if(NOT EXISTS "${_se_konsole_app_cmake}")
+    message(FATAL_ERROR
+        "static-everywhere: Konsole application CMake file is missing: "
+        "${_se_konsole_app_cmake}")
+endif()
+file(READ "${_se_konsole_app_cmake}" _se_konsole_app_cmake_content)
+string(FIND "${_se_konsole_app_cmake_content}"
+    "add_library(konsoleapp STATIC Application.cpp" _se_konsole_app_static_pos)
+string(FIND "${_se_konsole_app_cmake_content}"
+    "add_library(konsoleapp SHARED Application.cpp" _se_konsole_app_shared_pos)
+if(_se_konsole_app_static_pos LESS 0 OR _se_konsole_app_shared_pos GREATER -1)
+    message(FATAL_ERROR
+        "static-everywhere: Konsole application target must be "
+        "konsoleapp STATIC when Qt/KF6 are static")
+endif()
+message(STATUS "static-everywhere: static Qt runtime boundary is confined to konsoleapp STATIC")
+
+# KIconTheme::initTheme() has an upstream contract: it must run before the
+# application object so its Q_COREAPP_STARTUP_FUNCTION is registered in time.
+# The remaining KDE/Qt GUI helpers must run after QApplication exists. Static
+# builds make violating either half fatal instead of allowing a plugin/runtime
+# path lookup to be deferred as it often is with shared builds. Keep both
+# checks structural, so a future source overlay cannot silently change this
+# startup contract.
+set(_se_konsole_main_source "${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp")
+if(NOT EXISTS "${_se_konsole_main_source}")
+    message(FATAL_ERROR
+        "static-everywhere: Konsole main source is missing: "
+        "${_se_konsole_main_source}")
+endif()
+file(READ "${_se_konsole_main_source}" _se_konsole_main_content)
+string(FIND "${_se_konsole_main_content}"
+    "new QApplication(argc, argv)" _se_konsole_app_pos)
+if(_se_konsole_app_pos LESS 0)
+    message(FATAL_ERROR
+        "static-everywhere: Konsole main has no QApplication construction")
+endif()
+string(FIND "${_se_konsole_main_content}" "KIconTheme::initTheme()"
+    _se_konsole_icon_theme_pos)
+if(_se_konsole_icon_theme_pos LESS 0)
+    message(FATAL_ERROR
+        "static-everywhere: Konsole has no KIconTheme::initTheme() call")
+endif()
+if(NOT _se_konsole_icon_theme_pos LESS _se_konsole_app_pos)
+    message(FATAL_ERROR
+        "static-everywhere: KIconTheme::initTheme() must precede QApplication")
+endif()
+foreach(_se_konsole_gui_helper
+        "KStyleManager::initStyle()"
+        "QApplication::setStyle")
+    string(FIND "${_se_konsole_main_content}" "${_se_konsole_gui_helper}"
+        _se_konsole_gui_helper_pos)
+    if(_se_konsole_gui_helper_pos GREATER -1 AND
+       _se_konsole_gui_helper_pos LESS _se_konsole_app_pos)
+        message(FATAL_ERROR
+            "static-everywhere: Konsole GUI helper runs before QApplication: "
+            "${_se_konsole_gui_helper}")
+    endif()
+endforeach()
+message(STATUS
+    "static-everywhere: Konsole icon-theme bootstrap precedes QApplication; "
+    "remaining GUI helpers run after it")
+
 # The global recipe disables RPATH for KDE frameworks, but that policy cannot
-# be applied to this application's own relocatable runtime: without an
-# origin-relative install RPATH, bin/konsole needs a manually prepared
-# LD_LIBRARY_PATH to find lib/libkonsoleapp.so. Keep the system boundary
-# dynamic (X11/OpenGL/Canberra); only the library shipped beside the
-# application is made relocatable.
+# be applied to any remaining application-owned loadable targets: without an
+# origin-relative install RPATH, the portable bundle would need a manually
+# prepared LD_LIBRARY_PATH. Keep the system boundary dynamic
+# (X11/OpenGL/Canberra) and retain the generic target-level RPATH contract.
 set(CMAKE_SKIP_RPATH OFF CACHE BOOL "" FORCE)
 set(CMAKE_SKIP_INSTALL_RPATH OFF CACHE BOOL "" FORCE)
 set(CMAKE_BUILD_RPATH_USE_ORIGIN ON)
@@ -256,6 +507,12 @@ message(STATUS "static-everywhere: Konsole runtime RPATH is $ORIGIN/../lib")
 include("${CMAKE_CURRENT_LIST_DIR}/runtime-rpath.cmake")
 
 include("${CMAKE_CURRENT_LIST_DIR}/import-static-qt-plugins.cmake")
+
+# .qrc sources of a STATIC target are dropped by the linker; see the file.
+# Deferred so every target of the project, in every subdirectory, exists.
+include("${CMAKE_CURRENT_LIST_DIR}/link-static-qt-resources.cmake")
+cmake_language(DEFER DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+               CALL _se_link_static_qt_resources)
 
 # This is deliberately the f4 implementation, not a new GL policy. It
 # removes libGL from DT_NEEDED and loads the host OpenGL implementation at

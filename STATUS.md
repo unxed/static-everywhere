@@ -7,6 +7,39 @@ Everything below this section is a reverse-chronological log (newest
 first). Read *this* section first; consult the log below only for the
 detail behind a specific claim.
 
+### Konsole runs. What was left was a hollow runtime, not a crash.
+
+Run 34564617842 (65f3d23) built everything, and both smoke runs --
+the runner one and the isolated bundle -- drew a live terminal with a
+shell prompt. It went red only on `kf.windowsystem: Could not find any
+platform plugin`. Its log showed two more defects the pixel check cannot
+see: `cannot find .rc file "konsoleui.rc"` / `"sessionui.rc"` (the menu
+bar had only View, Settings, Help) and `Unable to load translator
+"default"`.
+
+**KWindowSystem.** db1b136 compiled the X11 plugin into KF6WindowSystem
+as a static Qt plugin -- right idea -- but left the upstream MODULE,
+which links KF6WindowSystem, compiling the same files: run 34565377775
+stopped on duplicate `X11Plugin::*` in `KF6WindowSystemX11Plugin.so`.
+The hook now takes the plugin sources from the MODULE target (skipping
+`kxutils.cpp`, which KF6WindowSystem already has), moves them, and
+reduces the MODULE to an empty placeholder with no link libraries.
+Upstream's wrapper asks `QPluginLoader::staticPlugins()` first.
+
+**Qt resources.** `data.qrc` and `konsole.qrc` are sources of the STATIC
+`konsoleprivate`; the rcc objects are referenced by nothing, so the
+linker never extracts them and `:/konsole`, `:/kxmlgui5/konsole` are
+empty. `link-static-qt-resources.cmake` moves the `.qrc` of every STATIC
+target into an OBJECT library linked into its consumers
+(`qt_add_resources` does the same for static Qt).
+
+**Checks.** `check-konsole-runtime-log.sh` reads both smoke logs and
+fails on the four messages above plus any MODULE refused by static Qt,
+and requires KWindowSystem's `Loaded a static plugin`. The bundle
+verifier now checks the executable, not the `.so`. Both run after the
+isolated smoke so a failure keeps its screenshot. BUILD-FAILURE-CLASSES
+4.3/4.4.
+
 ### The third symbol family, found before the link that would have shown it
 
 konsolepart.so links with --no-undefined, so every transitive dependency

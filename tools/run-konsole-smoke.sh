@@ -44,6 +44,7 @@ chmod 700 "$runtime_dir"
 export DISPLAY="$display"
 export XDG_RUNTIME_DIR="$runtime_dir"
 export XDG_DATA_DIRS="$install_dir/share:/usr/share"
+export QT_PLUGIN_PATH="$install_dir/lib/plugins${QT_PLUGIN_PATH:+:$QT_PLUGIN_PATH}"
 export QT_QPA_PLATFORM=xcb
 # Make plugin resolution visible in konsole.log: a QPA, KF6 or ICU-data
 # failure otherwise shows up only as "no window appeared", which says what
@@ -58,7 +59,14 @@ fi
 export LIBGL_ALWAYS_SOFTWARE=1
 export SE_RENDER_DEBUG_FILE="$render_log"
 
-"$binary" --separate --nofork --hold >"$app_log" 2>&1 &
+if [[ ${KONSOLE_SMOKE_DEBUG_LOADER:-0} == 1 ]]; then
+    # Keep the dynamic-loader trace on the Konsole process only. Exporting
+    # LD_DEBUG for this whole harness would also trace Xvfb, xdotool and
+    # ImageMagick, drowning the plugin failure in unrelated loader output.
+    LD_DEBUG=libs,files "$binary" --separate --nofork --hold >"$app_log" 2>&1 &
+else
+    "$binary" --separate --nofork --hold >"$app_log" 2>&1 &
+fi
 app_pid=$!
 window_id=
 for _ in {1..60}; do
