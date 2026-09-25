@@ -1,60 +1,79 @@
 #!/usr/bin/env bash
-# Regression guard for install-prefix MODULE layout drift.
+# Regression guard for what the portable Konsole bundle carries.
 #
-# KDE projects can install loadable modules below the prefix, below lib, or
-# below a Qt-style plugins directory. The runtime packager must preserve all
-# of them under the single relocatable plugin root consumed by the launcher.
+# - Loadable modules are left out wherever the install put them (prefix
+#   level, lib/plugins, a bin/ symlink into the build tree): Qt is static,
+#   and a static QtCore cannot load any of them. The 36046810445 bundle
+#   carried 123 MB of such modules.
+# - Application shared objects at the install-lib root are kept.
+# - share/ keeps relative in-tree symlinks (breeze-icons is 94% links;
+#   dereferencing them made 470 MB of icons out of 9 MB), and replaces
+#   absolute or escaping links by what they point at.
+# - Build-time-only data in runtime-share-exclude.txt is left out.
 set -euo pipefail
 
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 REPO_ROOT=$(CDPATH= cd -- "${SCRIPT_DIR}/.." && pwd)
 PROBE=$(mktemp -d)
 trap 'rm -rf "$PROBE"' EXIT
+fail() { printf 'Konsole runtime packaging: FAIL: %s\n' "$*" >&2; exit 1; }
 
+share=$PROBE/prefix/share
 mkdir -p \
     "$PROBE/prefix/bin" \
     "$PROBE/prefix/lib/plugins/platforms" \
     "$PROBE/prefix/kf6/kwindowsystem" \
     "$PROBE/build/kf6/kwindowsystem" \
-    "$PROBE/prefix/share"
+    "$PROBE/outside" \
+    "$share/icons/breeze/actions/16" \
+    "$share/icons/breeze/actions/22" \
+    "$share/ECM/modules" \
+    "$share/dbus-1/interfaces" \
+    "$share/dbus-1/services" \
+    "$share/konsole"
 cp /bin/true "$PROBE/prefix/bin/konsole"
 ln -s "$PROBE/build/kf6" "$PROBE/prefix/bin/kf6"
 touch \
     "$PROBE/prefix/lib/libkonsoleapp.so.26.08.0" \
     "$PROBE/prefix/lib/plugins/platforms/libqxcb.so" \
     "$PROBE/prefix/kf6/kwindowsystem/KF6WindowSystemX11Plugin.so" \
-    "$PROBE/build/kf6/kwindowsystem/KF6WindowSystemX11PluginBinLayout.so"
+    "$PROBE/build/kf6/kwindowsystem/KF6WindowSystemX11PluginBinLayout.so" \
+    "$share/ECM/modules/ECMFoo.cmake" \
+    "$share/dbus-1/interfaces/org.kde.konsole.Window.xml" \
+    "$share/dbus-1/services/org.kde.konsole.service" \
+    "$share/konsole/default.keytab"
+printf '<svg/>\n' >"$share/icons/breeze/actions/16/edit-copy.svg"
+printf 'outside\n' >"$PROBE/outside/theme.svg"
+ln -s edit-copy.svg "$share/icons/breeze/actions/16/edit-copy-alias.svg"
+ln -s ../16 "$share/icons/breeze/actions/22/from16"
+ln -s "$PROBE/outside/theme.svg" "$share/icons/breeze/actions/16/absolute.svg"
+ln -s ../../../../../../outside/theme.svg "$share/icons/breeze/actions/16/escaping.svg"
 
 "$REPO_ROOT/tools/package-konsole-runtime.sh" \
-    "$PROBE/prefix" "$PROBE/runtime" >/dev/null
+    "$PROBE/prefix" "$PROBE/runtime" >"$PROBE/package.log"
 
-[[ -x "$PROBE/runtime/bin/konsole" ]] || {
-    printf 'packager omitted the installed executable\n' >&2
-    exit 1
-}
-[[ -f "$PROBE/runtime/lib/libkonsoleapp.so.26.08.0" ]] || {
-    printf 'packager omitted an install-lib shared object\n' >&2
-    exit 1
-}
-[[ -f "$PROBE/runtime/lib/plugins/platforms/libqxcb.so" ]] || {
-    printf 'packager omitted a lib/plugins MODULE\n' >&2
-    exit 1
-}
-[[ -f "$PROBE/runtime/lib/plugins/kf6/kwindowsystem/KF6WindowSystemX11Plugin.so" ]] || {
-    printf 'packager omitted a prefix-level KDE MODULE\n' >&2
-    exit 1
-}
-[[ -f "$PROBE/runtime/lib/plugins/kf6/kwindowsystem/KF6WindowSystemX11PluginBinLayout.so" ]] || {
-    printf 'packager retained the bin prefix for a KDE MODULE\n' >&2
-    exit 1
-}
-[[ ! -L "$PROBE/runtime/lib/plugins/kf6/kwindowsystem/KF6WindowSystemX11PluginBinLayout.so" ]] || {
-    printf 'packager preserved a build-tree symlink for a KDE MODULE\n' >&2
-    exit 1
-}
-[[ ! -e "$PROBE/runtime/lib/plugins/libkonsoleapp.so.26.08.0" ]] || {
-    printf 'packager misclassified an install-lib shared object as a plugin\n' >&2
-    exit 1
-}
+out=$PROBE/runtime
+[[ -x $out/bin/konsole ]] || fail 'the installed executable is missing'
+[[ -f $out/lib/libkonsoleapp.so.26.08.0 ]] || fail 'an install-lib shared object is missing'
+modules=$(find "$out" -mindepth 2 -name '*.so*' ! -path "$out/lib/libkonsoleapp.so*")
+[[ -z $modules ]] || fail "a loadable module was packaged: $modules"
+grep -Fq 'kf6/kwindowsystem/KF6WindowSystemX11Plugin.so' "$PROBE/package.log" ||
+    fail 'the left-out modules are not listed in the packaging log'
 
-printf 'Konsole runtime packaging: PASS (all install-prefix module layouts normalized)\n'
+icons=$out/share/icons/breeze/actions
+[[ -L $icons/16/edit-copy-alias.svg && $(readlink "$icons/16/edit-copy-alias.svg") == edit-copy.svg ]] ||
+    fail 'a relative in-tree file symlink was dereferenced'
+[[ -L $icons/22/from16 && -f $icons/22/from16/edit-copy.svg ]] ||
+    fail 'a relative in-tree directory symlink was dereferenced or broken'
+for name in absolute escaping; do
+    [[ -f $icons/16/$name.svg && ! -L $icons/16/$name.svg ]] ||
+        fail "the $name symlink was kept; it breaks once the bundle moves"
+    grep -Fxq outside "$icons/16/$name.svg" || fail "the $name symlink was not replaced by its target"
+done
+
+[[ ! -e $out/share/ECM ]] || fail 'build-time share/ECM was packaged'
+[[ ! -e $out/share/dbus-1/interfaces ]] || fail 'build-time D-Bus interface XML was packaged'
+[[ -f $out/share/dbus-1/services/org.kde.konsole.service ]] || fail 'an exclusion removed a sibling runtime file'
+[[ -f $out/share/konsole/default.keytab ]] || fail 'application data is missing'
+
+printf 'Konsole runtime packaging: PASS (no dead modules, symlinks kept, build-time data left out)\n'

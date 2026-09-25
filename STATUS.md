@@ -7,6 +7,20 @@ Everything below this section is a reverse-chronological log (newest
 first). Read *this* section first; consult the log below only for the
 detail behind a specific claim.
 
+### The bundle carried 600 MB it could not use
+
+The 36046810445 bundle was 728 MB on disk. 470 MB were icons: breeze and
+breeze-dark are 54142 files each but 7848 distinct (4.6 MB) -- upstream
+ships them as relative symlinks and the packager copied `share/` with
+`cp -aL`. 123 MB were `konsolepart.so`, `KIconEnginePlugin.so` and the
+KWindowSystem placeholder: MODULEs a static QtCore refuses to load. The
+packager now keeps in-tree relative links (only absolute, escaping links
+are dereferenced), packages no nested `.so` at all, and leaves out
+build-time data (ECM, CMake configs, D-Bus interface XML, KDevelop
+templates, JSON schemas, kcfg, logging catalogs) per
+`contrib/konsole/runtime-share-exclude.txt`. The payload verifier fails on
+any bundled module.
+
 ### The KF6 graph is pinned; Konsole is published
 
 Run 36046810445 (f595739) was the first green one. The KF6 graph still

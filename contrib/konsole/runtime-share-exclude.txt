@@ -1,0 +1,17 @@
+# contrib/konsole/runtime-share-exclude.txt -- install-prefix share/ paths
+# that tools/package-konsole-runtime.sh leaves out of the portable bundle.
+#
+# The install prefix holds every framework of the graph, including what
+# they install for OTHER builds to consume. Nothing below is read by a
+# running Konsole; each entry names who does read it. Paths are relative to
+# share/; a listed path that is missing is not an error (the graph moves).
+#
+# <path>                        # consumer
+ECM                             # extra-cmake-modules: CMake modules for building KDE code
+cmake                           # CMake package configs (PlasmaWaylandProtocols)
+plasma-wayland-protocols        # protocol XML, input to wayland-scanner at build time
+dbus-1/interfaces               # D-Bus introspection XML, input to qdbusxml2cpp at build time
+kdevappwizard                   # KDevelop project templates
+kf6/jsonschema                  # plugin-metadata JSON schemas, used by build-time validation
+config.kcfg                     # KConfigXT sources, compiled into code by kconfig_compiler
+qlogging-categories6            # logging-category catalogs for the kdebugsettings tool

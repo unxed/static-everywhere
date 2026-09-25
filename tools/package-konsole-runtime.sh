@@ -35,38 +35,62 @@ fi
 find -L "$prefix/lib" -maxdepth 1 -type f -name '*.so*' \
     -exec cp -aL --target-directory="$output/lib" {} +
 
-# KDE_INSTALL_PLUGINDIR is not stable across KDE projects. In this recipe it
-# is intentionally empty, so a MODULE target such as KWindowSystem's X11
-# backend can be installed below "$prefix/bin/kf6" rather than "$prefix/lib".
-# Other projects may use a prefix-level kf6/, a lib/plugins or a multiarch Qt
-# plugin directory. Normalize every nested shared object into one relocatable
-# Qt plugin root while keeping its path below the plugin directory
-# (platforms/, kf6/, imageformats/, ...). This closes the whole install-layout
-# class instead of naming one framework. Follow and dereference staged
-# symlinks: a development install may point a MODULE back into its build tree,
-# which is not present when the copied bundle is run on a user's machine.
+# Loadable modules are not packaged. Qt is static in this recipe, and a
+# static QtCore refuses every MODULE: QPluginLoader logs "Cannot load ...
+# into a statically linked Qt library", and KPluginFactory goes through it.
+# The bundle used to carry them anyway -- konsolepart.so,
+# KIconEnginePlugin.so and the KWindowSystem placeholder, 123 MB that
+# nothing could load. Whatever Konsole needs from a plugin is linked into
+# the executable as a static Qt plugin (see verify-konsole-runtime-plugins.sh).
+# The modules are listed so the omission stays visible in the build log.
+# Only the install-lib root above is an application library directory.
+skipped_modules=()
 while IFS= read -r -d '' module; do
     relative=${module#"$prefix"/}
     if [[ $relative == lib/*.so* && ${relative#lib/} != */* ]]; then
         continue
     fi
-    case "$relative" in
-        */plugins/*) plugin_relative=${relative#*/plugins/} ;;
-        plugins/*) plugin_relative=${relative#plugins/} ;;
-        bin/*) plugin_relative=${relative#bin/} ;;
-        lib/*) plugin_relative=${relative#lib/} ;;
-        *) plugin_relative=$relative ;;
-    esac
-    destination="$output/lib/plugins/$plugin_relative"
-    mkdir -p "$(dirname -- "$destination")"
-    cp -aL "$module" "$destination"
-done < <(find -L "$prefix" -mindepth 2 -type f -name '*.so*' -print0)
+    skipped_modules+=("$relative")
+done < <(find -L "$prefix" -mindepth 2 -type f -name '*.so*' -print0 | sort -z)
 
+# share/ keeps its relative symlinks. breeze-icons is 94% symlinks (54142
+# files per theme, 7848 distinct): copying with -L turned 2 x 4.6 MB of
+# icons into 470 MB of duplicates. A link that is absolute, leaves share/ or
+# dangles only works on the machine that built it, so exactly those are
+# replaced by a copy of what they point at. Build-time-only data is left
+# out by contrib/konsole/runtime-share-exclude.txt.
 if [[ -d "$prefix/share" ]]; then
-    cp -aL "$prefix/share/." "$output/share/"
+    share_src=$(realpath -- "$prefix/share")
+    cp -a "$share_src/." "$output/share/"
+    while IFS= read -r -d '' link; do
+        relative=${link#"$output/share/"}
+        source_link="$share_src/$relative"
+        target=$(readlink -- "$source_link")
+        resolved=$(realpath -m -- "$(realpath -- "$(dirname -- "$source_link")")/$target")
+        if [[ $target != /* && $resolved == "$share_src"/* && -e $source_link ]]; then
+            continue
+        fi
+        [[ -e $source_link ]] || {
+            printf 'error: dangling symlink in install share/: %s -> %s\n' "$relative" "$target" >&2
+            exit 1
+        }
+        rm -f -- "$link"
+        cp -aL -- "$source_link" "$link"
+    done < <(find "$output/share" -type l -print0)
+    while read -r excluded _; do
+        [[ -z $excluded || $excluded == \#* ]] && continue
+        case $excluded in
+            /*|*..*) printf 'error: invalid share exclusion: %s\n' "$excluded" >&2; exit 1 ;;
+        esac
+        rm -rf -- "${output:?}/share/$excluded"
+    done < "$repo_root/contrib/konsole/runtime-share-exclude.txt"
 fi
 
 install -m 755 "$repo_root/contrib/konsole/konsole-launcher.sh" "$output/konsole"
 printf 'Konsole runtime bundle: %s\n' "$output"
 printf 'Internal shared libraries:\n'
 find "$output/lib" -maxdepth 1 \( -type f -o -type l \) -name '*.so*' -printf '  %f\n' | sort
+if (( ${#skipped_modules[@]} > 0 )); then
+    printf 'Loadable modules left out (static Qt cannot load them):\n'
+    printf '  %s\n' "${skipped_modules[@]}"
+fi
