@@ -30,6 +30,7 @@ bash -n "$REPO_ROOT/tools/build-konsole.sh" "$REPO_ROOT/tools/preflight-konsole.
     "$REPO_ROOT/tools/test-konsole-static-kwindowsystem-plugin.sh" \
     "$REPO_ROOT/tools/test-konsole-static-qt-resources.sh" \
     "$REPO_ROOT/tools/test-konsole-disabled-package-found.sh" \
+    "$REPO_ROOT/tools/test-konsole-source-pins.sh" \
     "$REPO_ROOT/tools/check-konsole-runtime-log.sh" \
     "$REPO_ROOT/tools/test-konsole-portable-plugin-path.sh" \
     "$REPO_ROOT/tools/test-konsole-deferred-recipe-file.sh" \
@@ -83,6 +84,17 @@ bash "$REPO_ROOT/tools/test-konsole-static-qt-resources.sh"
 pass 'Qt resources of every STATIC Konsole target reach the final link'
 bash "$REPO_ROOT/tools/test-konsole-disabled-package-found.sh"
 pass 'packages disabled by the recipe configure as not found in config templates'
+
+# The KF6 graph builds from kde-sources.lock, not from master: an upstream
+# commit broke a run that changed nothing here (kcoreaddons 864299c6).
+python3 "$REPO_ROOT/tools/konsole-source-pins.py" check \
+    || fail 'kde-sources.lock, kde-builder.yaml.in and kde-graph.txt disagree'
+python3 "$REPO_ROOT/tools/konsole-source-pins.py" reachable \
+    || fail 'a KDE source pin is not a commit on its default branch'
+bash "$REPO_ROOT/tools/test-konsole-source-pins.sh"
+grep -Fq 'konsole-source-pins.py" verify' "$REPO_ROOT/tools/build-konsole.sh" \
+    || fail 'the build does not verify that every KDE project was built at its pin'
+pass 'every KDE project is pinned, reachable, and verified after the build'
 grep -Fq 'CALL _se_link_static_qt_resources' \
     "$REPO_ROOT/contrib/konsole/project-include.cmake" || \
     fail 'the Konsole hook does not defer the static Qt resource pass'
@@ -319,7 +331,9 @@ assert config["override konsole"]["revision"]
 assert "-DUSE_BreezeIcons=OFF" in config["override kiconthemes"]["cmake-options"]
 assert "#" not in cmake_options
 workflow = yaml.safe_load(pathlib.Path(sys.argv[2]).read_text())
-assert set(workflow["jobs"]) == {"preflight", "build"}
+assert set(workflow["jobs"]) == {"preflight", "build", "release"}
+assert workflow["jobs"]["release"]["needs"] == "build"
+assert "inputs.konsole_ref == ''" in workflow["jobs"]["release"]["if"]
 print("YAML config/workflow parse: PASS")
 PY
 pass 'rendered kde-builder YAML and workflow parse'

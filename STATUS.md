@@ -7,6 +7,29 @@ Everything below this section is a reverse-chronological log (newest
 first). Read *this* section first; consult the log below only for the
 detail behind a specific claim.
 
+### The KF6 graph is pinned; Konsole is published
+
+Run 36046810445 (f595739) was the first green one. The KF6 graph still
+followed master, and kcoreaddons had already broken one run that changed
+nothing here, so `contrib/konsole/kde-sources.lock` now pins all 37 KDE
+projects to the commits that run built: each project's master head at the
+moment kde-builder fetched it, read from the run log (no later commit on
+any first-parent history has an earlier committer date, so the choice is
+unambiguous).
+
+kde-builder cannot clone a bare commit (ls-remote sees refs only) but
+checks out a `commit:` option in an existing clone.
+`tools/konsole-source-pins.py` clones what the cache lacks before
+kde-builder, renders one `commit:` per project into kde-builder.yaml.in
+(inside the existing kiconthemes/qca blocks -- a second `override` key
+would silently replace the first), and verifies every HEAD after the
+build. Preflight checks lock/template/graph agreement, that each pin is on
+its default branch, and a clone/verify fixture. repo-metadata (the
+dependency graph) is still fetched live; kde-graph.txt guards it.
+
+Green runs of the pinned Konsole now publish `konsole-latest` like the
+other showcases (README, Download).
+
 ### Konsole runs. What was left was a hollow runtime, not a crash.
 
 Run 34564617842 (65f3d23) built everything, and both smoke runs --

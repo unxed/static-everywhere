@@ -359,6 +359,13 @@ run "$REPO_ROOT/tools/stage-host-includes.sh" "$HOST_INCLUDE_STAGE" "$VENDORED_R
 
 run "$REPO_ROOT/tools/clean-kde-builder-source-tree.sh" "$KDE_SOURCE_DIR"
 
+# Every KDE project but Konsole is pinned in kde-sources.lock, one `commit:`
+# override each. kde-builder checks out such a pin only in an existing clone
+# (a first clone is validated with ls-remote, which cannot see commits), so
+# clone what the cache lacks here, and prove after the build that each tree
+# was built at its pin.
+run python3 "$REPO_ROOT/tools/konsole-source-pins.py" clone "$KDE_SOURCE_DIR"
+
 run_env GIT_CONFIG_GLOBAL="$GIT_CONFIG_GLOBAL" PYTHONPATH="$KDE_BUILDER" \
     XDG_STATE_HOME="$KDE_STATE_DIR" \
     ONEBIN_HOST_INCLUDE_DIR="$HOST_INCLUDE_STAGE" \
@@ -368,6 +375,7 @@ run_env GIT_CONFIG_GLOBAL="$GIT_CONFIG_GLOBAL" PYTHONPATH="$KDE_BUILDER" \
     CC="$ZIGCC" CXX="$ZIGCXX" \
     PATH="$CONAN_VENV/bin:$PATH" python3 "$KDE_BUILDER/kde-builder" \
     --rc-file "$KDE_CONFIG" konsole
+run python3 "$REPO_ROOT/tools/konsole-source-pins.py" verify "$KDE_SOURCE_DIR"
 
 KONSOLE_BIN="$KDE_INSTALL_DIR/bin/konsole"
 if [[ $PRINT_PLAN -eq 1 ]]; then

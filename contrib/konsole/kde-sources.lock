@@ -1,0 +1,61 @@
+# contrib/konsole/kde-sources.lock -- the exact commit of every KDE project
+# kde-builder builds for Konsole, except Konsole itself (pinned by tag in
+# deps.lock).
+#
+# Format: <project> <commit> <repository>
+#
+# Why: the graph used to follow master (branch-group latest-kf6), so an
+# upstream commit could break a run that changed nothing here --
+# kcoreaddons 864299c6 did exactly that on 2026-09-24. These are the
+# commits built by the first green run, 36046810445 (f595739): for each
+# project, the master head at the moment kde-builder fetched it, taken
+# from that run's log; no later commit on any first-parent history has an
+# earlier committer date, so the choice is unambiguous.
+#
+# kde-builder cannot clone a bare commit -- it checks every pin with
+# `git ls-remote`, which sees only refs -- but it checks out `commit:` in
+# an existing clone. tools/konsole-source-pins.sh therefore clones what is
+# missing before kde-builder runs, renders one `commit:` override per line
+# into kde-builder.yaml.in, and verifies after the build that every source
+# tree is at its pin. Preflight fails when this file, the template and
+# kde-graph.txt disagree.
+#
+# To move a pin: change the commit here, run
+# `tools/konsole-source-pins.sh sync-template`, and let a full run prove it.
+extra-cmake-modules b4c4ec9997373cfccc3a1da95232a54f14e9dede https://invent.kde.org/frameworks/extra-cmake-modules.git
+kconfig 5f2fc6ac88814d2b320f4fa24a3d72a501e4b20b https://invent.kde.org/frameworks/kconfig.git
+kcoreaddons 4d6e64cdbfe0ece76841a36bd3370bcdc66193c0 https://invent.kde.org/frameworks/kcoreaddons.git
+ki18n 83f7dc47e1a9dde505fcee64f24c6951c13de11f https://invent.kde.org/frameworks/ki18n.git
+kwidgetsaddons 7f2035cd7b252f2721a07c7d555eae9682bf8e93 https://invent.kde.org/frameworks/kwidgetsaddons.git
+plasma-wayland-protocols c5ac4db818f4a575a6ccfe0065b73ecfaba6e93e https://invent.kde.org/libraries/plasma-wayland-protocols.git
+kcodecs 3ed4f99cf9565156ab75473934fb665eb1c3436e https://invent.kde.org/frameworks/kcodecs.git
+karchive b3c46924320427366178eed0171b28127aa5d34c https://invent.kde.org/frameworks/karchive.git
+kguiaddons a913313d52d94b1c912d04dd62637b31afcb1073 https://invent.kde.org/frameworks/kguiaddons.git
+kcolorscheme b44cfeac90cf906c10d6c33d1de301e4efdd730c https://invent.kde.org/frameworks/kcolorscheme.git
+breeze-icons 533733ff0b463f4d1118b22595346b99be0029fd https://invent.kde.org/frameworks/breeze-icons.git
+kcompletion 253346168eedc74f2c44d7f9a0ef2a93f4fc4edd https://invent.kde.org/frameworks/kcompletion.git
+kiconthemes ee796f5814a6b1be4d68bdf3b04da0293f0a3b70 https://invent.kde.org/frameworks/kiconthemes.git
+knotifications 40edfe471753c345e049708d6fe05ba6b548d8e1 https://invent.kde.org/frameworks/knotifications.git
+kcrash 8b925c05034aa781529335a2165f96b35eb766e9 https://invent.kde.org/frameworks/kcrash.git
+kdbusaddons 500f3f20a459dfe42824e4a9c6c593906e562324 https://invent.kde.org/frameworks/kdbusaddons.git
+kitemviews 64a0f4531a7dcd0df7533b129bbe27ad0a22b4c7 https://invent.kde.org/frameworks/kitemviews.git
+kwindowsystem 04439400416e5d5a3c8e12f7e47766bda9f7fc4a https://invent.kde.org/frameworks/kwindowsystem.git
+qca 66026b6b2e87adfa70292718cff6c721c28dfed7 https://invent.kde.org/libraries/qca.git
+sonnet 2f72aa7e51f6a12bc62396199dcddf6935b952f3 https://invent.kde.org/frameworks/sonnet.git
+kbookmarks a87234fdb339e41f05b21b0a3b7734fd65eef11a https://invent.kde.org/frameworks/kbookmarks.git
+kconfigwidgets c5aabc7b2cda25955153ec13325d84111b3a2b60 https://invent.kde.org/frameworks/kconfigwidgets.git
+kglobalaccel 2351bfdbcd46045eec5bc494b7e51d4f1b492b1b https://invent.kde.org/frameworks/kglobalaccel.git
+kjobwidgets 61abc5d4a56ba7b20bc3f236896fabc80c2d5c13 https://invent.kde.org/frameworks/kjobwidgets.git
+kservice 5dff6460a76a5c52cd7a545cc69c0f1741f9e26a https://invent.kde.org/frameworks/kservice.git
+ktextwidgets 268b9377a825148e18cbbc4b692dc9967331b98f https://invent.kde.org/frameworks/ktextwidgets.git
+kwallet dcd6b362eea9ca4bde2e2f32af6bcb21ead6f6dc https://invent.kde.org/frameworks/kwallet.git
+solid ce31dc321d11bc7d6310e44532b0f949073f24a6 https://invent.kde.org/frameworks/solid.git
+kio 606b6ae05ff88835371984ead465b12be361f271 https://invent.kde.org/frameworks/kio.git
+kxmlgui 8ca774de3bd853378d35a94314c9c730962aaaea https://invent.kde.org/frameworks/kxmlgui.git
+attica a3134ec0b4d4a583eae0405f99d71b3fcf757530 https://invent.kde.org/frameworks/attica.git
+kpackage 75840163d63ebb0c0171ec00ddfb15736aa6e637 https://invent.kde.org/frameworks/kpackage.git
+syndication 0136f8cdb01e3259866465541fe43adbcc72e6b1 https://invent.kde.org/frameworks/syndication.git
+knewstuff e777b1275ae4b5c71c5761486534dea939e881ce https://invent.kde.org/frameworks/knewstuff.git
+knotifyconfig 3a911fd78126282548a21864798b060754f031aa https://invent.kde.org/frameworks/knotifyconfig.git
+kparts 46074171e459dbc1233225bd5a343f0fed3e209e https://invent.kde.org/frameworks/kparts.git
+kpty 10a4d03e008e2f388ddc46c0da2699025e4c7c5a https://invent.kde.org/frameworks/kpty.git
