@@ -7,6 +7,23 @@ Everything below this section is a reverse-chronological log (newest
 first). Read *this* section first; consult the log below only for the
 detail behind a specific claim.
 
+### breeze is compiled in; icons actually render
+
+The bundle still shipped breeze and breeze-dark as ~15,700 SVG files and
+symlinks, and none of them were ever drawn: Konsole imported no SVG plugin,
+and `KIconTheme::initTheme()` selects the "KIconEngine" theme whose engine is
+the MODULE `KIconEnginePlugin`, which static Qt refuses. Toolbars were
+text-only. Now breeze-icons builds with `-DSKIP_INSTALL_ICONS=ON` (the
+KF6BreezeIcons resource library is still built), KIconThemes keeps its
+default `USE_BreezeIcons=ON`, `qsvg`/`qsvgicon` are imported like the
+platform plugin, and `project-include.cmake` turns `KIconEnginePlugin` into a
+static plugin of KF6IconThemes through the same hook as KWindowSystem's
+X11Plugin (`_se_make_module_a_static_qt_plugin`). The payload verifier
+requires all three plugin classes and fails on any `share/icons/breeze*`;
+the log checker fails on `Icon theme "breeze" not found`. Run 77's
+`USE_BreezeIcons=OFF` was a misdiagnosis (run 78 aborted identically; the
+cause was the shared `konsoleapp`).
+
 ### The bundle carried 600 MB it could not use
 
 The 36046810445 bundle was 728 MB on disk. 470 MB were icons: breeze and

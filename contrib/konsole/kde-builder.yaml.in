@@ -173,16 +173,25 @@ global:
 override konsole:
   revision: "@KONSOLE_REF@"
 
-# KIconThemes registers a Q_COREAPP_STARTUP_FUNCTION. With BreezeIcons enabled
-# its startup callback calls BreezeIcons::initIcons() while QApplication is
-# still being constructed, which is not safe for this static GUI graph. The
-# KIconThemes CMakeLists.txt makes this optional integration explicit; keep the
-# filesystem icon theme from the separate breeze-icons project, but disable
-# this in-process startup integration for the portable build.
+# The icon theme is compiled into the executable, not installed as files.
+# breeze-icons builds KF6BreezeIcons, the whole theme as one Qt resource
+# (duplicates are resource aliases), and KIconThemes links it by default
+# (USE_BreezeIcons) and selects it in KIconTheme::initTheme(). The files are
+# then only the same theme again: 2 x 54142 entries, 7848 of them distinct,
+# so SKIP_INSTALL_ICONS leaves them out.
+#
+# USE_BreezeIcons was once switched off here on the belief that its startup
+# hook built a widget before QApplication (run 77). Run 78 aborted the same
+# way with it off; the cause was a second static Qt inside a SHARED
+# libkonsoleapp, fixed since. BreezeIcons::initIcons() only registers the
+# resource and sets the fallback theme name.
 override kiconthemes:
   commit: "ee796f5814a6b1be4d68bdf3b04da0293f0a3b70"
+
+override breeze-icons:
+  commit: "533733ff0b463f4d1118b22595346b99be0029fd"
   cmake-options: >
-    -DUSE_BreezeIcons=OFF
+    -DSKIP_INSTALL_ICONS=ON
 
 # qca defaults to its legacy Qt5 build. The KDE dependency graph consumes its
 # Qt6 package, and qca's CMakeLists.txt requires Qt6 Core5Compat even when its
@@ -216,8 +225,6 @@ override kguiaddons:
   commit: "a913313d52d94b1c912d04dd62637b31afcb1073"
 override kcolorscheme:
   commit: "b44cfeac90cf906c10d6c33d1de301e4efdd730c"
-override breeze-icons:
-  commit: "533733ff0b463f4d1118b22595346b99be0029fd"
 override kcompletion:
   commit: "253346168eedc74f2c44d7f9a0ef2a93f4fc4edd"
 override knotifications:

@@ -13,7 +13,9 @@ trap 'rm -rf "$PROBE"' EXIT
 
 mkdir -p "$PROBE/src" "$PROBE/fakeqt/include" \
     "$PROBE/fakeqt/plugins/platforms" \
-    "$PROBE/fakeqt/plugins/xcbglintegrations"
+    "$PROBE/fakeqt/plugins/xcbglintegrations" \
+    "$PROBE/fakeqt/plugins/imageformats" \
+    "$PROBE/fakeqt/plugins/iconengines"
 
 cat >"$PROBE/fakeqt/include/QtPlugin" <<'HEADER'
 #pragma once
@@ -39,6 +41,8 @@ make_plugin() {
 make_plugin platforms qxcb QXcbIntegrationPlugin
 make_plugin xcbglintegrations qxcb-glx-integration QXcbGlIntegrationPlugin
 make_plugin xcbglintegrations qxcb-egl-integration QXcbEglIntegrationPlugin
+make_plugin imageformats qsvg QSvgPlugin
+make_plugin iconengines qsvgicon QSvgIconPlugin
 
 cat >"$PROBE/src/CMakeLists.txt" <<CMAKE
 cmake_minimum_required(VERSION 3.21)
@@ -62,7 +66,7 @@ function(check_konsole_static_qt_plugins)
         message(FATAL_ERROR "Konsole plugin registration source was not configured")
     endif()
     file(READ "\${generated}" imports)
-    foreach(plugin QXcbIntegrationPlugin QXcbGlIntegrationPlugin QXcbEglIntegrationPlugin)
+    foreach(plugin QXcbIntegrationPlugin QXcbGlIntegrationPlugin QXcbEglIntegrationPlugin QSvgPlugin QSvgIconPlugin)
         string(FIND "\${imports}" "Q_IMPORT_PLUGIN(\${plugin})" plugin_offset)
         if(plugin_offset EQUAL -1)
             message(FATAL_ERROR "missing Q_IMPORT_PLUGIN(\${plugin}) in: \${imports}")
@@ -70,8 +74,8 @@ function(check_konsole_static_qt_plugins)
     endforeach()
     string(REGEX MATCHALL "Q_IMPORT_PLUGIN\\([^)]*\\)" plugin_imports "\${imports}")
     list(LENGTH plugin_imports import_count)
-    if(NOT import_count EQUAL 3)
-        message(FATAL_ERROR "expected exactly three Q_IMPORT_PLUGIN calls, got \${import_count}")
+    if(NOT import_count EQUAL 5)
+        message(FATAL_ERROR "expected exactly five Q_IMPORT_PLUGIN calls, got \${import_count}")
     endif()
 
     get_target_property(links Qt6::Gui INTERFACE_LINK_LIBRARIES)

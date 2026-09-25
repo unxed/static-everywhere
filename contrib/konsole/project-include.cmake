@@ -260,57 +260,59 @@ endif()
 
 # Qt's QPluginLoader is deliberately unavailable when Qt itself is static:
 # QPluginLoader::setFileName() becomes a no-op in that configuration. A KDE
-# framework can still expose a MODULE target, so merely copying that MODULE
-# and exporting QT_PLUGIN_PATH gives a false portable-runtime contract. Make
-# KWindowSystem's X11 backend a static Qt plugin of the framework target;
-# KWindowSystem's plugin wrapper asks QPluginLoader::staticPlugins() before
-# it looks at any file, so the registration is found on every static-Qt build.
+# framework can still ship a Qt plugin as a MODULE target, so merely copying
+# that MODULE and exporting QT_PLUGIN_PATH gives a false portable-runtime
+# contract. Each such plugin is made a static Qt plugin of its framework
+# library instead: its sources join the library, the library is compiled with
+# QT_STATICPLUGIN (moc then emits qt_static_plugin_<Class>), and a
+# Q_IMPORT_PLUGIN(<Class>) in a translation unit the framework always links
+# registers it. Current instances:
+#   KWindowSystem  X11Plugin         (MODULE KF6WindowSystemX11Plugin), imported
+#                  from src/pluginwrapper.cpp: Q_IMPORT_PLUGIN(X11Plugin)
+#   KIconThemes    KIconEnginePlugin (MODULE KIconEnginePlugin), imported from
+#                  src/kicontheme.cpp; KIconTheme::initTheme() selects the
+#                  "KIconEngine" icon theme, which only this plugin provides
 #
 # The sources are taken from the MODULE target itself rather than from a
-# hand-kept list, and files the framework already compiles (kxutils.cpp) are
-# not added twice. The MODULE cannot stay as it was: it links KF6WindowSystem,
-# whose archive now holds the same plugin objects, and the first attempt
-# stopped there on duplicate X11Plugin symbols. It is reduced to an empty
-# translation unit with no link libraries, so its upstream install() rule
-# still has a file to install and nothing loadable claims the plugin IID.
+# hand-kept list, and files the library already compiles (kxutils.cpp,
+# kiconengineplugin.cpp) are not added twice. The MODULE cannot stay as it
+# was: it links the library, whose archive now holds the same plugin objects,
+# and the first attempt stopped there on duplicate X11Plugin symbols. It is
+# reduced to an empty translation unit with no link libraries, so its upstream
+# install() rule still has a file to install and nothing loadable claims the
+# plugin IID.
 #
-# This is a source-shape contract for the current upstream framework rather
+# This is a source-shape contract for the current upstream frameworks rather
 # than a hand-maintained dependency patch. The callback is deferred until the
 # framework has declared both targets, and the source edit is idempotent so
 # cached kde-builder checkouts can be reused safely and cleaned on exit.
-function(_se_konsole_enable_static_kwindowsystem_x11_plugin)
-    if(NOT KWINDOWSYSTEM_X11)
-        return()
-    endif()
-    foreach(_se_kwindowsystem_target KF6WindowSystem KF6WindowSystemX11Plugin)
-        if(NOT TARGET ${_se_kwindowsystem_target})
+function(_se_make_module_a_static_qt_plugin library module plugin_class
+         import_source import_anchor)
+    foreach(_se_plugin_target "${library}" "${module}")
+        if(NOT TARGET "${_se_plugin_target}")
             message(FATAL_ERROR
-                "static-everywhere: KWindowSystem has no "
-                "${_se_kwindowsystem_target} target")
+                "static-everywhere: ${PROJECT_NAME} has no "
+                "${_se_plugin_target} target")
         endif()
     endforeach()
-
-    set(_se_kwindowsystem_wrapper
-        "${CMAKE_CURRENT_SOURCE_DIR}/src/pluginwrapper.cpp")
-    if(NOT EXISTS "${_se_kwindowsystem_wrapper}")
+    if(NOT EXISTS "${import_source}")
         message(FATAL_ERROR
-            "static-everywhere: KWindowSystem plugin wrapper is missing: "
-            "${_se_kwindowsystem_wrapper}")
+            "static-everywhere: ${plugin_class} import source is missing: "
+            "${import_source}")
     endif()
 
     # Absolute source sets of both targets, so the same file named relative
     # to two different directories is recognised as one file.
-    foreach(_se_kwindowsystem_target KF6WindowSystem KF6WindowSystemX11Plugin)
-        get_target_property(_se_target_dir ${_se_kwindowsystem_target} SOURCE_DIR)
-        get_target_property(_se_target_sources ${_se_kwindowsystem_target} SOURCES)
+    foreach(_se_plugin_target "${library}" "${module}")
+        get_target_property(_se_target_dir "${_se_plugin_target}" SOURCE_DIR)
+        get_target_property(_se_target_sources "${_se_plugin_target}" SOURCES)
         set(_se_absolute_sources)
         foreach(_se_source IN LISTS _se_target_sources)
             if(_se_source MATCHES "^\\$<")
-                if(_se_kwindowsystem_target STREQUAL "KF6WindowSystemX11Plugin")
+                if(_se_plugin_target STREQUAL "${module}")
                     message(FATAL_ERROR
-                        "static-everywhere: KF6WindowSystemX11Plugin has a "
-                        "generator-expression source that cannot be moved: "
-                        "${_se_source}")
+                        "static-everywhere: ${module} has a generator-expression "
+                        "source that cannot be moved: ${_se_source}")
                 endif()
                 continue()
             endif()
@@ -318,76 +320,106 @@ function(_se_konsole_enable_static_kwindowsystem_x11_plugin)
                 BASE_DIR "${_se_target_dir}")
             list(APPEND _se_absolute_sources "${_se_source}")
         endforeach()
-        set(_se_sources_${_se_kwindowsystem_target} ${_se_absolute_sources})
+        if(_se_plugin_target STREQUAL "${module}")
+            set(_se_module_sources ${_se_absolute_sources})
+        else()
+            set(_se_library_sources ${_se_absolute_sources})
+        endif()
     endforeach()
 
-    set(_se_kwindowsystem_moved)
-    foreach(_se_source IN LISTS _se_sources_KF6WindowSystemX11Plugin)
+    set(_se_moved)
+    set(_se_declares_class FALSE)
+    foreach(_se_source IN LISTS _se_module_sources)
         if(NOT _se_source MATCHES "\\.(c|cc|cpp|cxx)$")
             continue()
         endif()
         if(NOT EXISTS "${_se_source}")
             message(FATAL_ERROR
-                "static-everywhere: KWindowSystem X11 plugin source is "
-                "missing: ${_se_source}")
+                "static-everywhere: ${module} source is missing: ${_se_source}")
         endif()
-        list(FIND _se_sources_KF6WindowSystem "${_se_source}" _se_source_pos)
+        # The plugin class may be declared in the source or in its header.
+        string(REGEX REPLACE "\\.[a-z]+$" ".h" _se_header "${_se_source}")
+        foreach(_se_candidate "${_se_source}" "${_se_header}")
+            if(EXISTS "${_se_candidate}")
+                file(READ "${_se_candidate}" _se_candidate_content)
+                if(_se_candidate_content MATCHES "class[ \t]+${plugin_class}[ \t\n:]")
+                    set(_se_declares_class TRUE)
+                endif()
+            endif()
+        endforeach()
+        list(FIND _se_library_sources "${_se_source}" _se_source_pos)
         if(_se_source_pos LESS 0)
-            list(APPEND _se_kwindowsystem_moved "${_se_source}")
+            list(APPEND _se_moved "${_se_source}")
         endif()
     endforeach()
-    set(_se_kwindowsystem_plugin_source ${_se_kwindowsystem_moved})
-    list(FILTER _se_kwindowsystem_plugin_source INCLUDE REGEX "/plugin\\.cpp$")
-    if(NOT _se_kwindowsystem_plugin_source)
+    if(NOT _se_declares_class)
         message(FATAL_ERROR
-            "static-everywhere: KWindowSystem X11 MODULE no longer has the "
-            "plugin.cpp that declares X11Plugin")
+            "static-everywhere: ${module} no longer compiles the source that "
+            "declares ${plugin_class}")
     endif()
 
-    file(READ "${_se_kwindowsystem_wrapper}" _se_kwindowsystem_content)
-    string(FIND "${_se_kwindowsystem_content}" "Q_IMPORT_PLUGIN(X11Plugin)"
-        _se_kwindowsystem_import_pos)
-    if(_se_kwindowsystem_import_pos LESS 0)
-        string(FIND "${_se_kwindowsystem_content}" "#include <QPluginLoader>"
-            _se_kwindowsystem_loader_include_pos)
-        if(_se_kwindowsystem_loader_include_pos LESS 0)
+    file(READ "${import_source}" _se_import_content)
+    string(FIND "${_se_import_content}" "Q_IMPORT_PLUGIN(${plugin_class})"
+        _se_import_pos)
+    if(_se_import_pos LESS 0)
+        string(FIND "${_se_import_content}" "${import_anchor}" _se_anchor_pos)
+        if(_se_anchor_pos LESS 0)
             message(FATAL_ERROR
-                "static-everywhere: KWindowSystem plugin wrapper lost its "
-                "QPluginLoader include anchor")
+                "static-everywhere: ${import_source} lost its import anchor "
+                "'${import_anchor}'")
         endif()
-        string(REPLACE "#include <QPluginLoader>"
-            "#include <QPluginLoader>\n#include <QtPlugin>\n\nQ_IMPORT_PLUGIN(X11Plugin)"
-            _se_kwindowsystem_content "${_se_kwindowsystem_content}")
-        file(WRITE "${_se_kwindowsystem_wrapper}" "${_se_kwindowsystem_content}")
-    elseif(NOT _se_kwindowsystem_content MATCHES "#[ \t]*include[ \t]*<QtPlugin>")
+        string(REPLACE "${import_anchor}"
+            "${import_anchor}\n#include <QtPlugin>\n\nQ_IMPORT_PLUGIN(${plugin_class})"
+            _se_import_content "${_se_import_content}")
+        file(WRITE "${import_source}" "${_se_import_content}")
+    elseif(NOT _se_import_content MATCHES "#[ \t]*include[ \t]*<QtPlugin>")
         message(FATAL_ERROR
-            "static-everywhere: KWindowSystem static plugin import has no "
-            "QtPlugin include")
+            "static-everywhere: ${plugin_class} import in ${import_source} has "
+            "no QtPlugin include")
     endif()
 
-    target_compile_definitions(KF6WindowSystem PRIVATE QT_STATICPLUGIN)
-    target_sources(KF6WindowSystem PRIVATE ${_se_kwindowsystem_moved})
+    target_compile_definitions("${library}" PRIVATE QT_STATICPLUGIN)
+    if(_se_moved)
+        target_sources("${library}" PRIVATE ${_se_moved})
+    endif()
 
-    set(_se_kwindowsystem_stub
-        "${CMAKE_CURRENT_BINARY_DIR}/static_everywhere_x11plugin_stub.cpp")
-    file(WRITE "${_se_kwindowsystem_stub}"
-        "// static-everywhere: X11Plugin is a static Qt plugin of KF6WindowSystem.\n")
-    set_target_properties(KF6WindowSystemX11Plugin PROPERTIES
-        SOURCES "${_se_kwindowsystem_stub}"
+    set(_se_stub "${CMAKE_CURRENT_BINARY_DIR}/static_everywhere_${module}_stub.cpp")
+    file(WRITE "${_se_stub}"
+        "// static-everywhere: ${plugin_class} is a static Qt plugin of ${library}.\n")
+    set_target_properties("${module}" PROPERTIES
+        SOURCES "${_se_stub}"
         LINK_LIBRARIES ""
         INTERFACE_LINK_LIBRARIES ""
         AUTOMOC OFF
         AUTOUIC OFF
         AUTORCC OFF)
     message(STATUS
-        "static-everywhere: registered KWindowSystem X11 backend as a "
-        "static Qt plugin (${_se_kwindowsystem_moved}); the X11 MODULE is an "
-        "empty placeholder")
+        "static-everywhere: ${plugin_class} is a static Qt plugin of ${library} "
+        "(moved: ${_se_moved}); ${module} is an empty placeholder")
+endfunction()
+
+function(_se_konsole_enable_static_kwindowsystem_x11_plugin)
+    if(NOT KWINDOWSYSTEM_X11)
+        return()
+    endif()
+    _se_make_module_a_static_qt_plugin(KF6WindowSystem KF6WindowSystemX11Plugin
+        X11Plugin "${CMAKE_CURRENT_SOURCE_DIR}/src/pluginwrapper.cpp"
+        "#include <QPluginLoader>")
+endfunction()
+
+function(_se_konsole_enable_static_kiconengine_plugin)
+    _se_make_module_a_static_qt_plugin(KF6IconThemes KIconEnginePlugin
+        KIconEnginePlugin "${CMAKE_CURRENT_SOURCE_DIR}/src/kicontheme.cpp"
+        "#include \"kicontheme.h\"")
 endfunction()
 
 if(PROJECT_NAME STREQUAL "KWindowSystem" AND PROJECT_IS_TOP_LEVEL)
     cmake_language(DEFER DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
         CALL _se_konsole_enable_static_kwindowsystem_x11_plugin)
+endif()
+if(PROJECT_NAME STREQUAL "KIconThemes" AND PROJECT_IS_TOP_LEVEL)
+    cmake_language(DEFER DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+        CALL _se_konsole_enable_static_kiconengine_plugin)
 endif()
 
 if(NOT PROJECT_IS_TOP_LEVEL)

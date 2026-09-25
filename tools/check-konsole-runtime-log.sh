@@ -22,6 +22,8 @@ forbidden=(
     'into a statically linked Qt library'
     'cannot find .rc file'
     'Unable to load translator'
+    'Icon theme "breeze" not found'
+    'KIconTheme created with empty theme name'
 )
 for message in "${forbidden[@]}"; do
     if grep -Fq "$message" "$log"; then

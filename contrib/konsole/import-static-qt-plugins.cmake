@@ -128,10 +128,16 @@ function(_se_konsole_import_static_qt_plugins)
 
     set(_imports "")
     set(_libs "")
+    # The SVG image and icon-engine plugins are what renders an icon theme at
+    # all: breeze is SVG-only. Without them a static Qt draws text-only
+    # toolbars and menus, which is how the first green bundle looked. Same
+    # list as contrib/f4-qt/import-qt-static-plugins.cmake.
     foreach(_entry
             platforms/qxcb
             xcbglintegrations/qxcb-glx-integration
-            xcbglintegrations/qxcb-egl-integration)
+            xcbglintegrations/qxcb-egl-integration
+            imageformats/qsvg
+            iconengines/qsvgicon)
         get_filename_component(_dir "${_entry}" DIRECTORY)
         get_filename_component(_name "${_entry}" NAME)
         unset(_archive CACHE)
@@ -174,8 +180,8 @@ function(_se_konsole_import_static_qt_plugins)
         "$<$<STREQUAL:$<TARGET_PROPERTY:TYPE>,EXECUTABLE>:${_generated}>")
     set_property(TARGET Qt6::Gui APPEND PROPERTY INTERFACE_LINK_LIBRARIES ${_libs})
     message(STATUS
-        "static-everywhere: imported qxcb, qxcb-glx-integration and "
-        "qxcb-egl-integration into Qt6::Gui")
+        "static-everywhere: imported qxcb, qxcb-glx-integration, "
+        "qxcb-egl-integration, qsvg and qsvgicon into Qt6::Gui")
 endfunction()
 
 cmake_language(DEFER DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"

@@ -602,3 +602,14 @@ and fails if `konsoleapp` becomes loadable again. The preflight also checks the
 patch contract before the expensive build. This closes the class of duplicate
 static-runtime state across loadable boundaries rather than matching the one
 abort message.
+
+## Correction to run 77: BreezeIcons was not the abort
+
+Run 78 aborted with the same `QWidget: Must construct a QApplication` while
+`USE_BreezeIcons=OFF` was in force; the cause was the shared `konsoleapp`
+facade (above). The override only cost the build its icons: with the theme
+installed as files and no SVG or KIconEngine plugin in the static
+executable, nothing was ever drawn. The override is removed. breeze is
+compiled in through KF6BreezeIcons (`SKIP_INSTALL_ICONS=ON` on breeze-icons),
+`qsvg`/`qsvgicon` are imported, and `KIconEnginePlugin` is a static plugin of
+KF6IconThemes (`tools/test-konsole-static-kiconengine-plugin.sh`).

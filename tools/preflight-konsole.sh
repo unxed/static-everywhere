@@ -28,6 +28,7 @@ bash -n "$REPO_ROOT/tools/build-konsole.sh" "$REPO_ROOT/tools/preflight-konsole.
     "$REPO_ROOT/tools/test-konsole-host-docbook-tools.sh" \
     "$REPO_ROOT/tools/test-konsole-static-qt-plugins.sh" \
     "$REPO_ROOT/tools/test-konsole-static-kwindowsystem-plugin.sh" \
+    "$REPO_ROOT/tools/test-konsole-static-kiconengine-plugin.sh" \
     "$REPO_ROOT/tools/test-konsole-static-qt-resources.sh" \
     "$REPO_ROOT/tools/test-konsole-disabled-package-found.sh" \
     "$REPO_ROOT/tools/test-konsole-source-pins.sh" \
@@ -79,6 +80,9 @@ pass 'Konsole static Qt plugin imports are configure-time and Conan-safe'
 
 bash "$REPO_ROOT/tools/test-konsole-static-kwindowsystem-plugin.sh"
 pass 'static Qt KWindowSystem X11 plugin registration is wired at configure time'
+
+bash "$REPO_ROOT/tools/test-konsole-static-kiconengine-plugin.sh"
+pass 'static Qt KIconEngine plugin registration is wired at configure time'
 
 bash "$REPO_ROOT/tools/test-konsole-static-qt-resources.sh"
 pass 'Qt resources of every STATIC Konsole target reach the final link'
@@ -202,7 +206,8 @@ for needle in \
     'BUILD_KWALLET_QUERY=OFF' \
     'BUILD_PLUGINS=none' \
     'override kiconthemes:' \
-    'USE_BreezeIcons=OFF'; do
+    'override breeze-icons:' \
+    'SKIP_INSTALL_ICONS=ON'; do
     if ! grep -Fq -- "$needle" "$PLAN" &&
        ! grep -Fq -- "$needle" "$REPO_ROOT/contrib/konsole/kde-builder.yaml.in"; then
         fail "plan/config is missing: $needle"
@@ -328,7 +333,9 @@ for prefix, expected in expected_link_flags.items():
     ]
     assert actual == [expected], (prefix, actual)
 assert config["override konsole"]["revision"]
-assert "-DUSE_BreezeIcons=OFF" in config["override kiconthemes"]["cmake-options"]
+# breeze is compiled in (KF6BreezeIcons), never installed as files.
+assert "USE_BreezeIcons" not in config["override kiconthemes"].get("cmake-options", "")
+assert "-DSKIP_INSTALL_ICONS=ON" in config["override breeze-icons"]["cmake-options"]
 assert "#" not in cmake_options
 workflow = yaml.safe_load(pathlib.Path(sys.argv[2]).read_text())
 assert set(workflow["jobs"]) == {"preflight", "build", "release"}

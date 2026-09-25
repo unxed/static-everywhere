@@ -65,9 +65,17 @@ cat >"$PROBE/source/src/pluginwrapper.cpp" <<'CPP'
 #include <QPluginLoader>
 Q_GLOBAL_STATIC(KWindowSystemPluginWrapper, s_pluginWrapper)
 CPP
-for source in kwindoweffects.cpp kwindowshadow.cpp kwindowsystem.cpp kxutils.cpp plugin.cpp; do
+for source in kwindoweffects.cpp kwindowshadow.cpp kwindowsystem.cpp kxutils.cpp; do
     : >"$PROBE/source/src/platforms/xcb/$source"
 done
+: >"$PROBE/source/src/platforms/xcb/plugin.cpp"
+cat >"$PROBE/source/src/platforms/xcb/plugin.h" <<'CPP'
+class X11Plugin : public KWindowSystemPluginInterface
+{
+    Q_OBJECT
+    Q_PLUGIN_METADATA(IID "org.kde.kwindowsystem.KWindowSystemPluginInterface" FILE "xcb.json")
+};
+CPP
 
 cmake -S "$PROBE/source" -B "$PROBE/build" -G Ninja \
     -DCMAKE_PROJECT_INCLUDE="$REPO_ROOT/contrib/konsole/project-include.cmake" \
@@ -94,7 +102,7 @@ done
 kxutils_count=$(grep -c 'kxutils\.cpp$' "$result" || true)
 [[ $kxutils_count == 1 ]] ||
     fail "a source both targets compile was added to KF6WindowSystem again ($kxutils_count copies)"
-grep -Eq '^module_sources=[^;]*static_everywhere_x11plugin_stub\.cpp$' "$result" ||
+grep -Eq '^module_sources=[^;]*static_everywhere_KF6WindowSystemX11Plugin_stub\.cpp$' "$result" ||
     fail 'the X11 MODULE still compiles the plugin objects KF6WindowSystem now owns'
 grep -Fxq 'module_links=' "$result" ||
     fail 'the X11 MODULE still links KF6WindowSystem (duplicate X11Plugin symbols)'

@@ -38,6 +38,24 @@ grep -Fq 'X11Plugin' <<<"$binary_strings" || {
     exit 1
 }
 
+# Icons. breeze is SVG-only and ships compiled into the executable as the
+# KF6BreezeIcons resource: KIconTheme::initTheme() selects the "KIconEngine"
+# theme, which needs KIconEngine's plugin, and Qt needs its SVG plugins to
+# draw anything. The first bundles had none of these three, drew text-only
+# toolbars, and still carried 15,000 breeze SVG files and symlinks nothing
+# could render.
+for class in KIconEnginePlugin QSvgIconPlugin QSvgPlugin; do
+    grep -Fq "$class" <<<"$binary_strings" || {
+        printf 'error: Konsole does not contain the static icon plugin %s\n' "$class" >&2
+        exit 1
+    }
+done
+icon_dirs=$(find "$runtime/share/icons" -mindepth 1 -maxdepth 1 -name 'breeze*' 2>/dev/null || true)
+if [[ -n $icon_dirs ]]; then
+    printf 'error: bundle ships breeze as files; it belongs in the executable:\n%s\n' "$icon_dirs" >&2
+    exit 1
+fi
+
 # No module of any kind: static Qt refuses them all, so each one is dead
 # weight (the 36046810445 bundle carried 123 MB), and one that claims a
 # plugin IID only makes a missing static plugin look present.
@@ -52,4 +70,4 @@ if [[ -n $modules ]]; then
     exit 1
 fi
 
-printf 'Konsole runtime plugin payload: PASS (KWindowSystem X11 backend is a static plugin of the executable; no dead modules)\n'
+printf 'Konsole runtime plugin payload: PASS (KWindowSystem X11 backend and icon engines are static plugins of the executable; breeze compiled in; no dead modules)\n'
