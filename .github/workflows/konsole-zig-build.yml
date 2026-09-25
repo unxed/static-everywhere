@@ -101,6 +101,9 @@ jobs:
       - name: Scan Konsole sources for newer glibc symbols
         run: ./tools/glibc-source-scan.py konsole-src
 
+      - name: Check the release packaging scripts
+        run: tools/test-release-publishing.sh
+
   build:
     needs: preflight
     runs-on: ubuntu-24.04
@@ -256,6 +259,32 @@ jobs:
             ./tools/check-konsole-runtime-log.sh "$log" || status=1
           done
           exit "$status"
+
+      - name: Pack the Konsole release archive
+        # Packed here, from the bundle both smoke runs just exercised,
+        # because an uploaded artifact loses executable bits.
+        # See tools/pack-release.sh.
+        run: |
+          set -euo pipefail
+          version=$(awk '$1 == "konsole" { print $2; exit }' contrib/konsole/deps.lock)
+          test -n "$version"
+          tools/pack-release.sh \
+            --name konsole \
+            --out "$RUNNER_TEMP/release" \
+            --title "Konsole ${version#v}, static Qt and KDE Frameworks (x86_64 Linux)" \
+            --run './konsole/konsole' \
+            --lock contrib/konsole/deps.lock \
+            --lock contrib/konsole/kde-sources.lock \
+            out/konsole/konsole-runtime=.
+
+      - name: Upload the release archive for the release job
+        uses: actions/upload-artifact@v4
+        with:
+          name: konsole-release
+          path: ${{ runner.temp }}/release
+          compression-level: 0
+          retention-days: 1
+          if-no-files-found: error
 
       - name: ccache statistics and disk usage
         if: always()
@@ -458,3 +487,35 @@ jobs:
             out/konsole/smoke-isolated
           if-no-files-found: warn
           retention-days: 14
+
+  release:
+    # Publishes the archive the build job packed as the GitHub release
+    # konsole-latest, which anyone can download without a GitHub account.
+    # Only a manual run on the default branch of the pinned Konsole is
+    # published; a konsole_ref override is a test build.
+    # The only job with write access; it runs no build code.
+    needs: build
+    if: github.event_name == 'workflow_dispatch' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) && inputs.konsole_ref == ''
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    concurrency:
+      group: release-konsole-latest
+    steps:
+      - name: Checkout static-everywhere
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Download the packed release
+        uses: actions/download-artifact@v4
+        with:
+          name: konsole-release
+          path: release
+
+      - name: Publish konsole-latest
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: tools/publish-release.sh --tag konsole-latest --dir release

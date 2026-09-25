@@ -57,6 +57,7 @@ from there, wherever that directory is. Linux x86_64.
 | Program | Archive | Start it | Built by |
 |---|---|---|---|
 | GNOME Terminal (hybrid static GTK) | [gnome-terminal-linux-x86_64.tar.gz](https://github.com/unxed/static-everywhere/releases/download/gnome-terminal-latest/gnome-terminal-linux-x86_64.tar.gz) | `./gnome-terminal/gnome-terminal` | [`gnome-terminal-hybrid-static-gtk.yml`](./.github/workflows/gnome-terminal-hybrid-static-gtk.yml) |
+| Konsole (static Qt and KDE Frameworks) | [konsole-linux-x86_64.tar.gz](https://github.com/unxed/static-everywhere/releases/download/konsole-latest/konsole-linux-x86_64.tar.gz) | `./konsole/konsole` | [`konsole-zig-build.yml`](./.github/workflows/konsole-zig-build.yml) |
 | f4-qt (f4 with static Qt) | [f4-qt-linux-x86_64.tar.gz](https://github.com/unxed/static-everywhere/releases/download/f4-qt-latest/f4-qt-linux-x86_64.tar.gz) | `./f4-qt/f4 --gui=qt` | [`f4-qt-zig-build.yml`](./.github/workflows/f4-qt-zig-build.yml) |
 | far2l SDL, hybrid | [far2l-sdl-linux-x86_64.tar.gz](https://github.com/unxed/static-everywhere/releases/download/far2l-sdl-latest/far2l-sdl-linux-x86_64.tar.gz) | `./far2l-sdl/bin/far2l` | [`far2l-sdl-zig-build.yml`](./.github/workflows/far2l-sdl-zig-build.yml) |
 | far2l SDL, Profile U | [far2l-sdl-profile-u-linux-x86_64.tar.gz](https://github.com/unxed/static-everywhere/releases/download/far2l-sdl-profile-u-latest/far2l-sdl-profile-u-linux-x86_64.tar.gz) | `./far2l-sdl-profile-u/bin/far2l` | [`far2l-sdl-profile-u.yml`](./.github/workflows/far2l-sdl-profile-u.yml) |
